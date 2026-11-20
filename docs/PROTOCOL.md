@@ -201,9 +201,11 @@ The payload is a stream of 32-bit words. Transfers are concatenated; packet boun
 - 0x9A is an ITE IT66121 HDMI **transmitter** (regs 1-3 = `49 12 16`), i.e. the passthrough output, not the receiver. The `FUN_1d10a` state machine drives passthrough and is not needed for capture.
 - 0xC2 stalls on alternate opens; ignoring it (as Elgato does) is harmless.
 - On this unit MST3367 b1:01 bit 2 is set, so `FUN_1caf4` takes its b2:27=0 / ADC reg 3=0xA0 / MCU `90 05 00` branch.
+- Audio source (`FUN_1ce00` arg, stored at `+0x1114`) picks which 0x94 codec input pairs are muted (bit 7). Measured with PS5 game audio: source 0 = HDMI (mute 0x0e/0x0f, unmute 0x10/0x11), RMS -26 dBFS; source 1 = analogue line-in only (unmute 0x0e/0x0f, mute 0x10/0x11), the ±2 LSB ADC noise floor; 3 = both mixed; 2 and 4 also set reg 4 bit 0 and reg 7 = 0xF0 and add a DC offset. The driver uses 0.
+- Audio is 16-bit little-endian stereo at 48 kHz, band-limited to about 18 kHz; 10 s of capture gives 48.1k frames/s against the 59.94 fps video clock.
 
 ## Unknown / unverified
-- Audio content: packets arrive at 48 kHz but the PS5 home screen was silent, so the source routing (HDMI vs analogue ADC at 0x94) is not proven.
+- Audio channel order (left first) is assumed from I2S convention, not tested with a one-sided signal.
 - 0xEC padding bytes and the meaning of 0xEC, 0xC2 and 0xC7. Possibly LED/clock/enable.
 - Modes other than 1080p60 (720p, 1080i, SD), and whether `FUN_12a2f`/`FUN_122da` register writes (e.g. b0:0x11) are needed for them. SD modes also want the BT.601 matrix.
 - Passthrough: the IT66121 is not initialised by the new driver.

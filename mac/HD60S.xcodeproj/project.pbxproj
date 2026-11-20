@@ -8,7 +8,10 @@
 
 /* Begin PBXBuildFile section */
 		274C386DB52799C980E9E44C /* device.c in Sources */ = {isa = PBXBuildFile; fileRef = 3D657EA2382F0CC167FE569B /* device.c */; };
+		36E46DC83957DF142005C5DC /* AudioFeed.c in Sources */ = {isa = PBXBuildFile; fileRef = B94D97025BF605D9F19C6F7B /* AudioFeed.c */; };
+		56F2C184E36B4C0F6FCBE1AF /* ring.c in Sources */ = {isa = PBXBuildFile; fileRef = 82A96EFD70066EE24A64F776 /* ring.c */; };
 		717A4907EF90ADB8B070AEE9 /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8400EEE9F8976B5123BAA715 /* main.swift */; };
+		868DB0A334D8F095951F5C12 /* HD60SAudio.c in Sources */ = {isa = PBXBuildFile; fileRef = 5CAE976973A9661138B5E396 /* HD60SAudio.c */; };
 		91FA4C5D25BF43BF77944006 /* net.mintopia.hd60s.camera.systemextension in Embed System Extensions */ = {isa = PBXBuildFile; fileRef = 906664122934AE5F648909BB /* net.mintopia.hd60s.camera.systemextension */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		935F140DCE2EC4E8C40E4C5A /* HD60SApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5250AEE80161FAD7E2AB87AB /* HD60SApp.swift */; };
 		A042FF175789F53AC09AC388 /* Provider.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEB304182F383B96E72A3DA6 /* Provider.swift */; };
@@ -44,12 +47,18 @@
 		3D657EA2382F0CC167FE569B /* device.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = device.c; sourceTree = "<group>"; };
 		5250AEE80161FAD7E2AB87AB /* HD60SApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HD60SApp.swift; sourceTree = "<group>"; };
 		58FCE89662E2C2249C89C7B2 /* parser.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = parser.c; sourceTree = "<group>"; };
+		5CAE976973A9661138B5E396 /* HD60SAudio.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = HD60SAudio.c; sourceTree = "<group>"; };
+		7077DBB0AE4A216DE906C000 /* AudioFeed.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = AudioFeed.h; sourceTree = "<group>"; };
+		82A96EFD70066EE24A64F776 /* ring.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = ring.c; sourceTree = "<group>"; };
 		8400EEE9F8976B5123BAA715 /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
 		87A0EC014D058589E38854EE /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		906664122934AE5F648909BB /* net.mintopia.hd60s.camera.systemextension */ = {isa = PBXFileReference; explicitFileType = "wrapper.system-extension"; includeInIndex = 0; path = net.mintopia.hd60s.camera.systemextension; sourceTree = BUILT_PRODUCTS_DIR; };
+		9F047EFF5D3A895B3B3B2B7D /* HD60SAudio.bundle */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = HD60SAudio.bundle; sourceTree = BUILT_PRODUCTS_DIR; };
 		A3E0C3F3545569814FC50DBC /* HD60S.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = HD60S.entitlements; sourceTree = "<group>"; };
 		AFAB7175D82262FE4407375C /* Bridging.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = Bridging.h; sourceTree = "<group>"; };
 		B4395BC9C75FEE1900F4B5D8 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		B94D97025BF605D9F19C6F7B /* AudioFeed.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = AudioFeed.c; sourceTree = "<group>"; };
+		F49628C23DF697B188482304 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		FB242BD55A0D36E0CF6E0153 /* HD60S.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = HD60S.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		FEB304182F383B96E72A3DA6 /* Provider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Provider.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -59,6 +68,7 @@
 			isa = PBXGroup;
 			children = (
 				92B13A1CC6A25C28DE7D26E0 /* App */,
+				C1280EA057FA92A3252C283D /* Audio */,
 				B1848574E297AEB5B3F561D7 /* Extension */,
 				739FC2D357B6074DA250405C /* src */,
 				EBF604DCF3102A07AA01BC27 /* Products */,
@@ -70,6 +80,7 @@
 			children = (
 				3D657EA2382F0CC167FE569B /* device.c */,
 				58FCE89662E2C2249C89C7B2 /* parser.c */,
+				82A96EFD70066EE24A64F776 /* ring.c */,
 			);
 			name = src;
 			path = ../src;
@@ -88,6 +99,8 @@
 		B1848574E297AEB5B3F561D7 /* Extension */ = {
 			isa = PBXGroup;
 			children = (
+				B94D97025BF605D9F19C6F7B /* AudioFeed.c */,
+				7077DBB0AE4A216DE906C000 /* AudioFeed.h */,
 				AFAB7175D82262FE4407375C /* Bridging.h */,
 				2802D08CC9D0EF039BE94247 /* HD60SCamera.entitlements */,
 				87A0EC014D058589E38854EE /* Info.plist */,
@@ -97,10 +110,20 @@
 			path = Extension;
 			sourceTree = "<group>";
 		};
+		C1280EA057FA92A3252C283D /* Audio */ = {
+			isa = PBXGroup;
+			children = (
+				5CAE976973A9661138B5E396 /* HD60SAudio.c */,
+				F49628C23DF697B188482304 /* Info.plist */,
+			);
+			path = Audio;
+			sourceTree = "<group>";
+		};
 		EBF604DCF3102A07AA01BC27 /* Products */ = {
 			isa = PBXGroup;
 			children = (
 				FB242BD55A0D36E0CF6E0153 /* HD60S.app */,
+				9F047EFF5D3A895B3B3B2B7D /* HD60SAudio.bundle */,
 				906664122934AE5F648909BB /* net.mintopia.hd60s.camera.systemextension */,
 			);
 			name = Products;
@@ -109,6 +132,23 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
+		02DB3D463C2C9E896E635013 /* HD60SAudio */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 41D878039310D01E0260AFD7 /* Build configuration list for PBXNativeTarget "HD60SAudio" */;
+			buildPhases = (
+				55A10513AFBC4BF075595C32 /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = HD60SAudio;
+			packageProductDependencies = (
+			);
+			productName = HD60SAudio;
+			productReference = 9F047EFF5D3A895B3B3B2B7D /* HD60SAudio.bundle */;
+			productType = "com.apple.product-type.bundle";
+		};
 		7DAC753F38D630D436263A6D /* net.mintopia.hd60s.camera */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = C9ACD931262A6620B3B20C9C /* Build configuration list for PBXNativeTarget "net.mintopia.hd60s.camera" */;
@@ -154,6 +194,10 @@
 				BuildIndependentTargetsInParallel = YES;
 				LastUpgradeCheck = 1430;
 				TargetAttributes = {
+					02DB3D463C2C9E896E635013 = {
+						DevelopmentTeam = 46A7P6HL4Z;
+						ProvisioningStyle = Automatic;
+					};
 					7DAC753F38D630D436263A6D = {
 						DevelopmentTeam = 46A7P6HL4Z;
 						ProvisioningStyle = Automatic;
@@ -180,11 +224,20 @@
 			targets = (
 				946DB4482C6675C1B4302ADD /* HD60S */,
 				7DAC753F38D630D436263A6D /* net.mintopia.hd60s.camera */,
+				02DB3D463C2C9E896E635013 /* HD60SAudio */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXSourcesBuildPhase section */
+		55A10513AFBC4BF075595C32 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				868DB0A334D8F095951F5C12 /* HD60SAudio.c in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		834DF2B43D4C9A39DD9BCB4D /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -197,10 +250,12 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				36E46DC83957DF142005C5DC /* AudioFeed.c in Sources */,
 				A042FF175789F53AC09AC388 /* Provider.swift in Sources */,
 				274C386DB52799C980E9E44C /* device.c in Sources */,
 				717A4907EF90ADB8B070AEE9 /* main.swift in Sources */,
 				E2A40B2FADCE6E73189BED86 /* parser.c in Sources */,
+				56F2C184E36B4C0F6FCBE1AF /* ring.c in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -215,6 +270,50 @@
 /* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
+		23DCF3CA38C1F80775BA8958 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				COMBINE_HIDPI_IMAGES = YES;
+				INFOPLIST_FILE = Audio/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				OTHER_CFLAGS = (
+					"-std=c17",
+				);
+				OTHER_LDFLAGS = (
+					"-framework",
+					CoreFoundation,
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = net.mintopia.hd60s.audio;
+				SDKROOT = macosx;
+				WRAPPER_EXTENSION = driver;
+			};
+			name = Debug;
+		};
+		38632F59D17ED88F321BCB22 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				COMBINE_HIDPI_IMAGES = YES;
+				INFOPLIST_FILE = Audio/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				OTHER_CFLAGS = (
+					"-std=c17",
+				);
+				OTHER_LDFLAGS = (
+					"-framework",
+					CoreFoundation,
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = net.mintopia.hd60s.audio;
+				SDKROOT = macosx;
+				WRAPPER_EXTENSION = driver;
+			};
+			name = Release;
+		};
 		83BEF4D73BD93D02ECF18D23 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -266,7 +365,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 2;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				DEVELOPMENT_TEAM = 46A7P6HL4Z;
 				ENABLE_HARDENED_RUNTIME = YES;
@@ -286,7 +385,7 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
-				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MACOSX_DEPLOYMENT_TARGET = 26.0;
 				MARKETING_VERSION = 1.0;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
@@ -323,6 +422,8 @@
 					IOKit,
 					"-framework",
 					Security,
+					"-framework",
+					CoreAudio,
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = net.mintopia.hd60s.camera;
 				SDKROOT = macosx;
@@ -381,7 +482,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 2;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				DEVELOPMENT_TEAM = 46A7P6HL4Z;
 				ENABLE_HARDENED_RUNTIME = YES;
@@ -395,7 +496,7 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
-				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MACOSX_DEPLOYMENT_TARGET = 26.0;
 				MARKETING_VERSION = 1.0;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
@@ -431,6 +532,8 @@
 					IOKit,
 					"-framework",
 					Security,
+					"-framework",
+					CoreAudio,
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = net.mintopia.hd60s.camera;
 				SDKROOT = macosx;
@@ -446,6 +549,15 @@
 			buildConfigurations = (
 				83BEF4D73BD93D02ECF18D23 /* Debug */,
 				B44860FAA04B2C180D34D15F /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		41D878039310D01E0260AFD7 /* Build configuration list for PBXNativeTarget "HD60SAudio" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				23DCF3CA38C1F80775BA8958 /* Debug */,
+				38632F59D17ED88F321BCB22 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Debug;

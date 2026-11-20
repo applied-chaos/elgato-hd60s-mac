@@ -31,14 +31,24 @@ Consoles with HDCP on (the PS5 default) send no capturable picture: turn off HDC
 
 ## Camera extension
 
-Makes the HD60 S a camera called "Elgato HD60 S" in OBS, QuickTime, FaceTime and browsers (1920x1080 at 59.94 fps, video only). Needs full Xcode with its licence accepted (`sudo xcodebuild -license`), Homebrew `xcodegen`, and signing into Xcode with team 46A7P6HL4Z.
+Makes the HD60 S a camera called "Elgato HD60 S" in OBS, QuickTime, FaceTime and browsers (1920x1080 at 59.94 fps). Needs full Xcode with its licence accepted (`sudo xcodebuild -license`), Homebrew `xcodegen`, and signing into Xcode with team 46A7P6HL4Z.
 
 ```sh
 brew install xcodegen
-make install-app LIBUB530=...   # builds, copies to /Applications/HD60S.app and opens it
+make install-app LIBUB530=...   # builds, copies to /Applications/HD60S.app and installs or updates the extension
 ```
 
-Click Install, then approve it in System Settings > General > Login Items & Extensions > Camera Extensions. The extension opens the device only while an app is using the camera, so quit those apps before using the CLI. Uninstall from the same app.
+On first install, approve it in System Settings > General > Login Items & Extensions > Camera Extensions. The extension opens the device only while an app is using the camera, so quit those apps before using the CLI. Uninstall from the same app.
+
+## Audio
+
+Camera extensions are video only, so HDMI audio goes through a Core Audio plug-in. It adds an input device "Elgato HD60 S" (48 kHz stereo) and a hidden output device "HD60S feed". While an app is using the camera, the camera extension plays the HDMI audio into the feed and the input device returns it. The camera links to the input device, so apps that pair camera and microphone pick it up. In OBS, add the camera as a Video Capture Device and "Elgato HD60 S" as an Audio Input Capture.
+
+```sh
+make install-audio   # builds, then sudo copies to /Library/Audio/Plug-Ins/HAL and restarts coreaudiod
+```
+
+Audio only flows while something is using the camera, because the camera extension owns the USB device. Latency is about 30 ms behind the picture.
 
 ## Safety
 
@@ -48,5 +58,5 @@ The driver only sends the requests Elgato's own driver sends on every start. It 
 
 - Modes other than 1080p60 are untested. SD modes need the BT.601 matrix.
 - HDMI passthrough (the IT66121 transmitter) is not initialised.
-- Audio routing is unverified because the test source was silent.
-- The camera only forwards 1080p frames and has no audio.
+- The camera only forwards 1080p frames.
+- HDMI and Mac clocks drift apart slowly; the audio jitter buffer drops or pads to absorb it, so expect a rare tiny glitch.

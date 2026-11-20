@@ -57,7 +57,9 @@ final class DeviceSource: NSObject, CMIOExtensionDeviceSource {
         }
     }
 
-    var availableProperties: Set<CMIOExtensionProperty> { [.deviceTransportType, .deviceModel] }
+    var availableProperties: Set<CMIOExtensionProperty> {
+        [.deviceTransportType, .deviceModel, .deviceLinkedCoreAudioDeviceUID]
+    }
 
     func deviceProperties(forProperties properties: Set<CMIOExtensionProperty>) throws -> CMIOExtensionDeviceProperties {
         let p = CMIOExtensionDeviceProperties(dictionary: [:])
@@ -66,6 +68,9 @@ final class DeviceSource: NSObject, CMIOExtensionDeviceSource {
         }
         if properties.contains(.deviceModel) {
             p.model = "Game Capture HD60 S"
+        }
+        if properties.contains(.deviceLinkedCoreAudioDeviceUID) {
+            p.linkedCoreAudioDeviceUID = "net.mintopia.hd60s.audio"
         }
         return p
     }
@@ -121,6 +126,7 @@ final class StreamSource: NSObject, CMIOExtensionStreamSource {
     func startStream() throws {
         guard worker == nil else { return }
         stop.pointee = 0
+        audio_feed_start()
         let t = Thread { [unowned self] in run() }
         t.name = "hd60s capture"
         worker = t
@@ -131,6 +137,7 @@ final class StreamSource: NSObject, CMIOExtensionStreamSource {
         guard worker != nil else { return }
         stop.pointee = 1
         finished.wait()
+        audio_feed_stop()
         worker = nil
     }
 
@@ -150,7 +157,7 @@ final class StreamSource: NSObject, CMIOExtensionStreamSource {
                 var parser = hd60s_parser()
                 parser_init(&parser, buf, cap, { ctx, frame, w, h, _ in
                     Unmanaged<StreamSource>.fromOpaque(ctx!).takeUnretainedValue().send(frame!, Int(w), Int(h))
-                }, { _, _, _ in }, ctx)
+                }, { _, pcm, len in audio_feed_push(pcm, len) }, ctx)
                 hd60s_stream(&d, &parser, stop, 0)
             } else {
                 log.error("device open failed")

@@ -22,14 +22,37 @@ app: build/ub530_tables.h
 		-scheme HD60S -configuration Release -derivedDataPath build/xcode -allowProvisioningUpdates -quiet build
 	rm -rf build/HD60S.app && cp -R build/xcode/Build/Products/Release/HD60S.app build/
 
-install-app: app
-	rm -rf /Applications/HD60S.app && cp -R build/HD60S.app /Applications/
-	open /Applications/HD60S.app
+audio:
+	cd mac && xcodegen generate --quiet
+	DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild -project mac/HD60S.xcodeproj \
+		-target HD60SAudio -configuration Release SYMROOT=$(CURDIR)/build/xcode-audio -allowProvisioningUpdates -quiet build
+	rm -rf build/HD60SAudio.driver && cp -R build/xcode-audio/Release/HD60SAudio.driver build/
 
-test: build/test_parser
+# Needs sudo: Core Audio only loads plug-ins from /Library/Audio/Plug-Ins/HAL.
+install-audio: audio
+	sudo rm -rf /Library/Audio/Plug-Ins/HAL/HD60SAudio.driver
+	sudo cp -R build/HD60SAudio.driver /Library/Audio/Plug-Ins/HAL/
+	sudo killall coreaudiod
+
+install-app: app
+	-killall HD60S 2>/dev/null
+	rm -rf /Applications/HD60S.app && cp -R build/HD60S.app /Applications/
+	open /Applications/HD60S.app --args --install
+
+build/test_ring: tests/test_ring.c src/ring.c src/ring.h
+	@mkdir -p build
+	$(CC) $(CFLAGS) -fsanitize=address,undefined -o $@ tests/test_ring.c src/ring.c
+
+build/test_plugin: tests/test_plugin.c mac/Audio/HD60SAudio.c
+	@mkdir -p build
+	$(CC) $(CFLAGS) -Wno-four-char-constants -fsanitize=address,undefined -o $@ tests/test_plugin.c -framework CoreFoundation
+
+test: build/test_parser build/test_ring build/test_plugin
 	build/test_parser
+	build/test_ring
+	build/test_plugin
 
 clean:
 	rm -rf build
 
-.PHONY: all app install-app test clean
+.PHONY: all app audio install-audio install-app test clean

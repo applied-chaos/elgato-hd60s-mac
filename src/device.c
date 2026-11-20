@@ -255,7 +255,7 @@ static void select_hdmi(struct hd60s *d)
     msleep(100);
 }
 
-/* FUN_1caf4 with HDMI as the audio source. */
+/* FUN_1caf4 with audio source 0 (HDMI). */
 static void select_hdmi_audio(struct hd60s *d)
 {
     int dvi = 0;
@@ -276,8 +276,9 @@ static void select_hdmi_audio(struct hd60s *d)
         bridge_write(d, I2C_MCU, (uint8_t[]){0x12, 0x34, 0x90, 0x05, 0x00}, 5);
         bridge_write(d, I2C_MCU, (uint8_t[]){0x12, 0x34, 0x90, 0x03, 0x00}, 5);
     }
-    uint8_t le = (uint8_t)(i2c_read(d, I2C_AUDIO, 0x0e) & 0x7f);
-    uint8_t ri = (uint8_t)(i2c_read(d, I2C_AUDIO, 0x10) | 0x80);
+    /* Elgato source 0 = HDMI only: mute the analogue line-in pair (0x0e/0x0f), unmute HDMI (0x10/0x11). */
+    uint8_t le = (uint8_t)(i2c_read(d, I2C_AUDIO, 0x0e) | 0x80);
+    uint8_t ri = (uint8_t)(i2c_read(d, I2C_AUDIO, 0x10) & 0x7f);
     i2c_write(d, I2C_AUDIO, 0x0e, le);
     i2c_write(d, I2C_AUDIO, 0x0f, le);
     i2c_write(d, I2C_AUDIO, 0x10, ri);

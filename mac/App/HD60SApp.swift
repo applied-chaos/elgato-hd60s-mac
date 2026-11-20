@@ -4,6 +4,7 @@ import SystemExtensions
 private let extensionID = "net.mintopia.hd60s.camera"
 
 final class Installer: NSObject, ObservableObject, OSSystemExtensionRequestDelegate {
+    static let shared = Installer()
     @Published var status = "Run from /Applications, then click Install."
 
     func submit(_ request: OSSystemExtensionRequest) {
@@ -39,7 +40,13 @@ final class Installer: NSObject, ObservableObject, OSSystemExtensionRequestDeleg
 
 @main
 struct HD60SApp: App {
-    @StateObject private var installer = Installer()
+    @StateObject private var installer = Installer.shared
+
+    init() {
+        if CommandLine.arguments.contains("--install") {
+            Installer.shared.install()
+        }
+    }
 
     var body: some Scene {
         WindowGroup("HD60S") {
