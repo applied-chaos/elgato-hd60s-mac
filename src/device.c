@@ -1,6 +1,7 @@
 #include "device.h"
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <time.h>
 
@@ -428,4 +429,63 @@ void hd60s_close(struct hd60s *d)
     if (d->usb)
         libusb_exit(d->usb);
     memset(d, 0, sizeof *d);
+}
+
+#define NUM_XFERS 16
+#define XFER_SIZE (512 * 1024)
+
+struct stream_ctx {
+    struct hd60s_parser *parser;
+    volatile sig_atomic_t *stop;
+    int active;
+};
+
+static void LIBUSB_CALL on_xfer(struct libusb_transfer *t)
+{
+    struct stream_ctx *s = t->user_data;
+    if (t->status == LIBUSB_TRANSFER_COMPLETED || t->status == LIBUSB_TRANSFER_TIMED_OUT) {
+        parser_feed(s->parser, t->buffer, (size_t)t->actual_length);
+    } else if (t->status != LIBUSB_TRANSFER_CANCELLED) {
+        fprintf(stderr, "hd60s: transfer status %d\n", t->status);
+        *s->stop = 1;
+    }
+    if (!*s->stop && libusb_submit_transfer(t) == 0)
+        return;
+    s->active--;
+}
+
+int hd60s_stream(struct hd60s *d, struct hd60s_parser *p, volatile sig_atomic_t *stop, double seconds)
+{
+    struct stream_ctx s = {p, stop, 0};
+    struct libusb_transfer *xfers[NUM_XFERS];
+    if (libusb_set_interface_alt_setting(d->h, 0, 4) < 0) {
+        fprintf(stderr, "hd60s: cannot select bulk alt setting\n");
+        return -1;
+    }
+    for (int i = 0; i < NUM_XFERS; i++) {
+        xfers[i] = libusb_alloc_transfer(0);
+        libusb_fill_bulk_transfer(xfers[i], d->h, HD60S_EP_VIDEO, malloc(XFER_SIZE), XFER_SIZE,
+                                  on_xfer, &s, 1000);
+        if (libusb_submit_transfer(xfers[i]) == 0)
+            s.active++;
+    }
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    time_t end = ts.tv_sec + (time_t)seconds;
+    while (s.active) {
+        clock_gettime(CLOCK_MONOTONIC, &ts);
+        if (*stop || (seconds > 0 && ts.tv_sec >= end)) {
+            *stop = 1;
+            for (int i = 0; i < NUM_XFERS; i++)
+                libusb_cancel_transfer(xfers[i]);
+        }
+        struct timeval tv = {0, 100000};
+        libusb_handle_events_timeout_completed(d->usb, &tv, NULL);
+    }
+    for (int i = 0; i < NUM_XFERS; i++) {
+        free(xfers[i]->buffer);
+        libusb_free_transfer(xfers[i]);
+    }
+    libusb_set_interface_alt_setting(d->h, 0, 0);
+    return 0;
 }

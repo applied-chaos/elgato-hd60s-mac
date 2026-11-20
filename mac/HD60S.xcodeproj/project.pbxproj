@@ -1,0 +1,474 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		274C386DB52799C980E9E44C /* device.c in Sources */ = {isa = PBXBuildFile; fileRef = 3D657EA2382F0CC167FE569B /* device.c */; };
+		717A4907EF90ADB8B070AEE9 /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8400EEE9F8976B5123BAA715 /* main.swift */; };
+		91FA4C5D25BF43BF77944006 /* net.mintopia.hd60s.camera.systemextension in Embed System Extensions */ = {isa = PBXBuildFile; fileRef = 906664122934AE5F648909BB /* net.mintopia.hd60s.camera.systemextension */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		935F140DCE2EC4E8C40E4C5A /* HD60SApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5250AEE80161FAD7E2AB87AB /* HD60SApp.swift */; };
+		A042FF175789F53AC09AC388 /* Provider.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEB304182F383B96E72A3DA6 /* Provider.swift */; };
+		E2A40B2FADCE6E73189BED86 /* parser.c in Sources */ = {isa = PBXBuildFile; fileRef = 58FCE89662E2C2249C89C7B2 /* parser.c */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		724A1CC0625C352115E66933 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = C1E4BFA659EE3E38B51BA51F /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 7DAC753F38D630D436263A6D;
+			remoteInfo = net.mintopia.hd60s.camera;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		5851D16BC1709E8A881B9DEA /* Embed System Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "$(SYSTEM_EXTENSIONS_FOLDER_PATH)";
+			dstSubfolderSpec = 16;
+			files = (
+				91FA4C5D25BF43BF77944006 /* net.mintopia.hd60s.camera.systemextension in Embed System Extensions */,
+			);
+			name = "Embed System Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
+/* Begin PBXFileReference section */
+		2802D08CC9D0EF039BE94247 /* HD60SCamera.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = HD60SCamera.entitlements; sourceTree = "<group>"; };
+		3D657EA2382F0CC167FE569B /* device.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = device.c; sourceTree = "<group>"; };
+		5250AEE80161FAD7E2AB87AB /* HD60SApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HD60SApp.swift; sourceTree = "<group>"; };
+		58FCE89662E2C2249C89C7B2 /* parser.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = parser.c; sourceTree = "<group>"; };
+		8400EEE9F8976B5123BAA715 /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
+		87A0EC014D058589E38854EE /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		906664122934AE5F648909BB /* net.mintopia.hd60s.camera.systemextension */ = {isa = PBXFileReference; explicitFileType = "wrapper.system-extension"; includeInIndex = 0; path = net.mintopia.hd60s.camera.systemextension; sourceTree = BUILT_PRODUCTS_DIR; };
+		A3E0C3F3545569814FC50DBC /* HD60S.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = HD60S.entitlements; sourceTree = "<group>"; };
+		AFAB7175D82262FE4407375C /* Bridging.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = Bridging.h; sourceTree = "<group>"; };
+		B4395BC9C75FEE1900F4B5D8 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		FB242BD55A0D36E0CF6E0153 /* HD60S.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = HD60S.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		FEB304182F383B96E72A3DA6 /* Provider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Provider.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXGroup section */
+		413465F0FBA40E90EDC40EDE = {
+			isa = PBXGroup;
+			children = (
+				92B13A1CC6A25C28DE7D26E0 /* App */,
+				B1848574E297AEB5B3F561D7 /* Extension */,
+				739FC2D357B6074DA250405C /* src */,
+				EBF604DCF3102A07AA01BC27 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		739FC2D357B6074DA250405C /* src */ = {
+			isa = PBXGroup;
+			children = (
+				3D657EA2382F0CC167FE569B /* device.c */,
+				58FCE89662E2C2249C89C7B2 /* parser.c */,
+			);
+			name = src;
+			path = ../src;
+			sourceTree = "<group>";
+		};
+		92B13A1CC6A25C28DE7D26E0 /* App */ = {
+			isa = PBXGroup;
+			children = (
+				A3E0C3F3545569814FC50DBC /* HD60S.entitlements */,
+				5250AEE80161FAD7E2AB87AB /* HD60SApp.swift */,
+				B4395BC9C75FEE1900F4B5D8 /* Info.plist */,
+			);
+			path = App;
+			sourceTree = "<group>";
+		};
+		B1848574E297AEB5B3F561D7 /* Extension */ = {
+			isa = PBXGroup;
+			children = (
+				AFAB7175D82262FE4407375C /* Bridging.h */,
+				2802D08CC9D0EF039BE94247 /* HD60SCamera.entitlements */,
+				87A0EC014D058589E38854EE /* Info.plist */,
+				8400EEE9F8976B5123BAA715 /* main.swift */,
+				FEB304182F383B96E72A3DA6 /* Provider.swift */,
+			);
+			path = Extension;
+			sourceTree = "<group>";
+		};
+		EBF604DCF3102A07AA01BC27 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				FB242BD55A0D36E0CF6E0153 /* HD60S.app */,
+				906664122934AE5F648909BB /* net.mintopia.hd60s.camera.systemextension */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		7DAC753F38D630D436263A6D /* net.mintopia.hd60s.camera */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = C9ACD931262A6620B3B20C9C /* Build configuration list for PBXNativeTarget "net.mintopia.hd60s.camera" */;
+			buildPhases = (
+				E98464FF818F1B5B3C9BA77A /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = net.mintopia.hd60s.camera;
+			packageProductDependencies = (
+			);
+			productName = net.mintopia.hd60s.camera;
+			productReference = 906664122934AE5F648909BB /* net.mintopia.hd60s.camera.systemextension */;
+			productType = "com.apple.product-type.system-extension";
+		};
+		946DB4482C6675C1B4302ADD /* HD60S */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 3FB80E4034408159B9933AFA /* Build configuration list for PBXNativeTarget "HD60S" */;
+			buildPhases = (
+				834DF2B43D4C9A39DD9BCB4D /* Sources */,
+				5851D16BC1709E8A881B9DEA /* Embed System Extensions */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				3466F1082B1A0D9433B011EF /* PBXTargetDependency */,
+			);
+			name = HD60S;
+			packageProductDependencies = (
+			);
+			productName = HD60S;
+			productReference = FB242BD55A0D36E0CF6E0153 /* HD60S.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		C1E4BFA659EE3E38B51BA51F /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 1430;
+				TargetAttributes = {
+					7DAC753F38D630D436263A6D = {
+						DevelopmentTeam = 46A7P6HL4Z;
+						ProvisioningStyle = Automatic;
+					};
+					946DB4482C6675C1B4302ADD = {
+						DevelopmentTeam = 46A7P6HL4Z;
+						ProvisioningStyle = Automatic;
+					};
+				};
+			};
+			buildConfigurationList = A3E477C5062D9ECD2EAB150E /* Build configuration list for PBXProject "HD60S" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = 413465F0FBA40E90EDC40EDE;
+			minimizedProjectReferenceProxies = 1;
+			preferredProjectObjectVersion = 77;
+			productRefGroup = EBF604DCF3102A07AA01BC27 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				946DB4482C6675C1B4302ADD /* HD60S */,
+				7DAC753F38D630D436263A6D /* net.mintopia.hd60s.camera */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXSourcesBuildPhase section */
+		834DF2B43D4C9A39DD9BCB4D /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				935F140DCE2EC4E8C40E4C5A /* HD60SApp.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		E98464FF818F1B5B3C9BA77A /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A042FF175789F53AC09AC388 /* Provider.swift in Sources */,
+				274C386DB52799C980E9E44C /* device.c in Sources */,
+				717A4907EF90ADB8B070AEE9 /* main.swift in Sources */,
+				E2A40B2FADCE6E73189BED86 /* parser.c in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		3466F1082B1A0D9433B011EF /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 7DAC753F38D630D436263A6D /* net.mintopia.hd60s.camera */;
+			targetProxy = 724A1CC0625C352115E66933 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		83BEF4D73BD93D02ECF18D23 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = App/HD60S.entitlements;
+				COMBINE_HIDPI_IMAGES = YES;
+				INFOPLIST_FILE = App/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = net.mintopia.hd60s;
+				SDKROOT = macosx;
+			};
+			name = Debug;
+		};
+		8A1E68DABF6038EB26A23D29 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_STYLE = Automatic;
+				COPY_PHASE_STRIP = NO;
+				CURRENT_PROJECT_VERSION = 1;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				DEVELOPMENT_TEAM = 46A7P6HL4Z;
+				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MARKETING_VERSION = 1.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		A255C1A7600C481245B8E29D /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = Extension/HD60SCamera.entitlements;
+				COMBINE_HIDPI_IMAGES = YES;
+				HEADER_SEARCH_PATHS = (
+					"$(SRCROOT)/../src",
+					"$(SRCROOT)/../build",
+					"/opt/homebrew/include/libusb-1.0",
+				);
+				INFOPLIST_FILE = Extension/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				OTHER_CFLAGS = (
+					"-std=c17",
+				);
+				OTHER_LDFLAGS = (
+					"/opt/homebrew/lib/libusb-1.0.a",
+					"-framework",
+					IOKit,
+					"-framework",
+					Security,
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = net.mintopia.hd60s.camera;
+				SDKROOT = macosx;
+				SWIFT_OBJC_BRIDGING_HEADER = Extension/Bridging.h;
+			};
+			name = Release;
+		};
+		B44860FAA04B2C180D34D15F /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = App/HD60S.entitlements;
+				COMBINE_HIDPI_IMAGES = YES;
+				INFOPLIST_FILE = App/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = net.mintopia.hd60s;
+				SDKROOT = macosx;
+			};
+			name = Release;
+		};
+		C2862D7D52C6ED36A53981DA /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_STYLE = Automatic;
+				COPY_PHASE_STRIP = NO;
+				CURRENT_PROJECT_VERSION = 1;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				DEVELOPMENT_TEAM = 46A7P6HL4Z;
+				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MARKETING_VERSION = 1.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+		F311F0A556707B14D42D7ABE /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = Extension/HD60SCamera.entitlements;
+				COMBINE_HIDPI_IMAGES = YES;
+				HEADER_SEARCH_PATHS = (
+					"$(SRCROOT)/../src",
+					"$(SRCROOT)/../build",
+					"/opt/homebrew/include/libusb-1.0",
+				);
+				INFOPLIST_FILE = Extension/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				OTHER_CFLAGS = (
+					"-std=c17",
+				);
+				OTHER_LDFLAGS = (
+					"/opt/homebrew/lib/libusb-1.0.a",
+					"-framework",
+					IOKit,
+					"-framework",
+					Security,
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = net.mintopia.hd60s.camera;
+				SDKROOT = macosx;
+				SWIFT_OBJC_BRIDGING_HEADER = Extension/Bridging.h;
+			};
+			name = Debug;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		3FB80E4034408159B9933AFA /* Build configuration list for PBXNativeTarget "HD60S" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				83BEF4D73BD93D02ECF18D23 /* Debug */,
+				B44860FAA04B2C180D34D15F /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		A3E477C5062D9ECD2EAB150E /* Build configuration list for PBXProject "HD60S" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				8A1E68DABF6038EB26A23D29 /* Debug */,
+				C2862D7D52C6ED36A53981DA /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		C9ACD931262A6620B3B20C9C /* Build configuration list for PBXNativeTarget "net.mintopia.hd60s.camera" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				F311F0A556707B14D42D7ABE /* Debug */,
+				A255C1A7600C481245B8E29D /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = C1E4BFA659EE3E38B51BA51F /* Project object */;
+}

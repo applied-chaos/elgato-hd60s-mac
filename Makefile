@@ -16,10 +16,20 @@ build/test_parser: tests/test_parser.c src/parser.c src/parser.h
 	@mkdir -p build
 	$(CC) $(CFLAGS) -fsanitize=address,undefined -o $@ tests/test_parser.c src/parser.c
 
+app: build/ub530_tables.h
+	cd mac && xcodegen generate --quiet
+	DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild -project mac/HD60S.xcodeproj \
+		-scheme HD60S -configuration Release -derivedDataPath build/xcode -allowProvisioningUpdates -quiet build
+	rm -rf build/HD60S.app && cp -R build/xcode/Build/Products/Release/HD60S.app build/
+
+install-app: app
+	rm -rf /Applications/HD60S.app && cp -R build/HD60S.app /Applications/
+	open /Applications/HD60S.app
+
 test: build/test_parser
 	build/test_parser
 
 clean:
 	rm -rf build
 
-.PHONY: all test clean
+.PHONY: all app install-app test clean

@@ -2,7 +2,10 @@
 #define HD60S_DEVICE_H
 
 #include <libusb.h>
+#include <signal.h>
 #include <stdint.h>
+
+#include "parser.h"
 
 #define HD60S_VID 0x0fd9
 #define HD60S_PID 0x0074
@@ -21,6 +24,8 @@ int hd60s_open(struct hd60s *d);
 int hd60s_start(struct hd60s *d);
 void hd60s_stop(struct hd60s *d);
 void hd60s_close(struct hd60s *d);
+/* Blocks until *stop is set, a transfer fails, or seconds elapse (0 = no limit). */
+int hd60s_stream(struct hd60s *d, struct hd60s_parser *p, volatile sig_atomic_t *stop, double seconds);
 
 int mst_read(struct hd60s *d, uint8_t bank, uint8_t reg);
 int i2c_read(struct hd60s *d, uint8_t addr, uint8_t sub);

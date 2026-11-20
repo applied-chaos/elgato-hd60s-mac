@@ -8,8 +8,6 @@
 #include "device.h"
 #include "parser.h"
 
-#define NUM_XFERS 16
-#define XFER_SIZE (512 * 1024)
 #define FRAME_CAP (1920 * 1440 * 2)
 
 static volatile sig_atomic_t stop_requested;
@@ -25,8 +23,7 @@ struct capture {
     long frames, want;
     int width, height, interlaced;
     double first, last;
-    size_t audio_bytes, usb_bytes;
-    int active;
+    size_t audio_bytes;
 };
 
 static double now(void)
@@ -63,65 +60,15 @@ static void on_audio(void *ctx, const uint8_t *pcm, size_t len)
         fwrite(pcm, 1, len, c->audio);
 }
 
-static void LIBUSB_CALL on_xfer(struct libusb_transfer *t)
-{
-    struct capture *c = t->user_data;
-    if (t->status == LIBUSB_TRANSFER_COMPLETED || t->status == LIBUSB_TRANSFER_TIMED_OUT) {
-        c->usb_bytes += (size_t)t->actual_length;
-        parser_feed(&c->parser, t->buffer, (size_t)t->actual_length);
-    } else if (t->status != LIBUSB_TRANSFER_CANCELLED) {
-        fprintf(stderr, "hd60s: transfer status %d\n", t->status);
-        stop_requested = 1;
-    }
-    if (!stop_requested && libusb_submit_transfer(t) == 0)
-        return;
-    c->active--;
-}
-
-/* Streams until want frames, seconds elapse or SIGINT. */
-static int stream(struct hd60s *d, struct capture *c, double seconds)
-{
-    static uint8_t frame[FRAME_CAP];
-    struct libusb_transfer *xfers[NUM_XFERS];
-    parser_init(&c->parser, frame, sizeof frame, on_frame, on_audio, c);
-    if (libusb_set_interface_alt_setting(d->h, 0, 4) < 0) {
-        fprintf(stderr, "hd60s: cannot select bulk alt setting\n");
-        return -1;
-    }
-    for (int i = 0; i < NUM_XFERS; i++) {
-        xfers[i] = libusb_alloc_transfer(0);
-        libusb_fill_bulk_transfer(xfers[i], d->h, HD60S_EP_VIDEO, malloc(XFER_SIZE), XFER_SIZE,
-                                  on_xfer, c, 1000);
-        if (libusb_submit_transfer(xfers[i]) == 0)
-            c->active++;
-    }
-    double end = now() + seconds;
-    while (c->active) {
-        if (stop_requested || (seconds > 0 && now() > end)) {
-            stop_requested = 1;
-            for (int i = 0; i < NUM_XFERS; i++)
-                libusb_cancel_transfer(xfers[i]);
-        }
-        struct timeval tv = {0, 100000};
-        libusb_handle_events_timeout_completed(d->usb, &tv, NULL);
-    }
-    for (int i = 0; i < NUM_XFERS; i++) {
-        free(xfers[i]->buffer);
-        libusb_free_transfer(xfers[i]);
-    }
-    libusb_set_interface_alt_setting(d->h, 0, 0);
-    return 0;
-}
-
 static void report(const struct capture *c)
 {
     double span = c->last - c->first;
     double fps = c->frames > 1 && span > 0 ? (double)(c->frames - 1) / span : 0;
     if (!c->frames)
-        fprintf(stderr, "signal: none (%zu bytes received)\n", c->usb_bytes);
+        fprintf(stderr, "signal: none\n");
     else
-        fprintf(stderr, "signal: %dx%d%s %.2f fps, audio %zu bytes, usb %zu bytes\n", c->width,
-                c->height, c->interlaced ? "i" : "p", fps, c->audio_bytes, c->usb_bytes);
+        fprintf(stderr, "signal: %dx%d%s %.2f fps, audio %zu bytes\n", c->width,
+                c->height, c->interlaced ? "i" : "p", fps, c->audio_bytes);
 }
 
 static int usage(void)
@@ -134,6 +81,7 @@ static int usage(void)
 
 int main(int argc, char **argv)
 {
+    static uint8_t frame[FRAME_CAP];
     if (argc < 2)
         return usage();
     int info = strcmp(argv[1], "info") == 0;
@@ -172,9 +120,11 @@ int main(int argc, char **argv)
         if (info) {
             fprintf(stderr, "mcu firmware: %02x.%02x.%02x\n", d.mcu_version >> 16 & 0xff,
                     d.mcu_version >> 8 & 0xff, d.mcu_version & 0xff);
-            stream(&d, &c, 2.0);
+            parser_init(&c.parser, frame, sizeof frame, on_frame, on_audio, &c);
+            hd60s_stream(&d, &c.parser, &stop_requested, 2.0);
         } else {
-            stream(&d, &c, 0);
+            parser_init(&c.parser, frame, sizeof frame, on_frame, on_audio, &c);
+            hd60s_stream(&d, &c.parser, &stop_requested, 0);
         }
         report(&c);
         rc = info || c.frames ? 0 : 1;
