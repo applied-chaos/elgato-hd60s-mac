@@ -49,7 +49,7 @@ build/hd60s capture -o - | ffplay -f rawvideo -pixel_format yuyv422 -video_size 
 
 ## Releasing
 
-Work happens on `develop`; `main` holds releases. Pushing a `vX.Y.Z` tag builds, signs and notarises the DMG and publishes a GitHub release. The release workflow needs these repository secrets:
+Work happens on `develop`; `main` holds releases. Pushing a `vX.Y.Z` tag builds, signs and notarises the DMG and publishes a GitHub release. The release workflow needs these repository secrets. `scripts/setup-signing.sh` walks you through creating each one and sets them with `gh`:
 
 | Secret | What |
 |---|---|
