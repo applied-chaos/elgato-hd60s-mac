@@ -203,6 +203,7 @@ The payload is a stream of 32-bit words. Transfers are concatenated; packet boun
 - On this unit MST3367 b1:01 bit 2 is set, so `FUN_1caf4` takes its b2:27=0 / ADC reg 3=0xA0 / MCU `90 05 00` branch.
 - Audio source (`FUN_1ce00` arg, stored at `+0x1114`) picks which 0x94 codec input pairs are muted (bit 7). Measured with PS5 game audio: source 0 = HDMI (mute 0x0e/0x0f, unmute 0x10/0x11), RMS -26 dBFS; source 1 = analogue line-in only (unmute 0x0e/0x0f, mute 0x10/0x11), the ±2 LSB ADC noise floor; 3 = both mixed; 2 and 4 also set reg 4 bit 0 and reg 7 = 0xF0 and add a DC offset. The driver uses 0.
 - Audio is 16-bit little-endian stereo at 48 kHz, band-limited to about 18 kHz; 10 s of capture gives 48.1k frames/s against the 59.94 fps video clock.
+- Every few hundred frames one line arrives `width*2 + 552` bytes long: its EAV comes through corrupted (`ff 80 ff ff 00 00 00 00 9d 9d`), so the device doesn't strip it and the horizontal blanking (`10 80…`) follows the intact video. Like Elgato, the parser keeps the first `width*2` bytes.
 
 ## Unknown / unverified
 - Audio channel order (left first) is assumed from I2S convention, not tested with a one-sided signal.

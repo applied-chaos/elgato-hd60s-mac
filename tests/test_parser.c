@@ -57,21 +57,30 @@ static void code(struct stream *s, uint8_t xy)
 
 static uint8_t pix(int line, int x) { return (uint8_t)(0x10 + line * 16 + x); }
 
+#define NO_BLANKING (-1)
+
 /* One field or progressive frame: blanking, active lines, then blanking again. */
-static void field(struct stream *s, int f, int first_line, int step, int lines)
+static void field_ex(struct stream *s, int f, int first_line, int step, int lines, int w, int blanking_after_line)
 {
     uint8_t fb = f ? 0x40 : 0;
     code(s, 0x20 | fb);
     put(s, (uint8_t[8]){0x80, 0x10, 0x80, 0x10, 0x80, 0x10, 0x80, 0x10}, 8);
     code(s, 0x20 | fb);
     for (int i = 0; i < lines; i++) {
-        uint8_t line[W * 2];
-        for (int x = 0; x < W * 2; x++)
+        uint8_t line[64];
+        for (int x = 0; x < w * 2; x++)
             line[x] = pix(first_line + i * step, x);
         code(s, fb);
-        put(s, line, sizeof line);
+        put(s, line, (size_t)w * 2);
+        if (i == blanking_after_line)
+            put(s, (uint8_t[8]){0x10, 0x80, 0x10, 0x80, 0x10, 0x80, 0x10, 0x80}, 8);
     }
     code(s, 0x20 | fb);
+}
+
+static void field(struct stream *s, int f, int first_line, int step, int lines)
+{
+    field_ex(s, f, first_line, step, lines, W, NO_BLANKING);
 }
 
 static void feed_chunked(struct hd60s_parser *p, struct stream *s, size_t chunk)
@@ -144,6 +153,42 @@ static void test_audio(void)
     free(st.b);
 }
 
+static void test_corrupt_eav_keeps_frame_and_stride(int blanking_after_line)
+{
+    static uint8_t buf[1 << 16];
+    struct sink s = {0};
+    struct hd60s_parser p;
+    parser_init(&p, buf, sizeof buf, on_frame, on_audio, &s);
+    struct stream st = {0};
+    field(&st, 0, 0, 1, H);
+    field_ex(&st, 0, 0, 1, H, W, blanking_after_line);
+    feed_chunked(&p, &st, 1 << 20);
+    assert(s.frames == 1);
+    check_progressive_frame(s.last);
+    size_t fed = st.n;
+    field(&st, 0, 0, 1, H);
+    parser_feed(&p, st.b + fed, st.n - fed);
+    assert(s.frames == 2);
+    check_progressive_frame(s.last);
+    free(st.b);
+}
+
+static void test_mode_change(void)
+{
+    static uint8_t buf[1 << 16];
+    struct sink s = {0};
+    struct hd60s_parser p;
+    parser_init(&p, buf, sizeof buf, on_frame, on_audio, &s);
+    struct stream st = {0};
+    for (int i = 0; i < 2; i++)
+        field(&st, 0, 0, 1, H);
+    for (int i = 0; i < 3; i++)
+        field_ex(&st, 0, 0, 1, H, W + 4, NO_BLANKING);
+    feed_chunked(&p, &st, 1 << 20);
+    assert(s.last_w == W + 4 && s.last_h == H);
+    free(st.b);
+}
+
 int main(void)
 {
     test_progressive(1 << 20);
@@ -151,6 +196,9 @@ int main(void)
     test_progressive(5);
     test_interlaced();
     test_audio();
+    test_corrupt_eav_keeps_frame_and_stride(2);
+    test_corrupt_eav_keeps_frame_and_stride(H - 1);
+    test_mode_change();
     puts("parser tests passed");
     return 0;
 }

@@ -19,7 +19,10 @@ static void end_line(struct hd60s_parser *p)
     if (!p->in_line)
         return;
     p->in_line = 0;
-    if (p->line_off != p->stride)
+    /* A corrupted EAV lets horizontal blanking through after intact video; video() already capped it at stride. */
+    if (p->stride && p->line_off > p->stride)
+        p->long_lines++;
+    else if (p->line_off != p->stride)
         p->frame_bad = 1;
     p->line_max = p->line_off;
 }
@@ -30,6 +33,7 @@ static void begin_frame(struct hd60s_parser *p, int interlaced)
     p->stride = p->line_max;
     p->frame_bad = p->stride == 0;
     p->lines = 0;
+    p->long_lines = 0;
 }
 
 /* Field history decides layout, as Elgato does: 0x00/0xFF progressive, 0xAA even field, 0x55 odd field. */
@@ -59,9 +63,15 @@ static void begin_active(struct hd60s_parser *p)
     }
 }
 
+static int mode_changed(const struct hd60s_parser *p) { return p->long_lines * 2 > p->lines; }
+
 static void end_active(struct hd60s_parser *p)
 {
     int complete = !p->interlaced || p->fields == 0x55;
+    if (mode_changed(p))
+        p->frame_bad = 1;
+    else if (!p->frame_bad)
+        p->line_max = p->stride;
     if (p->capturing && complete && !p->frame_bad && p->lines > 0)
         p->on_frame(p->ctx, p->buf, (int)(p->stride / 2), p->lines, p->interlaced);
     p->capturing = 0;

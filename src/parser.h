@@ -22,7 +22,7 @@ struct hd60s_parser {
     int prev_v;     /* -1 until the first timing code */
     uint8_t fields; /* field-bit history, newest in bit 0 */
     int capturing, interlaced;
-    int in_line, line, step, lines;
+    int in_line, line, step, lines, long_lines;
     size_t line_off, stride, line_max;
     int frame_bad;
 };
