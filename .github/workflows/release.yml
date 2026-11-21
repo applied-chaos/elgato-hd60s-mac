@@ -33,6 +33,9 @@ jobs:
           CAMERA_PROFILE: ${{ secrets.MACOS_CAMERA_PROFILE }}
           ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
         run: |
+          for var in CERTIFICATE_P12 CERTIFICATE_PASSWORD APP_PROFILE CAMERA_PROFILE ASC_KEY_P8; do
+            [[ -n "${!var}" ]] || { echo "::error::secret for $var is empty; re-run scripts/setup-signing.sh"; exit 1; }
+          done
           keychain="$RUNNER_TEMP/signing.keychain-db"
           password="$(openssl rand -hex 16)"
           echo "$CERTIFICATE_P12" | base64 -d > "$RUNNER_TEMP/cert.p12"
