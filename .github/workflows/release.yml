@@ -73,7 +73,9 @@ jobs:
           ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
         run: |
           dmg="build/HD60S-${VERSION#v}.dmg"
-          xcrun notarytool submit "$dmg" --key "$RUNNER_TEMP/asc.p8" --key-id "$ASC_KEY_ID" --issuer "$ASC_ISSUER_ID" --wait
+          auth=(--key "$RUNNER_TEMP/asc.p8" --key-id "$ASC_KEY_ID" --issuer "$ASC_ISSUER_ID")
+          id=$(xcrun notarytool submit "$dmg" "${auth[@]}" --wait --output-format json | tee /dev/stderr | jq -r .id)
+          xcrun notarytool log "$id" "${auth[@]}"
           xcrun stapler staple "$dmg"
 
       - name: Publish release
