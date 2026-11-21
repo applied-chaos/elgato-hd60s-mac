@@ -1,0 +1,83 @@
+name: Release
+
+on:
+  push:
+    tags: ["v[0-9]+.[0-9]+.[0-9]+"]
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    uses: ./.github/workflows/ci.yml
+
+  release:
+    needs: checks
+    runs-on: macos-26
+    permissions:
+      contents: write
+    env:
+      VERSION: ${{ github.ref_name }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - run: brew install libusb pkg-config xcodegen
+      - run: echo "DEVELOPER_DIR=$(xcode-select -p)" >> "$GITHUB_ENV"
+
+      - name: Import signing certificate and profiles
+        env:
+          CERTIFICATE_P12: ${{ secrets.MACOS_CERTIFICATE_P12 }}
+          CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+          APP_PROFILE: ${{ secrets.MACOS_APP_PROFILE }}
+          CAMERA_PROFILE: ${{ secrets.MACOS_CAMERA_PROFILE }}
+          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+        run: |
+          keychain="$RUNNER_TEMP/signing.keychain-db"
+          password="$(openssl rand -hex 16)"
+          echo "$CERTIFICATE_P12" | base64 -d > "$RUNNER_TEMP/cert.p12"
+          security create-keychain -p "$password" "$keychain"
+          security set-keychain-settings -lut 3600 "$keychain"
+          security unlock-keychain -p "$password" "$keychain"
+          security import "$RUNNER_TEMP/cert.p12" -k "$keychain" -P "$CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple: -k "$password" "$keychain" >/dev/null
+          security list-keychains -d user -s "$keychain" login.keychain-db
+          rm "$RUNNER_TEMP/cert.p12"
+
+          profiles="$HOME/Library/Developer/Xcode/UserData/Provisioning Profiles"
+          mkdir -p "$profiles"
+          for var in APP_PROFILE CAMERA_PROFILE; do
+            file="$RUNNER_TEMP/$var.provisionprofile"
+            echo "${!var}" | base64 -d > "$file"
+            name="$(security cms -D -i "$file" | plutil -extract Name raw -)"
+            uuid="$(security cms -D -i "$file" | plutil -extract UUID raw -)"
+            cp "$file" "$profiles/$uuid.provisionprofile"
+            echo "HD60S_${var}_NAME=$name" >> "$GITHUB_ENV"
+          done
+
+          echo "$ASC_KEY_P8" | base64 -d > "$RUNNER_TEMP/asc.p8"
+
+      - name: Build and sign
+        run: >
+          make dist VERSION="${VERSION#v}"
+          XCODEFLAGS="CODE_SIGN_STYLE=Manual CODE_SIGN_IDENTITY='Developer ID Application'
+          OTHER_CODE_SIGN_FLAGS=--timestamp
+          HD60S_APP_PROFILE='$HD60S_APP_PROFILE_NAME' HD60S_CAMERA_PROFILE='$HD60S_CAMERA_PROFILE_NAME'"
+
+      - name: Notarise
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+        run: |
+          dmg="build/HD60S-${VERSION#v}.dmg"
+          xcrun notarytool submit "$dmg" --key "$RUNNER_TEMP/asc.p8" --key-id "$ASC_KEY_ID" --issuer "$ASC_ISSUER_ID" --wait
+          xcrun stapler staple "$dmg"
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$VERSION" "build/HD60S-${VERSION#v}.dmg" --title "$VERSION" --generate-notes --verify-tag
+
+      - name: Remove signing keychain
+        if: always()
+        run: security delete-keychain "$RUNNER_TEMP/signing.keychain-db" || true

@@ -9,8 +9,7 @@ settings:
     CODE_SIGN_STYLE: Automatic
     ENABLE_HARDENED_RUNTIME: YES
     SWIFT_VERSION: "5.0"
-    MARKETING_VERSION: "1.0"
-    CURRENT_PROJECT_VERSION: "6"
+    ARCHS: arm64
 targets:
   HD60S:
     type: application
@@ -20,6 +19,8 @@ targets:
       path: App/Info.plist
       properties:
         CFBundleDisplayName: HD60S
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         LSMinimumSystemVersion: "26.0"
     entitlements:
       path: App/HD60S.entitlements
@@ -27,6 +28,7 @@ targets:
         com.apple.developer.system-extension.install: true
     settings:
       PRODUCT_BUNDLE_IDENTIFIER: net.mintopia.hd60s
+      PROVISIONING_PROFILE_SPECIFIER: $(HD60S_APP_PROFILE)
       ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
     dependencies:
       - target: net.mintopia.hd60s.camera
@@ -43,6 +45,7 @@ targets:
       properties:
         CFBundleDisplayName: Elgato HD60 S
         CFBundlePackageType: $(PRODUCT_BUNDLE_PACKAGE_TYPE)
+        CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         NSSystemExtensionUsageDescription: Makes the Elgato HD60 S available as a camera.
         CMIOExtension:
@@ -56,6 +59,7 @@ targets:
         com.apple.security.temporary-exception.mach-lookup.global-name: [com.apple.audio.audiohald]
     settings:
       PRODUCT_BUNDLE_IDENTIFIER: net.mintopia.hd60s.camera
+      PROVISIONING_PROFILE_SPECIFIER: $(HD60S_CAMERA_PROFILE)
       SWIFT_OBJC_BRIDGING_HEADER: Extension/Bridging.h
       HEADER_SEARCH_PATHS: [$(SRCROOT)/../src, $(SRCROOT)/../build, /opt/homebrew/include/libusb-1.0]
       OTHER_CFLAGS: [-std=c17]
@@ -68,6 +72,7 @@ targets:
       path: Audio/Info.plist
       properties:
         CFBundleName: HD60SAudio
+        CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         CFPlugInFactories:
           9C1D5B3E-60D5-4E8B-9C4A-0FD900740002: HD60S_Create

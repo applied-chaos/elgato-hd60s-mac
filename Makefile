@@ -1,13 +1,24 @@
 CC = clang
 CFLAGS = -std=c17 -O2 -g -Wall -Wextra -Werror -Ibuild $(shell pkg-config --cflags libusb-1.0)
 LDLIBS = $(shell pkg-config --libs libusb-1.0)
-LIBUB530 ?= /private/tmp/claude-501/-Users-mintopia-Projects-personal-elgato/2c7b928e-fa49-440c-8f94-35fb4c01662c/scratchpad/egc/x/Game Capture HD.app/Contents/Frameworks/libUB530.dylib
+EGC_URL = https://edge.elgato.com/egc/macos/egcm/2.11.14/final/Game_Capture_HD_2.11.14.zip
+VERSION ?= $(patsubst v%,%,$(shell git describe --tags --abbrev=0 2>/dev/null || echo v0.0.0))
+# macOS only replaces a system extension when its build number rises.
+BUILD ?= $(shell git rev-list --count HEAD)
+export DEVELOPER_DIR ?= /Applications/Xcode.app/Contents/Developer
+XCODEBUILD = xcodebuild -project mac/HD60S.xcodeproj \
+	-configuration Release MARKETING_VERSION=$(VERSION) CURRENT_PROJECT_VERSION=$(BUILD) $(XCODEFLAGS)
 
 all: build/hd60s
 
-build/ub530_tables.h: tools/extract-tables.py
+build/libUB530.dylib:
 	@mkdir -p build
-	python3 -I tools/extract-tables.py "$(LIBUB530)" > $@.tmp && mv $@.tmp $@
+	curl -fsSL -o build/egc.zip $(EGC_URL)
+	unzip -p build/egc.zip "Game Capture HD.app/Contents/Frameworks/libUB530.dylib" > $@.tmp && mv $@.tmp $@
+	rm build/egc.zip
+
+build/ub530_tables.h: tools/extract-tables.py build/libUB530.dylib
+	python3 -I tools/extract-tables.py build/libUB530.dylib > $@.tmp && mv $@.tmp $@
 
 build/hd60s: src/main.c src/device.c src/parser.c src/device.h src/parser.h build/ub530_tables.h
 	$(CC) $(CFLAGS) -o $@ src/main.c src/device.c src/parser.c $(LDLIBS)
@@ -18,14 +29,12 @@ build/test_parser: tests/test_parser.c src/parser.c src/parser.h
 
 app: build/ub530_tables.h
 	cd mac && xcodegen generate --quiet
-	DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild -project mac/HD60S.xcodeproj \
-		-scheme HD60S -configuration Release -derivedDataPath build/xcode -allowProvisioningUpdates -quiet build
+	$(XCODEBUILD) -scheme HD60S -derivedDataPath build/xcode -allowProvisioningUpdates -quiet build
 	rm -rf build/HD60S.app && cp -R build/xcode/Build/Products/Release/HD60S.app build/
 
 audio:
 	cd mac && xcodegen generate --quiet
-	DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild -project mac/HD60S.xcodeproj \
-		-target HD60SAudio -configuration Release SYMROOT=$(CURDIR)/build/xcode-audio -allowProvisioningUpdates -quiet build
+	$(XCODEBUILD) -target HD60SAudio SYMROOT=$(CURDIR)/build/xcode-audio -allowProvisioningUpdates -quiet build
 	rm -rf build/HD60SAudio.driver && cp -R build/xcode-audio/Release/HD60SAudio.driver build/
 
 # Needs sudo: Core Audio only loads plug-ins from /Library/Audio/Plug-Ins/HAL.
@@ -38,6 +47,11 @@ install-app: app
 	-killall HD60S 2>/dev/null
 	rm -rf /Applications/HD60S.app && cp -R build/HD60S.app /Applications/
 	open /Applications/HD60S.app --args --install
+
+dist: app audio
+	rm -rf build/dist && mkdir -p build/dist
+	cp -R build/HD60S.app build/HD60SAudio.driver build/dist/
+	hdiutil create -quiet -volname "HD60S $(VERSION)" -srcfolder build/dist -ov -format UDZO build/HD60S-$(VERSION).dmg
 
 build/test_ring: tests/test_ring.c src/ring.c src/ring.h
 	@mkdir -p build
@@ -55,4 +69,4 @@ test: build/test_parser build/test_ring build/test_plugin
 clean:
 	rm -rf build
 
-.PHONY: all app audio install-audio install-app test clean
+.PHONY: all app audio dist install-audio install-app test clean
