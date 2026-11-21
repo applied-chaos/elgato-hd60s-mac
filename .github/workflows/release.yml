@@ -64,7 +64,7 @@ jobs:
         run: >
           make dist VERSION="${VERSION#v}"
           XCODEFLAGS="CODE_SIGN_STYLE=Manual CODE_SIGN_IDENTITY='Developer ID Application'
-          OTHER_CODE_SIGN_FLAGS=--timestamp
+          OTHER_CODE_SIGN_FLAGS=--timestamp CODE_SIGN_INJECT_BASE_ENTITLEMENTS=NO
           HD60S_APP_PROFILE='$HD60S_APP_PROFILE_NAME' HD60S_CAMERA_PROFILE='$HD60S_CAMERA_PROFILE_NAME'"
 
       - name: Notarise
