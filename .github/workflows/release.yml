@@ -73,6 +73,7 @@ jobs:
           ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
         run: |
           dmg="build/HD60S-${VERSION#v}.dmg"
+          codesign --sign "Developer ID Application" --timestamp "$dmg"
           auth=(--key "$RUNNER_TEMP/asc.p8" --key-id "$ASC_KEY_ID" --issuer "$ASC_ISSUER_ID")
           id=$(xcrun notarytool submit "$dmg" "${auth[@]}" --wait --output-format json | tee /dev/stderr | jq -r .id)
           xcrun notarytool log "$id" "${auth[@]}"
