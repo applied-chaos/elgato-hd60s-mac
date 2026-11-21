@@ -69,6 +69,8 @@ static void report(const struct capture *c)
     else
         fprintf(stderr, "signal: %dx%d%s %.2f fps, audio %zu bytes\n", c->width,
                 c->height, c->interlaced ? "i" : "p", fps, c->audio_bytes);
+    fprintf(stderr, "parser: %lu frames, %lu discarded, %lu long lines kept\n", c->parser.frames,
+            c->parser.discarded, c->parser.long_total);
 }
 
 static int usage(void)

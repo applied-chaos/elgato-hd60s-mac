@@ -169,6 +169,36 @@ static void test_corrupt_eav_keeps_frame_and_stride(int blanking_after_line)
     field(&st, 0, 0, 1, H);
     parser_feed(&p, st.b + fed, st.n - fed);
     assert(s.frames == 2);
+    assert(p.long_total == 1 && p.discarded == 0);
+    check_progressive_frame(s.last);
+    free(st.b);
+}
+
+static void test_lost_sav_merges_lines_drops_frame(void)
+{
+    static uint8_t buf[1 << 16];
+    struct sink s = {0};
+    struct hd60s_parser p;
+    parser_init(&p, buf, sizeof buf, on_frame, on_audio, &s);
+    struct stream st = {0};
+    field(&st, 0, 0, 1, H);
+    field(&st, 0, 0, 1, H);
+    code(&st, 0x20);
+    code(&st, 0x20);
+    for (int i = 0; i < H; i++) {
+        uint8_t line[W * 2];
+        for (int x = 0; x < W * 2; x++)
+            line[x] = pix(i, x);
+        if (i != 3)
+            code(&st, 0);
+        put(&st, line, sizeof line);
+    }
+    code(&st, 0x20);
+    field(&st, 0, 0, 1, H);
+    feed_chunked(&p, &st, 1 << 20);
+    assert(s.frames == 2);
+    assert(s.last_h == H);
+    assert(p.discarded == 1);
     check_progressive_frame(s.last);
     free(st.b);
 }
@@ -198,6 +228,7 @@ int main(void)
     test_audio();
     test_corrupt_eav_keeps_frame_and_stride(2);
     test_corrupt_eav_keeps_frame_and_stride(H - 1);
+    test_lost_sav_merges_lines_drops_frame();
     test_mode_change();
     puts("parser tests passed");
     return 0;

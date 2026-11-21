@@ -2,3 +2,4 @@ docs/re/
 build/
 *.o
 /vendor/
+.impeccable/hook.cache.json

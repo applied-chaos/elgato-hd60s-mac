@@ -25,6 +25,7 @@ struct hd60s_parser {
     int in_line, line, step, lines, long_lines;
     size_t line_off, stride, line_max;
     int frame_bad;
+    unsigned long frames, discarded, long_total;
 };
 
 void parser_init(struct hd60s_parser *p, uint8_t *buf, size_t cap, frame_cb on_frame,

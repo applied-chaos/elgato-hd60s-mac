@@ -14,15 +14,21 @@ void parser_init(struct hd60s_parser *p, uint8_t *buf, size_t cap, frame_cb on_f
     p->prev_v = -1;
 }
 
+static int leaked_blanking(const struct hd60s_parser *p)
+{
+    return p->stride && p->line_off > p->stride && p->line_off < 2 * p->stride;
+}
+
 static void end_line(struct hd60s_parser *p)
 {
     if (!p->in_line)
         return;
     p->in_line = 0;
     /* A corrupted EAV lets horizontal blanking through after intact video; video() already capped it at stride. */
-    if (p->stride && p->line_off > p->stride)
+    if (leaked_blanking(p)) {
         p->long_lines++;
-    else if (p->line_off != p->stride)
+        p->long_total++;
+    } else if (p->line_off != p->stride)
         p->frame_bad = 1;
     p->line_max = p->line_off;
 }
@@ -72,8 +78,14 @@ static void end_active(struct hd60s_parser *p)
         p->frame_bad = 1;
     else if (!p->frame_bad)
         p->line_max = p->stride;
-    if (p->capturing && complete && !p->frame_bad && p->lines > 0)
-        p->on_frame(p->ctx, p->buf, (int)(p->stride / 2), p->lines, p->interlaced);
+    if (p->capturing && complete) {
+        if (!p->frame_bad && p->lines > 0) {
+            p->frames++;
+            p->on_frame(p->ctx, p->buf, (int)(p->stride / 2), p->lines, p->interlaced);
+        } else if (p->stride) {
+            p->discarded++;
+        }
+    }
     p->capturing = 0;
 }
 

@@ -1,0 +1,17 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "low-contrast",
+        "value": "*",
+        "files": [
+          "tools/slate/slate-a.html"
+        ],
+        "createdAt": "2026-11-21T14:05:09.774Z",
+        "reason": "agent measured: #9CA3AF on plain Ink behind every text box, 7.63:1"
+      }
+    ]
+  }
+}
