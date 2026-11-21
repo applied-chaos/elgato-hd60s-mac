@@ -10,7 +10,7 @@ settings:
     ENABLE_HARDENED_RUNTIME: YES
     SWIFT_VERSION: "5.0"
     MARKETING_VERSION: "1.0"
-    CURRENT_PROJECT_VERSION: "5"
+    CURRENT_PROJECT_VERSION: "6"
 targets:
   HD60S:
     type: application
@@ -27,6 +27,7 @@ targets:
         com.apple.developer.system-extension.install: true
     settings:
       PRODUCT_BUNDLE_IDENTIFIER: net.mintopia.hd60s
+      ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
     dependencies:
       - target: net.mintopia.hd60s.camera
   net.mintopia.hd60s.camera:

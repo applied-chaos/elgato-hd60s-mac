@@ -7,14 +7,19 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		0C686F4A2350BA0445058CC1 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 791CD22A7A5BCBF5CA41DEC9 /* Assets.xcassets */; };
 		274C386DB52799C980E9E44C /* device.c in Sources */ = {isa = PBXBuildFile; fileRef = 3D657EA2382F0CC167FE569B /* device.c */; };
 		36E46DC83957DF142005C5DC /* AudioFeed.c in Sources */ = {isa = PBXBuildFile; fileRef = B94D97025BF605D9F19C6F7B /* AudioFeed.c */; };
+		3BE7F6CBBF0A32B2E1AADBB1 /* Slate.png in Resources */ = {isa = PBXBuildFile; fileRef = D9B4906F3518E9B1364D6B76 /* Slate.png */; };
+		3ED78A9D91174746CC6F58BA /* RedHatDisplay.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 18241B2CA9D6FB72D10C87C1 /* RedHatDisplay.ttf */; };
 		56F2C184E36B4C0F6FCBE1AF /* ring.c in Sources */ = {isa = PBXBuildFile; fileRef = 82A96EFD70066EE24A64F776 /* ring.c */; };
 		717A4907EF90ADB8B070AEE9 /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8400EEE9F8976B5123BAA715 /* main.swift */; };
 		868DB0A334D8F095951F5C12 /* HD60SAudio.c in Sources */ = {isa = PBXBuildFile; fileRef = 5CAE976973A9661138B5E396 /* HD60SAudio.c */; };
+		8FC432765E9249BF3968EB02 /* RedHatText.ttf in Resources */ = {isa = PBXBuildFile; fileRef = E4BA9DEAA185A1CA9EF0C297 /* RedHatText.ttf */; };
 		91FA4C5D25BF43BF77944006 /* net.mintopia.hd60s.camera.systemextension in Embed System Extensions */ = {isa = PBXBuildFile; fileRef = 906664122934AE5F648909BB /* net.mintopia.hd60s.camera.systemextension */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		935F140DCE2EC4E8C40E4C5A /* HD60SApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5250AEE80161FAD7E2AB87AB /* HD60SApp.swift */; };
 		A042FF175789F53AC09AC388 /* Provider.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEB304182F383B96E72A3DA6 /* Provider.swift */; };
+		CB1B48B6A5A96319F7FC9477 /* OFL.txt in Resources */ = {isa = PBXBuildFile; fileRef = C7F46965F4F9398B418F05A8 /* OFL.txt */; };
 		E2A40B2FADCE6E73189BED86 /* parser.c in Sources */ = {isa = PBXBuildFile; fileRef = 58FCE89662E2C2249C89C7B2 /* parser.c */; };
 /* End PBXBuildFile section */
 
@@ -43,12 +48,14 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		18241B2CA9D6FB72D10C87C1 /* RedHatDisplay.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = RedHatDisplay.ttf; sourceTree = "<group>"; };
 		2802D08CC9D0EF039BE94247 /* HD60SCamera.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = HD60SCamera.entitlements; sourceTree = "<group>"; };
 		3D657EA2382F0CC167FE569B /* device.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = device.c; sourceTree = "<group>"; };
 		5250AEE80161FAD7E2AB87AB /* HD60SApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HD60SApp.swift; sourceTree = "<group>"; };
 		58FCE89662E2C2249C89C7B2 /* parser.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = parser.c; sourceTree = "<group>"; };
 		5CAE976973A9661138B5E396 /* HD60SAudio.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = HD60SAudio.c; sourceTree = "<group>"; };
 		7077DBB0AE4A216DE906C000 /* AudioFeed.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = AudioFeed.h; sourceTree = "<group>"; };
+		791CD22A7A5BCBF5CA41DEC9 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		82A96EFD70066EE24A64F776 /* ring.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = ring.c; sourceTree = "<group>"; };
 		8400EEE9F8976B5123BAA715 /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
 		87A0EC014D058589E38854EE /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
@@ -58,12 +65,25 @@
 		AFAB7175D82262FE4407375C /* Bridging.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = Bridging.h; sourceTree = "<group>"; };
 		B4395BC9C75FEE1900F4B5D8 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		B94D97025BF605D9F19C6F7B /* AudioFeed.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = AudioFeed.c; sourceTree = "<group>"; };
+		C7F46965F4F9398B418F05A8 /* OFL.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = OFL.txt; sourceTree = "<group>"; };
+		D9B4906F3518E9B1364D6B76 /* Slate.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = Slate.png; sourceTree = "<group>"; };
+		E4BA9DEAA185A1CA9EF0C297 /* RedHatText.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = RedHatText.ttf; sourceTree = "<group>"; };
 		F49628C23DF697B188482304 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		FB242BD55A0D36E0CF6E0153 /* HD60S.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = HD60S.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		FEB304182F383B96E72A3DA6 /* Provider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Provider.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXGroup section */
+		24499E688D5C055EEE57C04F /* Fonts */ = {
+			isa = PBXGroup;
+			children = (
+				C7F46965F4F9398B418F05A8 /* OFL.txt */,
+				18241B2CA9D6FB72D10C87C1 /* RedHatDisplay.ttf */,
+				E4BA9DEAA185A1CA9EF0C297 /* RedHatText.ttf */,
+			);
+			path = Fonts;
+			sourceTree = "<group>";
+		};
 		413465F0FBA40E90EDC40EDE = {
 			isa = PBXGroup;
 			children = (
@@ -89,9 +109,11 @@
 		92B13A1CC6A25C28DE7D26E0 /* App */ = {
 			isa = PBXGroup;
 			children = (
+				791CD22A7A5BCBF5CA41DEC9 /* Assets.xcassets */,
 				A3E0C3F3545569814FC50DBC /* HD60S.entitlements */,
 				5250AEE80161FAD7E2AB87AB /* HD60SApp.swift */,
 				B4395BC9C75FEE1900F4B5D8 /* Info.plist */,
+				24499E688D5C055EEE57C04F /* Fonts */,
 			);
 			path = App;
 			sourceTree = "<group>";
@@ -106,6 +128,7 @@
 				87A0EC014D058589E38854EE /* Info.plist */,
 				8400EEE9F8976B5123BAA715 /* main.swift */,
 				FEB304182F383B96E72A3DA6 /* Provider.swift */,
+				D9B4906F3518E9B1364D6B76 /* Slate.png */,
 			);
 			path = Extension;
 			sourceTree = "<group>";
@@ -154,6 +177,7 @@
 			buildConfigurationList = C9ACD931262A6620B3B20C9C /* Build configuration list for PBXNativeTarget "net.mintopia.hd60s.camera" */;
 			buildPhases = (
 				E98464FF818F1B5B3C9BA77A /* Sources */,
+				30BE7DA347E4413440F8ED20 /* Resources */,
 			);
 			buildRules = (
 			);
@@ -171,6 +195,7 @@
 			buildConfigurationList = 3FB80E4034408159B9933AFA /* Build configuration list for PBXNativeTarget "HD60S" */;
 			buildPhases = (
 				834DF2B43D4C9A39DD9BCB4D /* Sources */,
+				43EE71BB9A080355C436338C /* Resources */,
 				5851D16BC1709E8A881B9DEA /* Embed System Extensions */,
 			);
 			buildRules = (
@@ -228,6 +253,28 @@
 			);
 		};
 /* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		30BE7DA347E4413440F8ED20 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				3BE7F6CBBF0A32B2E1AADBB1 /* Slate.png in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		43EE71BB9A080355C436338C /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				0C686F4A2350BA0445058CC1 /* Assets.xcassets in Resources */,
+				CB1B48B6A5A96319F7FC9477 /* OFL.txt in Resources */,
+				3ED78A9D91174746CC6F58BA /* RedHatDisplay.ttf in Resources */,
+				8FC432765E9249BF3968EB02 /* RedHatText.ttf in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		55A10513AFBC4BF075595C32 /* Sources */ = {
@@ -365,7 +412,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 5;
+				CURRENT_PROJECT_VERSION = 6;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				DEVELOPMENT_TEAM = 46A7P6HL4Z;
 				ENABLE_HARDENED_RUNTIME = YES;
@@ -482,7 +529,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 5;
+				CURRENT_PROJECT_VERSION = 6;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				DEVELOPMENT_TEAM = 46A7P6HL4Z;
 				ENABLE_HARDENED_RUNTIME = YES;
