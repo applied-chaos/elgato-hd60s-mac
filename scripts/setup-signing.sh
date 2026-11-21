@@ -267,12 +267,15 @@ step "Right-click 'Developer ID Application: … ($TEAM)' → Export… → save
 step "When asked for a password, use this one (copy it now):"
 printf '\n      %s%s%s\n\n' "$BOLD" "$P12_PASSWORD" "$RESET"
 open -a "Keychain Access" >/dev/null 2>&1 || true
+p12_opens() {
+  openssl pkcs12 -in "$P12_FILE" -passin "pass:$P12_PASSWORD" -nokeys -legacy 2>/dev/null | grep -q "Developer ID Application" \
+    || openssl pkcs12 -in "$P12_FILE" -passin "pass:$P12_PASSWORD" -nokeys 2>/dev/null | grep -q "Developer ID Application"
+}
 ask_file P12_FILE "Path to the exported .p12:" "$HOME/Desktop/developer-id.p12"
-if ! openssl pkcs12 -in "$P12_FILE" -passin "pass:$P12_PASSWORD" -nokeys -legacy >/dev/null 2>&1 \
-   && ! openssl pkcs12 -in "$P12_FILE" -passin "pass:$P12_PASSWORD" -nokeys >/dev/null 2>&1; then
-  warn "couldn't open the .p12 with that password."
-  ask_secret P12_PASSWORD "Type the password you actually used:"
-fi
+until p12_opens; do
+  warn "that .p12 doesn't open with the password or has no Developer ID Application certificate."
+  ask_secret P12_PASSWORD "Type the password you used (or Ctrl-C and export again):"
+done
 set_secret MACOS_CERTIFICATE_P12 "$(base64 -i "$P12_FILE")"
 set_secret MACOS_CERTIFICATE_PASSWORD "$P12_PASSWORD"
 if confirm "Delete $P12_FILE now it's uploaded? (it holds your signing key)"; then

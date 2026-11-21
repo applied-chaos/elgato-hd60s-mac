@@ -33,6 +33,9 @@ jobs:
           CAMERA_PROFILE: ${{ secrets.MACOS_CAMERA_PROFILE }}
           ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
         run: |
+          for var in CERTIFICATE_P12 CERTIFICATE_PASSWORD APP_PROFILE CAMERA_PROFILE ASC_KEY_P8; do
+            [[ -n "${!var}" ]] || { echo "::error::secret for $var is empty; re-run scripts/setup-signing.sh"; exit 1; }
+          done
           keychain="$RUNNER_TEMP/signing.keychain-db"
           password="$(openssl rand -hex 16)"
           echo "$CERTIFICATE_P12" | base64 -d > "$RUNNER_TEMP/cert.p12"
@@ -70,7 +73,9 @@ jobs:
           ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
         run: |
           dmg="build/HD60S-${VERSION#v}.dmg"
-          xcrun notarytool submit "$dmg" --key "$RUNNER_TEMP/asc.p8" --key-id "$ASC_KEY_ID" --issuer "$ASC_ISSUER_ID" --wait
+          auth=(--key "$RUNNER_TEMP/asc.p8" --key-id "$ASC_KEY_ID" --issuer "$ASC_ISSUER_ID")
+          id=$(xcrun notarytool submit "$dmg" "${auth[@]}" --wait --output-format json | tee /dev/stderr | jq -r .id)
+          xcrun notarytool log "$id" "${auth[@]}"
           xcrun stapler staple "$dmg"
 
       - name: Publish release
