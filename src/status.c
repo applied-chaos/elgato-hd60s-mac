@@ -1,6 +1,7 @@
 #include "status.h"
 
 #include <libusb.h>
+#include <limits.h>
 #include <math.h>
 #include <string.h>
 
@@ -297,14 +298,16 @@ void hd60s_print_json(const struct hd60s_status *s, FILE *out)
     fputs("]}\n", out);
 }
 
-/* First match wins. ntsc_from is the smallest counter that reads as the 1001 rate (0 = no such rate). */
+#define NO_NTSC UINT_MAX
+#define EXACT_FPS_TOLERANCE 0.05
+
 static const struct {
     int lo, hi, tenths;
     unsigned ntsc_from;
 } rate_bands[] = {
-    {1191, 1209, 1200, 1043}, {991, 1009, 1000, 0}, {841, 859, 850, 0}, {741, 759, 750, 0},
-    {711, 729, 720, 0},       {691, 708, 700, 0},   {591, 609, 600, 2086}, {551, 559, 560, 0},
-    {491, 509, 500, 0},       {241, 259, 250, 0},   {236, 244, 240, 5217}, {291, 309, 300, 4174},
+    {1191, 1209, 1200, 1043},   {991, 1009, 1000, NO_NTSC}, {841, 859, 850, NO_NTSC}, {741, 759, 750, NO_NTSC},
+    {711, 729, 720, NO_NTSC},   {691, 708, 700, NO_NTSC},   {591, 609, 600, 2086},    {551, 559, 560, NO_NTSC},
+    {491, 509, 500, NO_NTSC},   {241, 259, 250, NO_NTSC},   {236, 240, 240, 5217},    {291, 309, 300, 4174},
 };
 
 struct hd60s_rate hd60s_rate_from_vsync(unsigned counter)
@@ -314,7 +317,7 @@ struct hd60s_rate hd60s_rate_from_vsync(unsigned counter)
     int raw = (int)(1250000 / counter);
     for (size_t i = 0; i < sizeof rate_bands / sizeof *rate_bands; i++)
         if (raw >= rate_bands[i].lo && raw <= rate_bands[i].hi)
-            return (struct hd60s_rate){rate_bands[i].tenths, rate_bands[i].ntsc_from && counter >= rate_bands[i].ntsc_from};
+            return (struct hd60s_rate){rate_bands[i].tenths, counter >= rate_bands[i].ntsc_from};
     return (struct hd60s_rate){raw, 0};
 }
 
@@ -326,5 +329,5 @@ double hd60s_rate_hz(struct hd60s_rate r)
 double hd60s_exact_fps(double measured, struct hd60s_rate r, int interlaced)
 {
     double exact = hd60s_rate_hz(r) / (interlaced ? 2 : 1);
-    return exact > 0 && measured > 0 && fabs(exact - measured) < measured * 0.05 ? exact : measured;
+    return exact > 0 && measured > 0 && fabs(exact - measured) < measured * EXACT_FPS_TOLERANCE ? exact : measured;
 }
