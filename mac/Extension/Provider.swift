@@ -206,6 +206,7 @@ final class StreamSource: NSObject, CMIOExtensionStreamSource {
         self.timer = timer
     }
 
+    #if !DEXT
     // Reconnects every second so unplugging or a busy device doesn't end the stream.
     private func run() {
         let cap = Int(width) * 1440 * 2
@@ -235,6 +236,7 @@ final class StreamSource: NSObject, CMIOExtensionStreamSource {
             }
         }
     }
+    #endif
 
     // Frames of any known mode are scaled into the 1080p output, aspect preserved; runts from a mode switch are dropped.
     private func send(_ frame: UnsafeMutablePointer<UInt8>, _ w: Int, _ h: Int, _ interlaced: Bool, wide: Bool, bt601: Bool) {
