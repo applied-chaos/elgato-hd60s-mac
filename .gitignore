@@ -3,3 +3,4 @@ build/
 *.o
 /vendor/
 .impeccable/hook.cache.json
+.hardware
