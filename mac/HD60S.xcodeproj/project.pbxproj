@@ -9,6 +9,7 @@
 /* Begin PBXBuildFile section */
 		0C686F4A2350BA0445058CC1 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 791CD22A7A5BCBF5CA41DEC9 /* Assets.xcassets */; };
 		274C386DB52799C980E9E44C /* device.c in Sources */ = {isa = PBXBuildFile; fileRef = 3D657EA2382F0CC167FE569B /* device.c */; };
+		2C621BB4A4B56DCCDAD60745 /* tx.c in Sources */ = {isa = PBXBuildFile; fileRef = 00CDD57C9B403777274C1494 /* tx.c */; };
 		36E46DC83957DF142005C5DC /* AudioFeed.c in Sources */ = {isa = PBXBuildFile; fileRef = B94D97025BF605D9F19C6F7B /* AudioFeed.c */; };
 		3BE7F6CBBF0A32B2E1AADBB1 /* Slate.png in Resources */ = {isa = PBXBuildFile; fileRef = D9B4906F3518E9B1364D6B76 /* Slate.png */; };
 		3D9B486C89BDD72174A60838 /* DextStatus.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9788A62CEE0CF0C4A1436A57 /* DextStatus.swift */; };
@@ -73,6 +74,7 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		00CDD57C9B403777274C1494 /* tx.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = tx.c; sourceTree = "<group>"; };
 		0BB1F64555B5906AFF622AED /* AudioPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioPlugin.swift; sourceTree = "<group>"; };
 		18241B2CA9D6FB72D10C87C1 /* RedHatDisplay.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = RedHatDisplay.ttf; sourceTree = "<group>"; };
 		2802D08CC9D0EF039BE94247 /* HD60SCamera.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = HD60SCamera.entitlements; sourceTree = "<group>"; };
@@ -133,6 +135,7 @@
 				3D657EA2382F0CC167FE569B /* device.c */,
 				58FCE89662E2C2249C89C7B2 /* parser.c */,
 				82A96EFD70066EE24A64F776 /* ring.c */,
+				00CDD57C9B403777274C1494 /* tx.c */,
 			);
 			name = src;
 			path = ../src;
@@ -348,6 +351,7 @@
 				717A4907EF90ADB8B070AEE9 /* main.swift in Sources */,
 				E2A40B2FADCE6E73189BED86 /* parser.c in Sources */,
 				56F2C184E36B4C0F6FCBE1AF /* ring.c in Sources */,
+				2C621BB4A4B56DCCDAD60745 /* tx.c in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
