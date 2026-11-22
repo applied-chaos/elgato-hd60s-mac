@@ -12,10 +12,10 @@ Needs macOS 26 on Apple silicon.
 
 1. Download the latest `HD60S-x.y.z.dmg` from [Releases](https://github.com/applied-chaos/elgato-hd60s-mac/releases).
 2. Drag `HD60S.app` to `/Applications`, open it and click Install.
-3. Approve it in System Settings > General > Login Items & Extensions > Camera Extensions.
-4. For audio, copy `HD60SAudio.driver` to `/Library/Audio/Plug-Ins/HAL`, then run `sudo killall coreaudiod`.
+3. Enter your administrator password when asked. This installs the audio plug-in and restarts Core Audio.
+4. Approve the camera extension in System Settings > General > Login Items & Extensions > Camera Extensions.
 
-To remove it, click Uninstall in the app and delete the driver from `/Library/Audio/Plug-Ins/HAL`.
+Installing again updates the audio plug-in to the version in the app. To remove everything, click Uninstall in the app and enter your password once.
 
 ## Use
 
@@ -33,8 +33,7 @@ Needs Xcode 26 and Homebrew.
 brew install libusb pkg-config xcodegen
 make            # command-line tool, build/hd60s
 make test
-make install-app    # builds the app and camera extension, installs to /Applications
-make install-audio  # builds the audio driver, installs it with sudo
+make install-app    # builds the app, camera extension and audio plug-in, installs to /Applications
 ```
 
 The build downloads Elgato's Game Capture HD 2.11.14 for macOS and reads a few register tables from its `libUB530.dylib`. The tables aren't in this repo. The app builds need signing into Xcode with your own team; change `DEVELOPMENT_TEAM` in `mac/project.yml`.

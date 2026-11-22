@@ -368,7 +368,7 @@ Census of every call made from the transmitter code (0x1caf4–0x21b1e, from the
 
 ### 6.10 Open questions for the hardware test
 1. With a TV already connected before start, does a hotplug interrupt (0x06 bit0) fire after init, or must the driver read 0x0E bit6 itself and enter state 1?
-2. Are the per-mode MST3367 writes (§6.4 step 3) harmless to capture at 1080p60? Are they needed for other modes (#8–#11)? Do b0:0xB2 bits 0–1 written on unmute change captured colour?
+2. Are the per-mode MST3367 writes (§6.4 step 3) needed for the TV picture? The mode survey shows capture does not need them in any mode. Are they harmless to capture? Do b0:0xB2 bits 0–1 written on unmute change captured colour?
 3. Is 0xD4 needed for passthrough audio, and is it volatile? Does a 44.1 kHz source capture correctly without it?
 4. Does a TV without YCbCr support (RGB out, BT.601/709 matrix) show correct colour?
 5. 148.5 MHz detection uses the table row, so PC modes with a high pixel clock (1680x1050 etc., VIC 32 default) get low-speed AFE settings. Do they work?
@@ -398,10 +398,30 @@ Census of every call made from the transmitter code (0x1caf4–0x21b1e, from the
 - Audio is 16-bit little-endian stereo at 48 kHz, band-limited to about 18 kHz; 10 s of capture gives 48.1k frames/s against the 59.94 fps video clock.
 - Every few hundred frames one line arrives `width*2 + 552` bytes long: its EAV comes through corrupted (`ff 80 ff ff 00 00 00 00 9d 9d`), so the device doesn't strip it and the horizontal blanking (`10 80…`) follows the intact video. Elgato copies the first `width*2` bytes but its fixed-distance jump then desyncs and the frame is dropped. Ours keeps the frame with the first `width*2` bytes of that line, as long as the line is under `2*width*2`; longer means a lost SAV merged two lines, so the frame is dropped.
 
+## Mode survey (Raspberry Pi 4 KMS source, `hd60s` CLI, no driver changes)
+Every mode the Pi's EDID offers was driven with `kmstest` (SMPTE pattern) and captured with `hd60s info` and `hd60s capture -n 20`. **All 20 timings produce frames with the current driver. No `FUN_12a2f` / `FUN_122da` register writes are needed**: the MST3367 start sequence from §3 plus the stream parser is enough, and no mode showed discarded frames or long lines in steady state.
+
+| source mode | reported by `info` | stream line counts (active / blank) |
+|---|---|---|
+| 1080p 60, 59.94, 50, 30, 29.97, 25 | 1920x1080p, rate within 0.1 fps | 1080 / 45 |
+| 1080i 60, 59.94, 50 (both 74.25 MHz and 72 MHz 50 Hz timings) | 1920x1080i at half the field rate (30.0, 29.97, 25.0 fps) | 540 per field / 22 or 23 |
+| 720p 60, 59.94, 50 | 1280x720p | 720 / 30 |
+| 576p 50 | 720x576p | 576 / 49 |
+| 576i 50 | 720x576i, 25 fps | 288 per field / 24 or 25 |
+| 480p 60, 59.94 | 720x480p | 480 / (not traced) |
+| 480i 60, 59.94 | 720x480i, 30 fps | 240 per field / 22 or 23 |
+| 1440x480i 59.94 | 1440x480i, 30 fps | 240 per field / 22 or 23 |
+
+- Size comes from the stream itself: width = bytes between timing codes / 2, height = lines in the active region. 720-wide SD stays 720 wide (the Pi's pixel-doubled 13.5 MHz modes arrive as 720); 1440x480i arrives 1440 wide.
+- Measured rates over 20 frames are only good to about +-1 fps for SD and 720p. The device cannot tell 60 from 59.94 (or 30 from 29.97) from the stream; both read as 60.0 +- 0.1. A consumer needing the 1001 flag has to port `FUN_12a2f` or guess.
+- **Interlaced layout.** Fields alternate in the stream: `V` goes high for the vertical blanking (22-25 lines), `F` flips 3 lines into the blanking, then a full field of lines follows. The parser reads F at the first active line. F=0 carries the even frame lines (0, 2, ...), F=1 the odd lines. With a moving source (`kmstest --flip`, bar moving 8 px per field) the F=1 field is 8 px further along than F=0, so **F=0 (even lines) is first in time and F=1 completes the frame**, for 1080i, 576i and 480i alike. Same at 50 and 60 Hz. Each frame the parser emits is a woven pair of fields, so 1080i50 delivers 25 frames per second, not 50 fields.
+- **Colour matrix.** `colour_convert(d, 0, 0)` runs once at start, before the mode is known, so every mode gets the **BT.709** matrix. Measured: the SMPTE green bar is Y/Cb/Cr 134/65/53 in 576p, 720p and 1080p alike, and decodes to the exact 75% green only as BT.709. Elgato picks BT.601 for 640/720/768 wide modes. A consumer should treat all output as BT.709 or the driver must re-run the matrix after detecting a narrow mode.
+- **Mode changes while streaming** are survived: the parser re-locks on the new size within a second (1080p60 -> 720p50 -> 576i50 -> 1080i60 -> 1080p60 tested). During the switch it emits a few runt frames of wrong height (e.g. 1280x12, 1280x703, 1920x1045) and one wrong-width frame, so consumers should gate on a size they have seen stable for a few frames. `hd60s` has no signal-loss indicator beyond "no frames arrive".
+- 50 Hz modes behave like 60 Hz apart from the frame period and longer horizontal blanking (1080p50 line is 2640 clocks, not 2200). No 50 Hz-specific handling is needed; audio stays 48 kHz and flows in every mode.
+
 ## Unknown / unverified
 - Audio channel order (left first) is assumed from I2S convention, not tested with a one-sided signal.
 - 0xEC padding bytes and the meaning of 0xEC, 0xC2 and 0xC7. Possibly LED/clock/enable.
-- Modes other than 1080p60 (720p, 1080i, SD), and whether `FUN_12a2f`/`FUN_122da` register writes (e.g. b0:0x11) are needed for them. SD modes also want the BT.601 matrix.
 - Passthrough: documented in §6 from the decompile only; not implemented or tested. Open questions in §6.10.
 - Isoch alt 1–3 packet sizing.
 - GPIO pin semantics (52 = enable, 57 = ready) are inferred from usage only.
