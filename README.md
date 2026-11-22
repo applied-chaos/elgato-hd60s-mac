@@ -45,7 +45,7 @@ The command-line tool captures raw video and audio:
 
 ```sh
 build/hd60s info                                  # firmware, resolution and frame rate
-build/hd60s status [--json]                        # device, USB link, owner, signal, audio, warnings
+build/hd60s status [--json]                        # device, USB link, owner, signal, audio (stream and source rate), warnings
 build/hd60s capture -n 300 -o out.yuv -a out.pcm  # 300 frames of YUY2 and 48 kHz s16le
 build/hd60s capture -s line -g 3 -a out.pcm        # audio from the 3.5 mm line-in (hdmi, line or mix) at +3 dB; -m mutes
 build/hd60s capture --iso -n 300 -o out.yuv             # isochronous USB transfer, a fallback for flaky hubs (bulk is the default)

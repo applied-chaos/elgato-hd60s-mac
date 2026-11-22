@@ -229,9 +229,12 @@ void hd60s_print_text(const struct hd60s_status *s, FILE *out)
         fprintf(out, "Colour:   %s\n", colour_name(s->colour));
         break;
     }
-    if (s->audio_rate)
-        fprintf(out, "Audio:    %d Hz, %d channels\n", s->audio_rate, s->audio_channels);
-    else
+    if (s->audio_rate) {
+        fprintf(out, "Audio:    %d Hz, %d channels", s->audio_rate, s->audio_channels);
+        if (s->audio_source_rate)
+            fprintf(out, " (source %d Hz)", s->audio_source_rate);
+        fputc('\n', out);
+    } else
         fprintf(out, "Audio:    none\n");
     fprintf(out, "Parser:   %lu frames, %lu discarded, %lu runts, %lu long lines\n", s->frames, s->discarded,
             s->runts, s->long_lines);
@@ -293,9 +296,13 @@ void hd60s_print_json(const struct hd60s_status *s, FILE *out)
     if (s->signal == SIGNAL_UNSUPPORTED)
         fprintf(out, ",\"width\":%d,\"height\":%d", s->width, s->height);
     fputs("},\"audio\":", out);
-    if (s->audio_rate)
-        fprintf(out, "{\"rate\":%d,\"channels\":%d}", s->audio_rate, s->audio_channels);
-    else
+    if (s->audio_rate) {
+        fprintf(out, "{\"rate\":%d,\"channels\":%d,\"source_rate\":", s->audio_rate, s->audio_channels);
+        if (s->audio_source_rate)
+            fprintf(out, "%d}", s->audio_source_rate);
+        else
+            fputs("null}", out);
+    } else
         fputs("null", out);
     fprintf(out, ",\"parser\":{\"frames\":%lu,\"discarded\":%lu,\"runts\":%lu,\"long_lines\":%lu},\"warnings\":[",
             s->frames, s->discarded, s->runts, s->long_lines);

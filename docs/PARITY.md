@@ -92,7 +92,7 @@ App status messages: "No Signal", "Protected with HDCP", "USB 3 is required for 
 | # | Item | Status | Notes |
 |---|---|---|---|
 | D1 | HDMI LPCM stereo 48 kHz capture | done | — |
-| D2 | Source sample rate | partial (verify) | See detail below |
+| D2 | Source sample rate | done (#25: device resamples to 48 kHz; status reports the source rate) | See detail below |
 | D3 | Analogue line-in (3.5 mm, Chat Link) | done (#20; line-in capture unverified, no cable on the test rig) | `hd60s capture -s line` or `-s mix`; see detail below |
 | D4 | Analogue gain (−12…+12 dB) and hardware mute | done (#20) | `-g dB`, `-m`; steps measured, see detail below |
 | D5 | HDMI vs DVI re-check of audio routing on every mode change | done (#20: re-run when the receiver's DVI flag changes; blank-start then enable now gives audio) | Elgato runs `FUN_1caf4` from `FUN_1d10a` on each new mode (step 3.5), so DVI→HDMI or no-signal→HDMI picks the right branch (MST b1:0x01 bit2). Ours runs `select_hdmi_audio` once in `hd60s_start`, so starting before the source is up, or a DVI-to-HDMI switch, can leave the wrong routing. Pi (start with the Pi blanked, then enable). Ticket: **Re-run HDMI audio routing when the source mode changes** |
@@ -101,7 +101,7 @@ App status messages: "No Signal", "Protected with HDCP", "USB 3 is required for 
 
 **D2, source sample rate.**
 - What Elgato does: `FUN_12a2f` reads MST b2:0x9B & 0xF0 (0 → 44.1 kHz, 0xC0 → 32 kHz, else 48 kHz), then, for the HD60 S family (`FUN_17a0c`), **jumps to force 48000**. So Elgato always reports 48 kHz; we match.
-- Unknown: what the stream carries for a 44.1 kHz source on a unit without the 0xD4 sample-rate converter.
+- Measured (#25): the stream is 48 kHz for 32, 44.1 and 48 kHz sources, pitch correct, so nothing is passed on to consumers; `status` reports the source rate (N/CTS decode, matches b2:0x9B).
 - Test: Pi, `speaker-test -r 44100` or a sine at 44.1 kHz, then measure pitch and frame rate. If it isn't resampled, add rate detection from b2:0x9B and report it to Core Audio.
 - Ticket: **Verify 32/44.1 kHz HDMI audio capture and report the real rate**
 
