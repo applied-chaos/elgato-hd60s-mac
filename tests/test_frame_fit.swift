@@ -29,7 +29,6 @@ func check(_ ok: Bool, _ what: String, line: UInt = #line) {
         }
         check(fitRect(width: 1280, height: 1024) == Rect(x: 284, y: 0, w: 1350, h: 1080), "5:4 pillarboxed")
         check(fitRect(width: 1440, height: 900) == Rect(x: 96, y: 0, w: 1728, h: 1080), "16:10 pillarboxed")
-        // unsupported-mode detection: a stable unknown size, not the varying runts of a mode switch
         var watch = UnsupportedWatch()
         check(!watch.note(width: 1366, height: 700, known: false), "one frame is not stable")
         for _ in 0..<UnsupportedWatch.stableFrames { _ = watch.note(width: 1366, height: 700, known: false) }

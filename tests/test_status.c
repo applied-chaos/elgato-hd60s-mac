@@ -107,7 +107,6 @@ int main(void)
     t = render(hd60s_print_text, &s);
     assert(strstr(t, "1920x1080p 59.95 fps") && strstr(t, "BT.709") && strstr(t, "Input:    YCbCr 4:2:2") && strstr(t, "48000 Hz, 2 channels"));
 
-    /* Unsupported timing: a stable size that is not a known mode. */
     s.signal = SIGNAL_UNSUPPORTED;
     s.width = 1366;
     s.height = 700;

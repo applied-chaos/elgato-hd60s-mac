@@ -299,7 +299,6 @@ final class StreamSource: NSObject, CMIOExtensionStreamSource {
         }
         #endif
         if hostNs() &- lastFrameNs.withLock({ $0 }) > noFramesTimeoutNs {
-            // A stable unknown timing seen within the last second means "unsupported", otherwise no signal.
             let odd = hostNs() &- unsupportedNs.withLock({ $0 }) < 1_000_000_000
             if let s = odd ? unsupportedSlate : slate { emit(s) }
         }

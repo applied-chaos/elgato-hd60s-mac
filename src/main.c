@@ -87,8 +87,8 @@ struct watch {
     struct hd60s_status st;
     double first, last;
     unsigned long standard;
-    int odd_w, odd_h, odd_interlaced; /* last size that is not a known mode */
-    unsigned long odd_run;            /* consecutive frames of that size: a real timing, not mode-switch runts */
+    int unknown_w, unknown_h, unknown_interlaced; /* last size that is not a known mode */
+    unsigned long unknown_run;            /* consecutive frames of that size: a real timing, not mode-switch runts */
     size_t audio_bytes;
 };
 
@@ -100,13 +100,13 @@ static void watch_frame(void *ctx, const uint8_t *frame, int w, int h, int inter
     (void)frame;
     if (!hd60s_size_standard(w, h)) {
         k->st.runts++;
-        k->odd_run = w == k->odd_w && h == k->odd_h ? k->odd_run + 1 : 1;
-        k->odd_w = w;
-        k->odd_h = h;
-        k->odd_interlaced = interlaced;
+        k->unknown_run = w == k->unknown_w && h == k->unknown_h ? k->unknown_run + 1 : 1;
+        k->unknown_w = w;
+        k->unknown_h = h;
+        k->unknown_interlaced = interlaced;
         return;
     }
-    k->odd_run = 0;
+    k->unknown_run = 0;
     k->last = now();
     if (!k->standard++)
         k->first = k->last;
@@ -144,11 +144,11 @@ static int status(int json)
             parser_init(&parser, frame, sizeof frame, watch_frame, watch_audio, &k);
             hd60s_stream(&d, &parser, &stop_requested, 2.0);
             st->signal = k.standard ? SIGNAL_ACTIVE : SIGNAL_NONE;
-            if (k.odd_run >= UNSUPPORTED_STABLE_FRAMES) {
+            if (k.unknown_run >= UNSUPPORTED_STABLE_FRAMES) {
                 st->signal = SIGNAL_UNSUPPORTED;
-                st->width = k.odd_w;
-                st->height = k.odd_h;
-                st->interlaced = k.odd_interlaced;
+                st->width = k.unknown_w;
+                st->height = k.unknown_h;
+                st->interlaced = k.unknown_interlaced;
             }
             st->frames = parser.frames;
             st->discarded = parser.discarded;

@@ -246,7 +246,7 @@ static void test_is_sd(void)
 {
     assert(parser_is_sd(720, 576) == 1 && parser_is_sd(720, 480) == 1 && parser_is_sd(1440, 480) == 1);
     assert(parser_is_sd(1280, 720) == 0 && parser_is_sd(1920, 1080) == 0);
-    assert(parser_is_sd(640, 480) == 1); /* 640 wide is BT.601 */
+    assert(parser_is_sd(640, 480) == 1);
     static const int pc[][2] = {{800, 600},   {1024, 768}, {1152, 864},  {1280, 768}, {1280, 800},
                                 {1280, 960},  {1280, 1024}, {1360, 768}, {1400, 1050}, {1440, 900}};
     for (size_t i = 0; i < sizeof pc / sizeof *pc; i++)
