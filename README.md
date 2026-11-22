@@ -24,6 +24,7 @@ Pick "Elgato HD60 S" as the camera. In OBS, add it as a Video Capture Device, an
 - Consoles with HDCP on send no picture. On a PS5, turn off HDCP in Settings > System > HDMI.
 - Audio only flows while something is using the camera, and runs about 30 ms behind the picture.
 - Only one thing can use the device at a time.
+- The camera offers 59.94 and 50 fps. Frames are delivered at the source's own rate whichever you pick, so a 50 Hz source never drops or repeats frames; pick the rate that matches your source for correct nominal timing and "No signal" slate pacing.
 
 ## Build from source
 
@@ -34,6 +35,8 @@ brew install libusb pkg-config xcodegen
 make            # command-line tool, build/hd60s
 make test
 make install-app    # builds the app, camera extension and audio plug-in, installs to /Applications
+make dist           # notarisable userspace DMG, build/HD60S-x.y.z.dmg
+make dist-dext      # local-only DriverKit DMG, build/HD60S-DriverKit-x.y.z.dmg
 ```
 
 The build downloads Elgato's Game Capture HD 2.11.14 for macOS and reads a few register tables from its `libUB530.dylib`. The tables aren't in this repo. The app builds need signing into Xcode with your own team; change `DEVELOPMENT_TEAM` in `mac/project.yml`.
@@ -61,14 +64,18 @@ Work happens on `develop`; `main` holds releases. Pushing a `vX.Y.Z` tag builds,
 | `ASC_KEY_ID` | Its key ID |
 | `ASC_ISSUER_ID` | Its issuer ID |
 
+### DriverKit DMG
+
+`make dist-dext` builds a DMG with the audio driver extension. It is built locally with Xcode automatic signing, never by CI, and isn't published. It runs only on Macs in the team's development provisioning profile.
+
 ## Safety
 
-The driver only sends the requests Elgato's own driver sends on every start. It never touches the firmware update, EDID write or FX3 RAM paths, which write to flash.
+The driver only sends the requests Elgato's own driver sends on every start. It never touches the firmware update, EDID write or FX3 RAM paths, which write to flash. HDMI passthrough (`src/tx.c`) writes only HDMI-out transmitter registers, behind an allow-list that `make test` exercises; it reads the TV's EDID over DDC and never writes to it.
 
 ## Not done yet
 
 - Modes other than 1080p60. SD modes also need the BT.601 matrix.
-- HDMI passthrough.
+- HDMI passthrough audio and HDCP. Video passthrough is implemented but not yet checked on a TV.
 - Rare tiny audio glitches as the HDMI and Mac clocks drift.
 
 ## Licence

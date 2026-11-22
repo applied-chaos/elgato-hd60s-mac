@@ -104,6 +104,19 @@ static void board_update(struct hd60s *d, uint8_t reg, uint8_t keep, uint8_t set
     i2c_write(d, I2C_BOARD, reg, (uint8_t)((i2c_read(d, I2C_BOARD, reg) & keep) | set));
 }
 
+/* Transmitter bus: IT66121 at 0x9A only. */
+enum { I2C_TX = 0x9a };
+
+static int tx_bus_read(void *c, uint8_t reg) { return i2c_read(c, I2C_TX, reg); }
+static void tx_bus_write(void *c, uint8_t reg, uint8_t val) { i2c_write(c, I2C_TX, reg, val); }
+static int tx_bus_read_n(void *c, uint8_t reg, uint8_t *buf, int n) { return bridge_read(c, I2C_TX, &reg, 1, buf, n); }
+static void tx_bus_sleep(void *c, int ms) { (void)c; msleep(ms); }
+
+static struct tx_bus tx_bus(struct hd60s *d)
+{
+    return (struct tx_bus){d, tx_bus_read, tx_bus_write, tx_bus_read_n, tx_bus_sleep};
+}
+
 static int gpio_read(struct hd60s *d, uint8_t pin)
 {
     uint8_t v = 0;
@@ -418,6 +431,8 @@ int hd60s_start(struct hd60s *d)
         msleep(5);
     }
     colour_convert(d, 0, 0);
+    struct tx_bus tb = tx_bus(d);
+    tx_start(&d->tx, &tb);
     d->started = !d->err;
     return d->err ? -1 : 0;
 }
@@ -427,6 +442,8 @@ void hd60s_stop(struct hd60s *d)
     if (!d->h)
         return;
     if (d->started) {
+        struct tx_bus tb = tx_bus(d);
+        tx_blank(&d->tx, &tb);
         receiver_pulse(d, 0x40, d->mst_saved);
         d->started = 0;
     }
@@ -448,11 +465,36 @@ void hd60s_close(struct hd60s *d)
 #define NUM_XFERS 16
 #define XFER_SIZE (512 * 1024)
 
+#define TX_POLL_MS 250
+#define MODE_WINDOW_MS 2000
+
+/* Frame size and rate over a window. The size must hold for the last 3/4 of the window's frames (startup runts and mode switches fail this). */
 struct stream_ctx {
     struct hd60s_parser *parser;
     volatile sig_atomic_t *stop;
     int active;
+    frame_cb frame_cb;
+    void *frame_ctx;
+    int w, h, interlaced, frames, run;
 };
+
+static void on_frame_probe(void *ctx, const uint8_t *f, int w, int h, int interlaced)
+{
+    struct stream_ctx *s = ctx;
+    s->run = s->frames && w == s->w && h == s->h && interlaced == s->interlaced ? s->run + 1 : 1;
+    s->w = w;
+    s->h = h;
+    s->interlaced = interlaced;
+    s->frames++;
+    s->frame_cb(s->frame_ctx, f, w, h, interlaced);
+}
+
+static long now_ms(void)
+{
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return ts.tv_sec * 1000L + ts.tv_nsec / 1000000L;
+}
 
 static void LIBUSB_CALL on_xfer(struct libusb_transfer *t)
 {
@@ -470,12 +512,17 @@ static void LIBUSB_CALL on_xfer(struct libusb_transfer *t)
 
 int hd60s_stream(struct hd60s *d, struct hd60s_parser *p, volatile sig_atomic_t *stop, double seconds)
 {
-    struct stream_ctx s = {p, stop, 0};
+    struct stream_ctx s = {.parser = p, .stop = stop, .frame_cb = p->on_frame, .frame_ctx = p->ctx};
     struct libusb_transfer *xfers[NUM_XFERS];
     if (libusb_set_interface_alt_setting(d->h, 0, 4) < 0) {
         fprintf(stderr, "hd60s: cannot select bulk alt setting\n");
         return -1;
     }
+    p->on_frame = on_frame_probe;
+    p->ctx = &s;
+    const struct tx_mode *mode = NULL;
+    struct tx_bus tb = tx_bus(d);
+    long win_start = now_ms(), last_poll = win_start;
     for (int i = 0; i < NUM_XFERS; i++) {
         xfers[i] = libusb_alloc_transfer(0);
         libusb_fill_bulk_transfer(xfers[i], d->h, HD60S_EP_VIDEO, malloc(XFER_SIZE), XFER_SIZE,
@@ -495,7 +542,20 @@ int hd60s_stream(struct hd60s *d, struct hd60s_parser *p, volatile sig_atomic_t 
         }
         struct timeval tv = {0, 100000};
         libusb_handle_events_timeout_completed(d->usb, &tv, NULL);
+        long now = now_ms();
+        if (now - win_start >= MODE_WINDOW_MS) {
+            double fps = s.frames * (s.interlaced ? 2000.0 : 1000.0) / (double)(now - win_start);
+            mode = s.frames && s.run * 4 >= s.frames * 3 ? tx_mode_find(s.w, s.h, s.interlaced, fps) : NULL;
+            s.frames = 0;
+            win_start = now;
+        }
+        if (!*stop && now - last_poll >= TX_POLL_MS) {
+            tx_poll(&d->tx, &tb, mode);
+            last_poll = now;
+        }
     }
+    p->on_frame = s.frame_cb;
+    p->ctx = s.frame_ctx;
     for (int i = 0; i < NUM_XFERS; i++) {
         free(xfers[i]->buffer);
         libusb_free_transfer(xfers[i]);

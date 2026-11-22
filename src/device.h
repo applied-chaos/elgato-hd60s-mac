@@ -6,6 +6,7 @@
 #include <stdint.h>
 
 #include "parser.h"
+#include "tx.h"
 
 #define HD60S_VID 0x0fd9
 #define HD60S_PID 0x0074
@@ -19,6 +20,7 @@ struct hd60s {
     uint32_t mcu_version;  /* b0<<16 | b1<<8 | b2 from MCU command 0x58 */
     uint8_t mst_saved[5];  /* MST3367 bank 1 reg 0x27 snapshot, restored on stop */
     int started;
+    struct tx tx;          /* HDMI-out transmitter state */
 };
 
 /* Set to silence hd60s_open's stderr messages (status reads open_err instead). */
