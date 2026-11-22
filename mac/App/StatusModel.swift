@@ -94,7 +94,7 @@ struct StatusView: Equatable {
             detail = usedBy == nil ? "The HDMI source is coming through." : "Only one app can use the HD60 S at a time."
         } else if case .unsupported(let w, let h) = f.signal {
             (dot, title) = (.warn, "Unsupported mode")
-            detail = "The source is sending \(w) × \(h). Set it to 1080p, 720p, 576 or 480."
+            detail = "The source is sending \(w) × \(h). Set it to a standard resolution such as 1080p or 720p."
         } else if f.signal == .none {
             (dot, title) = (.warn, "No signal")
             detail = "Check the source is on and sending HDMI. Consoles with HDCP turned on send no picture."
