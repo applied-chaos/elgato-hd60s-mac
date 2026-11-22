@@ -529,7 +529,7 @@ Only 640 wide is SD (BT.601 matrix, `parser_is_sd` = 1); the PC sizes use the HD
 - Audio channel order (left first) is assumed from I2S convention, not tested with a one-sided signal.
 - 0xEC padding bytes and the meaning of 0xEC, 0xC2 and 0xC7. Possibly LED/clock/enable.
 - Passthrough: documented in §6 from the decompile only; not implemented or tested. Open questions in §6.10.
-- Isoch alt 1–3 packet sizing.
+- Isoch alt 3 (39936 B per interval) delivers no data on macOS; alt 1 (16384) and alt 2 (32768) do. Alt 2 captures 1080p60 cleanly, so `--iso` uses the narrowest alt that carries 1080p60.
 - GPIO pin semantics (52 = enable, 57 = ready) are inferred from usage only.
 - Whether the app auto-prompts firmware updates. The version check is not traced.
 
