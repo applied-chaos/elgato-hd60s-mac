@@ -25,41 +25,31 @@ jobs:
       - run: brew install libusb pkg-config xcodegen
       - run: echo "DEVELOPER_DIR=$(xcode-select -p)" >> "$GITHUB_ENV"
 
-      - name: Import signing certificates and profiles
+      - name: Import signing certificate and profiles
         env:
           CERTIFICATE_P12: ${{ secrets.MACOS_CERTIFICATE_P12 }}
           CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
           APP_PROFILE: ${{ secrets.MACOS_APP_PROFILE }}
           CAMERA_PROFILE: ${{ secrets.MACOS_CAMERA_PROFILE }}
           ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
-          DEV_CERTIFICATE_P12: ${{ secrets.MACOS_DEV_CERTIFICATE_P12 }}
-          DEV_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_DEV_CERTIFICATE_PASSWORD }}
-          DEV_APP_PROFILE: ${{ secrets.MACOS_DEV_APP_PROFILE }}
-          DEV_CAMERA_PROFILE: ${{ secrets.MACOS_DEV_CAMERA_PROFILE }}
-          DEV_DEXT_PROFILE: ${{ secrets.MACOS_DEV_DEXT_PROFILE }}
         run: |
-          for var in CERTIFICATE_P12 CERTIFICATE_PASSWORD APP_PROFILE CAMERA_PROFILE ASC_KEY_P8 \
-                     DEV_CERTIFICATE_P12 DEV_CERTIFICATE_PASSWORD DEV_APP_PROFILE DEV_CAMERA_PROFILE DEV_DEXT_PROFILE; do
+          for var in CERTIFICATE_P12 CERTIFICATE_PASSWORD APP_PROFILE CAMERA_PROFILE ASC_KEY_P8; do
             [[ -n "${!var}" ]] || { echo "::error::secret for $var is empty; re-run scripts/setup-signing.sh"; exit 1; }
           done
           keychain="$RUNNER_TEMP/signing.keychain-db"
           password="$(openssl rand -hex 16)"
+          echo "$CERTIFICATE_P12" | base64 -d > "$RUNNER_TEMP/cert.p12"
           security create-keychain -p "$password" "$keychain"
           security set-keychain-settings -lut 3600 "$keychain"
           security unlock-keychain -p "$password" "$keychain"
-          # Developer ID signs the notarised DMG; Apple Development signs the DriverKit DMG.
-          for pair in "CERTIFICATE_P12 CERTIFICATE_PASSWORD" "DEV_CERTIFICATE_P12 DEV_CERTIFICATE_PASSWORD"; do
-            read -r p12 pass <<<"$pair"
-            echo "${!p12}" | base64 -d > "$RUNNER_TEMP/cert.p12"
-            security import "$RUNNER_TEMP/cert.p12" -k "$keychain" -P "${!pass}" -T /usr/bin/codesign
-            rm "$RUNNER_TEMP/cert.p12"
-          done
+          security import "$RUNNER_TEMP/cert.p12" -k "$keychain" -P "$CERTIFICATE_PASSWORD" -T /usr/bin/codesign
           security set-key-partition-list -S apple-tool:,apple: -k "$password" "$keychain" >/dev/null
           security list-keychains -d user -s "$keychain" login.keychain-db
+          rm "$RUNNER_TEMP/cert.p12"
 
           profiles="$HOME/Library/Developer/Xcode/UserData/Provisioning Profiles"
           mkdir -p "$profiles"
-          for var in APP_PROFILE CAMERA_PROFILE DEV_APP_PROFILE DEV_CAMERA_PROFILE DEV_DEXT_PROFILE; do
+          for var in APP_PROFILE CAMERA_PROFILE; do
             file="$RUNNER_TEMP/$var.provisionprofile"
             echo "${!var}" | base64 -d > "$file"
             name="$(security cms -D -i "$file" | plutil -extract Name raw -)"
@@ -70,20 +60,12 @@ jobs:
 
           echo "$ASC_KEY_P8" | base64 -d > "$RUNNER_TEMP/asc.p8"
 
-      - name: Build and sign (userspace)
+      - name: Build and sign
         run: >
           make dist VERSION="${VERSION#v}"
           XCODEFLAGS="CODE_SIGN_STYLE=Manual CODE_SIGN_IDENTITY='Developer ID Application'
           OTHER_CODE_SIGN_FLAGS=--timestamp CODE_SIGN_INJECT_BASE_ENTITLEMENTS=NO
           HD60S_APP_PROFILE='$HD60S_APP_PROFILE_NAME' HD60S_CAMERA_PROFILE='$HD60S_CAMERA_PROFILE_NAME'"
-
-      - name: Build and sign (DriverKit, development-signed)
-        run: >
-          make dist-dext VERSION="${VERSION#v}"
-          XCODEFLAGS="CODE_SIGN_STYLE=Manual CODE_SIGN_IDENTITY='Apple Development'
-          CODE_SIGN_INJECT_BASE_ENTITLEMENTS=NO
-          HD60S_APP_PROFILE='$HD60S_DEV_APP_PROFILE_NAME' HD60S_CAMERA_PROFILE='$HD60S_DEV_CAMERA_PROFILE_NAME'
-          HD60S_DEXT_PROFILE='$HD60S_DEV_DEXT_PROFILE_NAME'"
 
       - name: Notarise
         env:
@@ -100,10 +82,7 @@ jobs:
       - name: Publish release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: |
-          notes="The DriverKit DMG (\`HD60S-DriverKit-${VERSION#v}.dmg\`) is not notarised. It is development-signed and only runs on Macs registered in the team's development provisioning profile. Everyone else should use \`HD60S-${VERSION#v}.dmg\`."
-          gh release create "$VERSION" "build/HD60S-${VERSION#v}.dmg" "build/HD60S-DriverKit-${VERSION#v}.dmg" \
-            --title "$VERSION" --notes "$notes" --generate-notes --verify-tag
+        run: gh release create "$VERSION" "build/HD60S-${VERSION#v}.dmg" --title "$VERSION" --generate-notes --verify-tag
 
       - name: Remove signing keychain
         if: always()

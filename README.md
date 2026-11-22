@@ -10,9 +10,7 @@ Status: 1080p60 works, tested with a PS5. Other modes are untested. See [docs/PR
 
 Needs macOS 26 on Apple silicon.
 
-1. Download the latest DMG from [Releases](https://github.com/applied-chaos/elgato-hd60s-mac/releases). Pick one:
-   - `HD60S-x.y.z.dmg`: the normal choice. Signed and notarised by Apple, runs on any Mac.
-   - `HD60S-DriverKit-x.y.z.dmg`: adds an audio driver extension. It is development-signed and not notarised, because Apple hasn't yet granted the Developer ID DriverKit entitlements. It only runs on Macs registered in the team's development provisioning profile, so most people should skip it.
+1. Download the latest `HD60S-x.y.z.dmg` from [Releases](https://github.com/applied-chaos/elgato-hd60s-mac/releases).
 2. Drag `HD60S.app` to `/Applications`, open it and click Install.
 3. Enter your administrator password when asked. This installs the audio plug-in and restarts Core Audio.
 4. Approve the camera extension in System Settings > General > Login Items & Extensions > Camera Extensions.
@@ -37,7 +35,7 @@ make            # command-line tool, build/hd60s
 make test
 make install-app    # builds the app, camera extension and audio plug-in, installs to /Applications
 make dist           # notarisable userspace DMG, build/HD60S-x.y.z.dmg
-make dist-dext      # DriverKit DMG, build/HD60S-DriverKit-x.y.z.dmg (needs the DriverKit dev profile)
+make dist-dext      # local-only DriverKit DMG, build/HD60S-DriverKit-x.y.z.dmg
 ```
 
 The build downloads Elgato's Game Capture HD 2.11.14 for macOS and reads a few register tables from its `libUB530.dylib`. The tables aren't in this repo. The app builds need signing into Xcode with your own team; change `DEVELOPMENT_TEAM` in `mac/project.yml`.
@@ -52,7 +50,7 @@ build/hd60s capture -o - | ffplay -f rawvideo -pixel_format yuyv422 -video_size 
 
 ## Releasing
 
-Work happens on `develop`; `main` holds releases. Pushing a `vX.Y.Z` tag builds both DMGs, notarises the userspace one and publishes them on one GitHub release. The release workflow needs these repository secrets. `scripts/setup-signing.sh` walks you through creating each one and sets them with `gh`:
+Work happens on `develop`; `main` holds releases. Pushing a `vX.Y.Z` tag builds, signs and notarises the DMG and publishes a GitHub release. The release workflow needs these repository secrets. `scripts/setup-signing.sh` walks you through creating each one and sets them with `gh`:
 
 | Secret | What |
 |---|---|
@@ -63,13 +61,10 @@ Work happens on `develop`; `main` holds releases. Pushing a `vX.Y.Z` tag builds 
 | `ASC_KEY_P8` | App Store Connect API key, base64 `.p8`, for notarisation |
 | `ASC_KEY_ID` | Its key ID |
 | `ASC_ISSUER_ID` | Its issuer ID |
-| `MACOS_DEV_CERTIFICATE_P12` | Apple Development certificate and key, base64 `.p12`, for the DriverKit DMG |
-| `MACOS_DEV_CERTIFICATE_PASSWORD` | Its password |
-| `MACOS_DEV_APP_PROFILE` | Development provisioning profile for `net.mintopia.hd60s`, base64 |
-| `MACOS_DEV_CAMERA_PROFILE` | Development provisioning profile for `net.mintopia.hd60s.camera`, base64 |
-| `MACOS_DEV_DEXT_PROFILE` | DriverKit development provisioning profile for `net.mintopia.hd60s.dext`, base64 |
 
-Development profiles list device UDIDs and expire after a year; regenerate them and re-run the script to add a Mac.
+### DriverKit DMG
+
+`make dist-dext` builds a DMG with the audio driver extension. It is built locally with Xcode automatic signing, never by CI, and isn't published. It runs only on Macs in the team's development provisioning profile.
 
 ## Safety
 
