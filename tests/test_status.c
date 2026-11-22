@@ -102,9 +102,10 @@ int main(void)
     s.input_format = INPUT_YCBCR422;
     s.audio_rate = 48000;
     s.audio_channels = 2;
+    s.audio_source_rate = 44100;
     s.frames = 120;
     t = render(hd60s_print_text, &s);
-    assert(strstr(t, "1920x1080p 59.95 fps") && strstr(t, "BT.709") && strstr(t, "Input:    YCbCr 4:2:2") && strstr(t, "48000 Hz, 2 channels"));
+    assert(strstr(t, "1920x1080p 59.95 fps") && strstr(t, "BT.709") && strstr(t, "Input:    YCbCr 4:2:2") && strstr(t, "48000 Hz, 2 channels (source 44100 Hz)"));
 
     s.signal = SIGNAL_UNSUPPORTED;
     s.width = 1366;
@@ -121,6 +122,12 @@ int main(void)
     char *j = render(hd60s_print_json, &s);
     assert(strstr(j, "\"signal\":{\"state\":\"active\",\"width\":1920,\"height\":1080,\"interlaced\":false"));
     assert(strstr(j, "\"warnings\":[]") && strstr(j, "\"input\":\"ycbcr422\",\"colour\":\"bt709\""));
+    assert(strstr(j, "\"audio\":{\"rate\":48000,\"channels\":2,\"source_rate\":44100}"));
+    s.audio_source_rate = 0;
+    j = render(hd60s_print_json, &s);
+    assert(strstr(j, "\"channels\":2,\"source_rate\":null}"));
+    t = render(hd60s_print_text, &s);
+    assert(strstr(t, "48000 Hz, 2 channels\n"));
     s.interlaced = 1;
     s.field_order = FIELD_TOP_FIRST;
     s.speed = SPEED_HIGH;
