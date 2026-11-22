@@ -5,7 +5,7 @@ import SystemExtensions
 private let extensionID = "net.mintopia.hd60s.camera"
 
 enum Status: Equatable {
-    case notInstalled, working, needsApproval, installed, needsRestart, failed(String)
+    case notInstalled, working, needsApproval, installed, needsRestart, cancelled, failed(String)
 
     var title: String {
         switch self {
@@ -14,6 +14,7 @@ enum Status: Equatable {
         case .needsApproval: "Approval needed"
         case .installed: "Installed"
         case .needsRestart: "Restart required"
+        case .cancelled: "Cancelled"
         case .failed: "Something went wrong"
         }
     }
@@ -25,6 +26,7 @@ enum Status: Equatable {
         case .needsApproval: "Approve it in System Settings > General > Login Items & Extensions > Camera Extensions."
         case .installed: "The HD60 S now appears as a camera and microphone in your apps."
         case .needsRestart: "Restart your Mac to finish."
+        case .cancelled: "Administrator permission was not given. Nothing was changed."
         case .failed(let message): message
         }
     }
@@ -32,7 +34,7 @@ enum Status: Equatable {
     var colour: Color {
         switch self {
         case .notInstalled, .working: Color(hex: 0x6B7280)
-        case .needsApproval, .needsRestart: Color(hex: 0xFBBF24)
+        case .needsApproval, .needsRestart, .cancelled: Color(hex: 0xFBBF24)
         case .installed: Color(hex: 0x4ADE80)
         case .failed: Color(hex: 0xF87171)
         }
@@ -40,14 +42,14 @@ enum Status: Equatable {
 
     var canInstall: Bool {
         switch self {
-        case .notInstalled, .failed: true
+        case .notInstalled, .cancelled, .failed: true
         case .working, .needsApproval, .installed, .needsRestart: false
         }
     }
 
     var canUninstall: Bool {
         switch self {
-        case .needsApproval, .installed, .failed: true
+        case .needsApproval, .installed, .cancelled, .failed: true
         case .notInstalled, .working, .needsRestart: false
         }
     }
@@ -59,6 +61,7 @@ enum Status: Equatable {
         case "needsApproval": .needsApproval
         case "installed": .installed
         case "needsRestart": .needsRestart
+        case "cancelled": .cancelled
         case "failed": .failed("The extension could not be loaded.")
         default: nil
         }
@@ -106,11 +109,13 @@ struct BrandButton: ButtonStyle {
 final class Installer: NSObject, ObservableObject, OSSystemExtensionRequestDelegate {
     static let shared = Installer()
     @Published var status = Status.working
+    @Published var audio = AudioStatus.notInstalled
 
     private var installing = true
     private var query: OSSystemExtensionRequest?
 
     func refresh() {
+        refreshAudio()
         let request = OSSystemExtensionRequest.propertiesRequest(forExtensionWithIdentifier: extensionID, queue: .main)
         query = request
         submit(request)
@@ -128,14 +133,57 @@ final class Installer: NSObject, ObservableObject, OSSystemExtensionRequestDeleg
         OSSystemExtensionManager.shared.submitRequest(request)
     }
 
+    func refreshAudio() {
+        let installed = Bundle(path: AudioPlugin.halDirectory + "/" + AudioPlugin.name)?.object(forInfoDictionaryKey: "CFBundleVersion") as? String
+        let bundled = bundledAudio.flatMap { Bundle(url: $0)?.object(forInfoDictionaryKey: "CFBundleVersion") as? String } ?? "0"
+        audio = AudioPlugin.status(installed: installed, bundled: bundled)
+    }
+
+    private var bundledAudio: URL? { Bundle.main.builtInPlugInsURL?.appendingPathComponent(AudioPlugin.name) }
+
+    // One admin prompt; the extension request only follows if it succeeds, so a cancel changes nothing.
     func install() {
         installing = true
-        submit(.activationRequest(forExtensionWithIdentifier: extensionID, queue: .main))
+        guard let source = bundledAudio?.path else { return status = .failed("The audio plug-in is missing from the app.") }
+        runAsAdmin(AudioPlugin.installScript(source: source)) {
+            self.submit(.activationRequest(forExtensionWithIdentifier: extensionID, queue: .main))
+        }
     }
 
     func uninstall() {
         installing = false
-        submit(.deactivationRequest(forExtensionWithIdentifier: extensionID, queue: .main))
+        runAsAdmin(AudioPlugin.uninstallScript()) {
+            self.submit(.deactivationRequest(forExtensionWithIdentifier: extensionID, queue: .main))
+        }
+    }
+
+    private func runAsAdmin(_ script: String, then next: @escaping () -> Void) {
+        status = .working
+        DispatchQueue.global().async {
+            let process = Process()
+            let stderr = Pipe()
+            process.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
+            process.arguments = ["-e", AudioPlugin.appleScript(for: script)]
+            process.standardError = stderr
+            process.standardOutput = FileHandle.nullDevice
+            let outcome: AdminOutcome
+            do {
+                try process.run()
+                let message = String(decoding: stderr.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+                process.waitUntilExit()
+                outcome = AudioPlugin.outcome(exitCode: process.terminationStatus, stderr: message)
+            } catch {
+                outcome = .failed(error.localizedDescription)
+            }
+            DispatchQueue.main.async {
+                self.refreshAudio()
+                switch outcome {
+                case .done: next()
+                case .cancelled: self.status = .cancelled
+                case .failed(let message): self.status = .failed(message)
+                }
+            }
+        }
     }
 
     func request(_ request: OSSystemExtensionRequest, actionForReplacingExtension existing: OSSystemExtensionProperties,
@@ -153,6 +201,7 @@ final class Installer: NSObject, ObservableObject, OSSystemExtensionRequestDeleg
     }
 
     func request(_ request: OSSystemExtensionRequest, didFailWithError error: Error) {
+        if !installing, (error as? OSSystemExtensionError)?.code == .extensionNotFound { return refresh() }
         status = .failed(error.localizedDescription)
     }
 }
@@ -203,18 +252,19 @@ struct HD60SApp: App {
                         Text(status.title).font(.text(16, .semibold)).foregroundStyle(Color.ink)
                         Text(status.detail).font(.text(13)).foregroundStyle(Color.neutral)
                             .lineLimit(3)
+                        Text("Audio plug-in: \(installer.audio.label)").font(.text(13)).foregroundStyle(Color.neutral)
                     }
                     Spacer(minLength: 0)
                 }
                 .padding(.vertical, 2)
-                .frame(maxWidth: .infinity, minHeight: 80, maxHeight: 80, alignment: .topLeading)
+                .frame(maxWidth: .infinity, minHeight: 100, maxHeight: 100, alignment: .topLeading)
                 .accessibilityElement(children: .combine)
 
                 HStack(spacing: 12) {
                     Button("Install", action: installer.install).buttonStyle(BrandButton(primary: true))
                         .keyboardShortcut(.defaultAction).disabled(!status.canInstall)
                     Button("Uninstall", action: installer.uninstall).buttonStyle(BrandButton(primary: false))
-                        .disabled(!status.canUninstall)
+                        .disabled(!(status.canUninstall || installer.audio != .notInstalled))
                 }
                 .padding(.top, 22)
 
@@ -226,7 +276,7 @@ struct HD60SApp: App {
                 }
                 .padding(.horizontal, 36).padding(.bottom, 28)
             }
-            .frame(width: 560, height: 400, alignment: .topLeading)
+            .frame(width: 560, height: 420, alignment: .topLeading)
             .background(Color.canvas)
             .preferredColorScheme(.light)
         }

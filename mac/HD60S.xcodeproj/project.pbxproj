@@ -13,6 +13,7 @@
 		3BE7F6CBBF0A32B2E1AADBB1 /* Slate.png in Resources */ = {isa = PBXBuildFile; fileRef = D9B4906F3518E9B1364D6B76 /* Slate.png */; };
 		3ED78A9D91174746CC6F58BA /* RedHatDisplay.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 18241B2CA9D6FB72D10C87C1 /* RedHatDisplay.ttf */; };
 		56F2C184E36B4C0F6FCBE1AF /* ring.c in Sources */ = {isa = PBXBuildFile; fileRef = 82A96EFD70066EE24A64F776 /* ring.c */; };
+		68456F4805398A5E16120F98 /* AudioPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0BB1F64555B5906AFF622AED /* AudioPlugin.swift */; };
 		717A4907EF90ADB8B070AEE9 /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8400EEE9F8976B5123BAA715 /* main.swift */; };
 		868DB0A334D8F095951F5C12 /* HD60SAudio.c in Sources */ = {isa = PBXBuildFile; fileRef = 5CAE976973A9661138B5E396 /* HD60SAudio.c */; };
 		8FC432765E9249BF3968EB02 /* RedHatText.ttf in Resources */ = {isa = PBXBuildFile; fileRef = E4BA9DEAA185A1CA9EF0C297 /* RedHatText.ttf */; };
@@ -21,6 +22,7 @@
 		A042FF175789F53AC09AC388 /* Provider.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEB304182F383B96E72A3DA6 /* Provider.swift */; };
 		CB1B48B6A5A96319F7FC9477 /* OFL.txt in Resources */ = {isa = PBXBuildFile; fileRef = C7F46965F4F9398B418F05A8 /* OFL.txt */; };
 		E2A40B2FADCE6E73189BED86 /* parser.c in Sources */ = {isa = PBXBuildFile; fileRef = 58FCE89662E2C2249C89C7B2 /* parser.c */; };
+		E6161C4A5DAFF37A3B872C3C /* HD60SAudio.bundle in Embed Dependencies */ = {isa = PBXBuildFile; fileRef = 9F047EFF5D3A895B3B3B2B7D /* HD60SAudio.bundle */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -30,6 +32,13 @@
 			proxyType = 1;
 			remoteGlobalIDString = 7DAC753F38D630D436263A6D;
 			remoteInfo = net.mintopia.hd60s.camera;
+		};
+		891D58046F0E332185B99ABF /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = C1E4BFA659EE3E38B51BA51F /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 02DB3D463C2C9E896E635013;
+			remoteInfo = HD60SAudio;
 		};
 /* End PBXContainerItemProxy section */
 
@@ -45,9 +54,21 @@
 			name = "Embed System Extensions";
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		F99B4E5CAD905639750F9773 /* Embed Dependencies */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				E6161C4A5DAFF37A3B872C3C /* HD60SAudio.bundle in Embed Dependencies */,
+			);
+			name = "Embed Dependencies";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		0BB1F64555B5906AFF622AED /* AudioPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioPlugin.swift; sourceTree = "<group>"; };
 		18241B2CA9D6FB72D10C87C1 /* RedHatDisplay.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = RedHatDisplay.ttf; sourceTree = "<group>"; };
 		2802D08CC9D0EF039BE94247 /* HD60SCamera.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = HD60SCamera.entitlements; sourceTree = "<group>"; };
 		3D657EA2382F0CC167FE569B /* device.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = device.c; sourceTree = "<group>"; };
@@ -110,6 +131,7 @@
 			isa = PBXGroup;
 			children = (
 				791CD22A7A5BCBF5CA41DEC9 /* Assets.xcassets */,
+				0BB1F64555B5906AFF622AED /* AudioPlugin.swift */,
 				A3E0C3F3545569814FC50DBC /* HD60S.entitlements */,
 				5250AEE80161FAD7E2AB87AB /* HD60SApp.swift */,
 				B4395BC9C75FEE1900F4B5D8 /* Info.plist */,
@@ -197,11 +219,13 @@
 				834DF2B43D4C9A39DD9BCB4D /* Sources */,
 				43EE71BB9A080355C436338C /* Resources */,
 				5851D16BC1709E8A881B9DEA /* Embed System Extensions */,
+				F99B4E5CAD905639750F9773 /* Embed Dependencies */,
 			);
 			buildRules = (
 			);
 			dependencies = (
 				3466F1082B1A0D9433B011EF /* PBXTargetDependency */,
+				6336FC4EB75E7BEF5BA11CD4 /* PBXTargetDependency */,
 			);
 			name = HD60S;
 			packageProductDependencies = (
@@ -289,6 +313,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				68456F4805398A5E16120F98 /* AudioPlugin.swift in Sources */,
 				935F140DCE2EC4E8C40E4C5A /* HD60SApp.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -313,6 +338,11 @@
 			isa = PBXTargetDependency;
 			target = 7DAC753F38D630D436263A6D /* net.mintopia.hd60s.camera */;
 			targetProxy = 724A1CC0625C352115E66933 /* PBXContainerItemProxy */;
+		};
+		6336FC4EB75E7BEF5BA11CD4 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 02DB3D463C2C9E896E635013 /* HD60SAudio */;
+			targetProxy = 891D58046F0E332185B99ABF /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 

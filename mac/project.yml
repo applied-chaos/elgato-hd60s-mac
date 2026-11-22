@@ -32,6 +32,9 @@ targets:
       ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
     dependencies:
       - target: net.mintopia.hd60s.camera
+      - target: HD60SAudio
+        copy:
+          destination: plugins
   net.mintopia.hd60s.camera:
     type: system-extension
     platform: macOS
