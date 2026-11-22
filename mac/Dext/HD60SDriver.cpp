@@ -322,7 +322,7 @@ int HD60SDriver::Control(int in, uint8_t req, uint16_t val, uint16_t idx, uint8_
 void HD60SDriver::Frame(const uint8_t *frame, int width, int height, int interlaced)
 {
     hd60s_policy_frame(&ivars->policy, width, height, interlaced);
-    fr_publish(ivars->frames, frame, width, height, interlaced, ivars->parser.wide);
+    fr_publish(ivars->frames, frame, width, height, interlaced, ivars->parser.wide, ivars->parser.colour);
 }
 
 void HD60SDriver::Audio(const uint8_t *pcm, size_t len)

@@ -2,17 +2,17 @@
 
 #include <string.h>
 
-enum { INIT_MARK = 0xb2, EDID_RETRY_POLLS = 8 };
+enum { INIT_MARK = 0xb2, EDID_RETRY_POLLS = 8, HD_MIN_PCLK_KHZ = 74250, AVI_C1C0_BT601 = 0x48, AVI_C1C0_BT709 = 0x88 };
 
 static const struct {
     int w, h, interlaced, fps;
     struct tx_mode m;
 } modes[] = {
-    {720, 480, 1, 60, {6, 1, 0}},    {720, 576, 1, 50, {21, 1, 0}},   {1280, 720, 0, 60, {4, 0, 1}},
-    {1280, 720, 0, 50, {19, 0, 1}},  {1920, 1080, 1, 60, {5, 0, 1}},  {1920, 1080, 1, 50, {20, 0, 1}},
-    {1920, 1080, 0, 30, {34, 0, 1}}, {1920, 1080, 0, 25, {33, 0, 1}}, {1920, 1080, 0, 24, {32, 0, 1}},
-    {1920, 1080, 0, 60, {16, 0, 1}}, {1920, 1080, 0, 50, {31, 0, 1}}, {720, 480, 0, 60, {2, 0, 0}},
-    {720, 576, 0, 50, {17, 0, 0}},   {640, 480, 0, 60, {1, 0, 0}},
+    {720, 480, 1, 60, {6, 1, 0, 27000}},    {720, 576, 1, 50, {21, 1, 0, 27000}},   {1280, 720, 0, 60, {4, 0, 1, 74250}},
+    {1280, 720, 0, 50, {19, 0, 1, 74250}},  {1920, 1080, 1, 60, {5, 0, 1, 74250}},  {1920, 1080, 1, 50, {20, 0, 1, 74250}},
+    {1920, 1080, 0, 30, {34, 0, 1, 74250}}, {1920, 1080, 0, 25, {33, 0, 1, 74250}}, {1920, 1080, 0, 24, {32, 0, 1, 74250}},
+    {1920, 1080, 0, 60, {16, 0, 1, 148500}}, {1920, 1080, 0, 50, {31, 0, 1, 148500}}, {720, 480, 0, 60, {2, 0, 0, 27000}},
+    {720, 576, 0, 50, {17, 0, 0, 27000}},   {640, 480, 0, 60, {1, 0, 0, 25175}},
 };
 
 const struct tx_mode *tx_mode_find(int width, int height, int interlaced, double fps)
@@ -50,6 +50,7 @@ int tx_edid_parse(const uint8_t *e, size_t len, struct tx_sink *out)
             continue;
         out->ycc444 |= !!(x[3] & 0x20);
         out->ycc422 |= !!(x[3] & 0x10);
+        out->basic_audio |= !!(x[3] & 0x40);
         for (int i = 4; i < x[2] && i < 127; i += (x[i] & 31) + 1)
             if ((x[i] >> 5) == 3 && (x[i] & 31) >= 5 && x[i + 1] == 0x03 && x[i + 2] == 0x0c && x[i + 3] == 0)
                 out->hdmi = 1;
@@ -57,11 +58,38 @@ int tx_edid_parse(const uint8_t *e, size_t len, struct tx_sink *out)
     return 1;
 }
 
+unsigned tx_audio_n(uint32_t pclk_khz, int hz)
+{
+    /* HDMI 1.4 table 7-1..7-3; every 27, 74.25 and 148.5 MHz row shares the same N. */
+    static const unsigned vga[3] = {4576, 7007, 6864}, std[3] = {4096, 6272, 6144};
+    int i = hz == 32000 ? 0 : hz == 44100 ? 1 : hz == 48000 ? 2 : -1;
+    if (i < 0)
+        return 0;
+    return pclk_khz < 26000 ? vga[i] : std[i];
+}
+
+int tx_audio_fs_code(int hz)
+{
+    return hz == 44100 ? 0 : hz == 48000 ? 2 : hz == 32000 ? 3 : -1;
+}
+
+int tx_audio_rate(uint32_t pclk_khz, uint32_t n, uint32_t cts)
+{
+    static const int std[] = {32000, 44100, 48000, 88200, 96000, 176400, 192000};
+    if (!n || !cts)
+        return 0;
+    double fs = (double)pclk_khz * 1000.0 * n / (128.0 * cts);
+    for (size_t i = 0; i < sizeof std / sizeof *std; i++)
+        if ((fs > std[i] ? fs - std[i] : std[i] - fs) < std[i] * 0.02)
+            return std[i];
+    return 0;
+}
+
 void tx_avi(uint8_t out[6], enum tx_colour c, const struct tx_mode *m)
 {
-    /* Always BT.709: the capture matrix is never switched to BT.601 for SD. */
+    int bt601 = m->pclk_khz < HD_MIN_PCLK_KHZ;
     out[0] = (uint8_t)(0x10 | c << 5);
-    out[1] = (uint8_t)(0x88 | (m->wide ? 0x20 : 0x10));
+    out[1] = (uint8_t)((bt601 ? AVI_C1C0_BT601 : AVI_C1C0_BT709) | (m->wide ? 0x20 : 0x10));
     out[2] = 0;
     out[3] = m->vic;
     out[4] = m->rep;
@@ -92,7 +120,7 @@ enum tx_state tx_next(enum tx_state s, struct tx_in in)
     return TX_IDLE;
 }
 
-/* Write allow-list: transmitter video, DDC read and mute registers only. No HDCP (0x1F-0x46), audio (0xE0+) or burst DDC. */
+/* Write allow-list: transmitter video, audio, DDC read and mute registers only. No HDCP (0x1F-0x46) or burst DDC. */
 int tx_writable(uint8_t r, uint8_t v)
 {
     switch (r) {
@@ -101,9 +129,16 @@ int tx_writable(uint8_t r, uint8_t v)
     case 0x15: return v == 0 || v == 3 || v == 9 || v == 0x0f;
     case 0x65: return v == 0 || v == 2;
     case 0x0f: case 0xc0: case 0xc1: case 0xc6: return 1;
+    case 0xc5: return v == 0;
+    case 0xce: return v == 0 || v == 3;
+    case 0xe0: return v == 0xc1 || v == 0;
+    case 0xe1: return v == 0x01;
+    case 0xe2: return v == 0xe4;
+    case 0xe3: return v == 0;
+    case 0xe4: return v == 0x08;
     }
     return (r >= 0x04 && r <= 0x05) || (r >= 0x09 && r <= 0x0b) || (r >= 0x12 && r <= 0x14) ||
-           (r >= 0x58 && r <= 0x68) || (r >= 0x70 && r <= 0x87) || (r >= 0x90 && r <= 0xa3) ||
+           (r >= 0x33 && r <= 0x35) || (r >= 0x58 && r <= 0x6d) || (r >= 0x70 && r <= 0x87) || (r >= 0x90 && r <= 0xa3) ||
            (r >= 0xc9 && r <= 0xd0);
 }
 
@@ -137,8 +172,65 @@ static void unmute(const struct tx_bus *b)
     w(b, 0xc6, 3);
 }
 
+static void audio_off(struct tx *t, const struct tx_bus *b)
+{
+    if (!t->audio_hz)
+        return;
+    w(b, 0xce, 0);
+    w(b, 0xe0, 0);
+    t->audio_hz = 0;
+}
+
+/* Rate to send, 0 = off. Basic audio (2ch PCM at 32/44.1/48 kHz) is mandatory in every sink that advertises it. */
+static int audio_wanted(const struct tx *t)
+{
+    return t->sink.hdmi && t->sink.basic_audio && t->want && tx_audio_n(t->want->pclk_khz, t->want_hz) ? t->want_hz : 0;
+}
+
+static void audio_on(struct tx *t, const struct tx_bus *b, int hz)
+{
+    unsigned n = tx_audio_n(t->want->pclk_khz, hz);
+    int fs = tx_audio_fs_code(hz);
+    w(b, 0x0f, 1);
+    for (uint8_t i = 0; i < 3; i++)
+        w(b, (uint8_t)(0x33 + i), (uint8_t)(n >> (8 * i)));
+    w(b, 0x0f, 0);
+    w(b, 0xc5, 0);
+    rmw(b, 0x58, 0x0c, 0x04);
+    w(b, 0x04, (uint8_t)(rd(b, 0x04) | 0x04));
+    w(b, 0xe2, 0xe4);
+    w(b, 0xe3, 0x00);
+    w(b, 0xe4, 0x08);
+    w(b, 0xe0, 0xc1);
+    w(b, 0xe1, 0x01);
+    w(b, 0x0f, 1);
+    static const uint8_t chst[7] = {0, 0, 1, 0x21, 0x43, 0x65, 0x87};
+    for (uint8_t i = 0; i < 7; i++)
+        w(b, (uint8_t)(0x91 + i), chst[i]);
+    w(b, 0x98, (uint8_t)fs);
+    w(b, 0x99, (uint8_t)((~fs & 0xf) << 4 | 0x0b));
+    w(b, 0x68, 0x01);
+    for (uint8_t r = 0x69; r <= 0x6c; r++)
+        w(b, r, 0);
+    w(b, 0x6d, 0x70);
+    w(b, 0x0f, 0);
+    w(b, 0xce, 0x03);
+    w(b, 0x04, (uint8_t)(rd(b, 0x04) & ~0x04));
+    t->audio_hz = hz;
+}
+
+static void audio_sync(struct tx *t, const struct tx_bus *b)
+{
+    int hz = audio_wanted(t);
+    if (hz)
+        audio_on(t, b, hz);
+    else
+        audio_off(t, b);
+}
+
 static void afe_off(struct tx *t, const struct tx_bus *b)
 {
+    audio_off(t, b);
     w(b, 0x04, 0x1d);
     w(b, 0x61, 0x30);
     t->sent_vic = 0;
@@ -254,11 +346,12 @@ static void program_video(struct tx *t, const struct tx_bus *b)
     t->sent_vic = m->vic;
 }
 
-static void enable_output(const struct tx_bus *b)
+static void enable_output(struct tx *t, const struct tx_bus *b)
 {
     mute(b);
     w(b, 0x0f, 0);
     w(b, 0x61, 0x00);
+    audio_sync(t, b);
     unmute(b);
 }
 
@@ -287,7 +380,7 @@ static struct tx_in act(struct tx *t, const struct tx_bus *b, struct tx_in in)
             b->sleep_ms(b->ctx, 10);
         in.stable = !!(rd(b, 0x0e) & 0x10);
         break;
-    case TX_ENABLE: enable_output(b); break;
+    case TX_ENABLE: enable_output(t, b); break;
     case TX_RUNNING:
         if (!in.stable && !in.blank)
             mute(b);
@@ -305,17 +398,19 @@ void tx_start(struct tx *t, const struct tx_bus *b)
         chip_init(b);
 }
 
-void tx_poll(struct tx *t, const struct tx_bus *b, const struct tx_mode *mode)
+void tx_poll(struct tx *t, const struct tx_bus *b, const struct tx_mode *mode, int audio_hz)
 {
     if (!t->present)
         return;
     if (rd(b, 0x09) != INIT_MARK) {
         chip_init(b);
         mute(b);
+        t->audio_hz = 0;
         t->state = TX_IDLE;
         t->sent_vic = 0;
     }
     t->want = mode;
+    t->want_hz = audio_hz;
     if (!mode && t->sent_vic) {
         mute(b);
         t->sent_vic = 0;
@@ -334,6 +429,11 @@ void tx_poll(struct tx *t, const struct tx_bus *b, const struct tx_mode *mode)
         t->state = next;
         if (next == s)
             break;
+    }
+    if (t->state == TX_RUNNING && mode && audio_wanted(t) != t->audio_hz) {
+        mute(b);
+        audio_sync(t, b);
+        unmute(b);
     }
 }
 
