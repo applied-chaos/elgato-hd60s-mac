@@ -117,6 +117,7 @@ final class Installer: NSObject, ObservableObject, OSSystemExtensionRequestDeleg
     @Published var audio = AudioStatus.notInstalled
 
     let dext = DextInstaller()
+    let flavour = Flavour.current
     private var installing = true
     private var query: OSSystemExtensionRequest?
 
@@ -155,18 +156,26 @@ final class Installer: NSObject, ObservableObject, OSSystemExtensionRequestDeleg
             self.dext.activate()
             self.submit(.activationRequest(forExtensionWithIdentifier: extensionID, queue: .main))
         }
-        if dext.bundled {
-            return audio == .notInstalled ? activate() : runAsAdmin(AudioPlugin.uninstallScript(), then: activate)
+        switch flavour.installStep(audio: audio, plugInSource: bundledAudio?.path) {
+        case .none: activate()
+        case .admin(let script): runAsAdmin(script, then: activate)
+        case .missingPlugIn: status = .failed("The audio plug-in is missing from the app.")
         }
-        guard let source = bundledAudio?.path else { return status = .failed("The audio plug-in is missing from the app.") }
-        runAsAdmin(AudioPlugin.installScript(source: source), then: activate)
+    }
+
+    var canInstall: Bool {
+        status.canInstall || flavour.offersReinstall(cameraInstalled: status == .installed, audio: audio, dext: dext.status)
     }
 
     func uninstall() {
         installing = false
-        runAsAdmin(AudioPlugin.uninstallScript()) {
+        let deactivate = {
             self.dext.deactivate()
             self.submit(.deactivationRequest(forExtensionWithIdentifier: extensionID, queue: .main))
+        }
+        switch flavour.uninstallStep(audio: audio) {
+        case .admin(let script): runAsAdmin(script, then: deactivate)
+        case .none, .missingPlugIn: deactivate()
         }
     }
 
@@ -331,7 +340,7 @@ struct InstallTab: View {
     var body: some View {
         let status = installer.status
         var extra: [String] = []
-        if !dext.bundled && audioDiffers { extra.append("Audio plug-in: \(installer.audio.label)") }
+        if installer.flavour.showsAudioPlugIn && audioDiffers { extra.append("Audio plug-in: \(installer.audio.label)") }
         if let label = dext.status.label { extra.append("Driver extension: \(label)") }
         return VStack(alignment: .leading, spacing: 0) {
             StateBlock(dot: status.colour, title: status.title, detail: status.detail, extra: extra)
@@ -342,7 +351,7 @@ struct InstallTab: View {
                         .disabled(status == .working)
                 case .install:
                     Button("Install", action: installer.install).buttonStyle(BrandButton(primary: true))
-                        .keyboardShortcut(.defaultAction).disabled(!status.canInstall)
+                        .keyboardShortcut(.defaultAction).disabled(!installer.canInstall)
                 }
             }
             .padding(.top, 24).padding(.leading, 22)
@@ -409,15 +418,13 @@ struct MainWindow: View {
 }
 
 struct AboutWindow: View {
-    @StateObject private var dext = DextInstaller()
-
     private var version: String {
         let info = Bundle.main.infoDictionary
         return "Version \(info?["CFBundleShortVersionString"] as? String ?? "0") (\(info?["CFBundleVersion"] as? String ?? "0"))"
     }
 
     private var description: String {
-        let dextBuild = HD60SApp.launchArguments.value(after: "--preview-flavour").map { $0 == "dext" } ?? dext.bundled
+        let dextBuild = HD60SApp.launchArguments.value(after: "--preview-flavour").map { $0 == "dext" } ?? (Flavour.current == .driverKit)
         return dextBuild ? "DriverKit development build for\nthe HD60 S on Apple silicon Macs." : "Userspace driver for the\nHD60 S on Apple silicon Macs."
     }
 

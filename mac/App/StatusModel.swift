@@ -7,6 +7,7 @@ struct DeviceFacts: Decodable, Equatable {
     enum Colour: String, Decodable { case bt709, bt601, unknown }
     enum Signal: Equatable {
         case unknown, none
+        case unsupported(width: Int, height: Int)
         case active(width: Int, height: Int, interlaced: Bool, topFirst: Bool, fps: Double, colour: Colour)
     }
     struct Owner: Decodable, Equatable { var kind: String; var name: String? }
@@ -42,6 +43,8 @@ struct DeviceFacts: Decodable, Equatable {
         let s = try c.nestedContainer(keyedBy: SignalKeys.self, forKey: .signal)
         switch try s.decode(String.self, forKey: .state) {
         case "none": signal = .none
+        case "unsupported":
+            signal = .unsupported(width: try s.decode(Int.self, forKey: .width), height: try s.decode(Int.self, forKey: .height))
         case "active":
             signal = .active(width: try s.decode(Int.self, forKey: .width), height: try s.decode(Int.self, forKey: .height),
                              interlaced: try s.decode(Bool.self, forKey: .interlaced),
@@ -89,6 +92,9 @@ struct StatusView: Equatable {
             dot = .ok
             title = usedBy.map { "Live, in use by \($0)" } ?? "Live"
             detail = usedBy == nil ? "The HDMI source is coming through." : "Only one app can use the HD60 S at a time."
+        } else if case .unsupported(let w, let h) = f.signal {
+            (dot, title) = (.warn, "Unsupported mode")
+            detail = "The source is sending \(w) × \(h). Set it to 1080p, 720p, 576 or 480."
         } else if f.signal == .none {
             (dot, title) = (.warn, "No signal")
             detail = "Check the source is on and sending HDMI. Consoles with HDCP turned on send no picture."

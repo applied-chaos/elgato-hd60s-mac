@@ -89,10 +89,10 @@ int main(void)
     assert(hd60s_parse_owner_pid("pid 26442, net.mintopia.hd6", &pid) && pid == 26442);
     assert(!hd60s_parse_owner_pid("garbage", &pid));
 
-    /* Runts: only the five standard frame sizes count as real frames. */
     assert(hd60s_size_standard(1920, 1080) && hd60s_size_standard(1280, 720));
     assert(hd60s_size_standard(720, 576) && hd60s_size_standard(720, 480));
     assert(hd60s_size_standard(1440, 480));
+    assert(hd60s_size_standard(640, 480) && hd60s_size_standard(800, 600) && hd60s_size_standard(1440, 900));
     assert(!hd60s_size_standard(1280, 12) && !hd60s_size_standard(1920, 1045));
 
     /* Text report: no signal, then a signal. */
@@ -108,14 +108,32 @@ int main(void)
     s.input_format = INPUT_YCBCR422;
     s.audio_rate = 48000;
     s.audio_channels = 2;
+    s.audio_source_rate = 44100;
     s.frames = 120;
     t = render(hd60s_print_text, &s);
-    assert(strstr(t, "1920x1080p 59.95 fps") && strstr(t, "BT.709") && strstr(t, "Input:    YCbCr 4:2:2") && strstr(t, "48000 Hz, 2 channels"));
+    assert(strstr(t, "1920x1080p 59.95 fps") && strstr(t, "BT.709") && strstr(t, "Input:    YCbCr 4:2:2") && strstr(t, "48000 Hz, 2 channels (source 44100 Hz)"));
+
+    s.signal = SIGNAL_UNSUPPORTED;
+    s.width = 1366;
+    s.height = 700;
+    t = render(hd60s_print_text, &s);
+    assert(strstr(t, "1366x700") && strstr(t, "unsupported mode"));
+    char *u = render(hd60s_print_json, &s);
+    assert(strstr(u, "\"signal\":{\"state\":\"unsupported\",\"width\":1366,\"height\":700}"));
+    s.signal = SIGNAL_ACTIVE;
+    s.width = 1920;
+    s.height = 1080;
 
     /* JSON contract. */
     char *j = render(hd60s_print_json, &s);
     assert(strstr(j, "\"signal\":{\"state\":\"active\",\"width\":1920,\"height\":1080,\"interlaced\":false"));
     assert(strstr(j, "\"warnings\":[]") && strstr(j, "\"input\":\"ycbcr422\",\"colour\":\"bt709\""));
+    assert(strstr(j, "\"audio\":{\"rate\":48000,\"channels\":2,\"source_rate\":44100}"));
+    s.audio_source_rate = 0;
+    j = render(hd60s_print_json, &s);
+    assert(strstr(j, "\"channels\":2,\"source_rate\":null}"));
+    t = render(hd60s_print_text, &s);
+    assert(strstr(t, "48000 Hz, 2 channels\n"));
     s.interlaced = 1;
     s.field_order = FIELD_TOP_FIRST;
     s.speed = SPEED_HIGH;

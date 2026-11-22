@@ -20,8 +20,8 @@ build/libUB530.dylib:
 build/ub530_tables.h: tools/extract-tables.py build/libUB530.dylib
 	python3 -I tools/extract-tables.py build/libUB530.dylib > $@.tmp && mv $@.tmp $@
 
-build/hd60s: src/main.c src/device.c src/device_libusb.c src/device_libusb.h src/parser.c src/tx.c src/status.c src/status_probe.c src/status_sample.c src/device.h src/parser.h src/tx.h src/status.h build/ub530_tables.h
-	$(CC) $(CFLAGS) -o $@ src/main.c src/device.c src/device_libusb.c src/parser.c src/tx.c src/status.c src/status_probe.c src/status_sample.c $(LDLIBS) -framework IOKit -framework CoreFoundation
+build/hd60s: src/main.c src/device.c src/device_libusb.c src/device_libusb.h src/parser.c src/tx.c src/audio.c src/status.c src/status_probe.c src/status_sample.c src/device.h src/audio.h src/parser.h src/tx.h src/status.h build/ub530_tables.h
+	$(CC) $(CFLAGS) -o $@ src/main.c src/device.c src/device_libusb.c src/parser.c src/tx.c src/audio.c src/status.c src/status_probe.c src/status_sample.c $(LDLIBS) -framework IOKit -framework CoreFoundation
 
 build/test_parser: tests/test_parser.c src/parser.c src/parser.h
 	@mkdir -p build
@@ -58,9 +58,9 @@ dist-dext: DEXT_CONFIG = Release
 dist-dext: dext-dev
 	$(call dmg,build/HD60S-dext.app,build/HD60S-DriverKit-$(VERSION).dmg)
 
-build/test_device: tests/test_device.c src/device.c src/tx.c src/parser.c src/device.h build/ub530_tables.h
+build/test_device: tests/test_device.c src/device.c src/tx.c src/audio.c src/parser.c src/device.h src/audio.h build/ub530_tables.h
 	@mkdir -p build
-	$(CC) $(CFLAGS) -fsanitize=address,undefined -o $@ tests/test_device.c src/device.c src/tx.c src/parser.c
+	$(CC) $(CFLAGS) -fsanitize=address,undefined -o $@ tests/test_device.c src/device.c src/tx.c src/audio.c src/parser.c
 
 build/test_framering: tests/test_framering.c src/framering.c src/framering.h src/link.h
 	@mkdir -p build
@@ -74,13 +74,21 @@ build/test_deinterlace: tests/test_deinterlace.c src/deinterlace.c src/deinterla
 	@mkdir -p build
 	$(CC) $(CFLAGS) -fsanitize=address,undefined -o $@ tests/test_deinterlace.c src/deinterlace.c
 
+build/test_audio: tests/test_audio.c src/audio.c src/audio.h
+	@mkdir -p build
+	$(CC) $(CFLAGS) -fsanitize=address,undefined -o $@ tests/test_audio.c src/audio.c
+
 build/test_tx: tests/test_tx.c src/tx.c src/tx.h
 	@mkdir -p build
 	$(CC) $(CFLAGS) -fsanitize=address,undefined -o $@ tests/test_tx.c src/tx.c
 
-build/test_status: tests/test_status.c src/status.c src/status.h
+build/test_status: tests/test_status.c src/status.c src/status.h src/parser.c src/parser.h
 	@mkdir -p build
-	$(CC) $(CFLAGS) -fsanitize=address,undefined -o $@ tests/test_status.c src/status.c
+	$(CC) $(CFLAGS) -fsanitize=address,undefined -o $@ tests/test_status.c src/status.c src/parser.c
+
+build/test_aclock: tests/test_aclock.c src/aclock.c src/aclock.h
+	@mkdir -p build
+	$(CC) $(CFLAGS) -fsanitize=address,undefined -o $@ tests/test_aclock.c src/aclock.c
 
 build/test_ring: tests/test_ring.c src/ring.c src/ring.h
 	@mkdir -p build
@@ -106,14 +114,16 @@ build/test_frame_fit: tests/test_frame_fit.swift mac/Extension/FrameFit.swift
 	@mkdir -p build
 	swiftc -parse-as-library -o $@ mac/Extension/FrameFit.swift tests/test_frame_fit.swift
 
-test: build/test_parser build/test_device build/test_framering build/test_link build/test_tx build/test_deinterlace build/test_ring build/test_status build/test_plugin build/test_audio_plugin build/test_frame_fit build/test_frame_rates build/test_status_view
+test: build/test_parser build/test_device build/test_framering build/test_link build/test_tx build/test_audio build/test_deinterlace build/test_ring build/test_aclock build/test_status build/test_plugin build/test_audio_plugin build/test_frame_fit build/test_frame_rates build/test_status_view
 	build/test_parser
 	build/test_device
 	build/test_framering
 	build/test_link
 	build/test_tx
+	build/test_audio
 	build/test_deinterlace
 	build/test_ring
+	build/test_aclock
 	build/test_status
 	build/test_plugin
 	build/test_audio_plugin

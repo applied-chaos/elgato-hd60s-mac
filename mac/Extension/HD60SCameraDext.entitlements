@@ -14,9 +14,5 @@
 	<array>
 		<string>IOUserUserClient</string>
 	</array>
-	<key>com.apple.security.temporary-exception.mach-lookup.global-name</key>
-	<array>
-		<string>com.apple.audio.audiohald</string>
-	</array>
 </dict>
 </plist>

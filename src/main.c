@@ -1,3 +1,4 @@
+#include <math.h>
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -78,8 +79,9 @@ static int usage(void)
 {
     fprintf(stderr, "usage: hd60s info\n"
                     "       hd60s status [--json]\n"
-                    "       hd60s capture [-n frames] [-o out.uyvy|-] [-a out.pcm]\n"
-                    "video: raw YUY2 (ffmpeg yuyv422); audio: 48 kHz s16le stereo\n");
+                    "       hd60s capture [-n frames] [-o out.uyvy|-] [-a out.pcm] [-s hdmi|line|mix] [-g dB] [-m]\n"
+                    "video: raw YUY2 (ffmpeg yuyv422); audio: 48 kHz s16le stereo\n"
+                    "audio: -s source (default hdmi), -g gain -12..12 dB in 0.5 steps (default -6), -m mute\n");
     return 2;
 }
 
@@ -108,15 +110,26 @@ int main(int argc, char **argv)
 
     struct capture c = {0};
     const char *vpath = NULL, *apath = NULL;
+    struct audio_settings audio = AUDIO_DEFAULT;
     int opt;
     optind = 2;
-    while ((opt = getopt(argc, argv, "n:o:a:")) != -1) {
+    while ((opt = getopt(argc, argv, "n:o:a:s:g:m")) != -1) {
         if (opt == 'n')
             c.want = strtol(optarg, NULL, 10);
         else if (opt == 'o')
             vpath = optarg;
         else if (opt == 'a')
             apath = optarg;
+        else if (opt == 's') {
+            if (!audio_source_parse(optarg, &audio.source))
+                return usage();
+        } else if (opt == 'g') {
+            double db = strtod(optarg, NULL);
+            if (db < AUDIO_GAIN_MIN / 2.0 || db > AUDIO_GAIN_MAX / 2.0)
+                return usage();
+            audio.gain_half_db = (int)lround(db * 2);
+        } else if (opt == 'm')
+            audio.mute = 1;
         else
             return usage();
     }
@@ -135,7 +148,7 @@ int main(int argc, char **argv)
     struct hd60s d;
     int rc = 1;
     hd60s_open_wait_ms = 4000;
-    if (hd60s_open(&d) == 0 && hd60s_start(&d) == 0) {
+    if (hd60s_open(&d) == 0 && hd60s_set_audio(&d, &audio) == 0 && hd60s_start(&d) == 0) {
         if (info) {
             fprintf(stderr, "mcu firmware: %02x.%02x.%02x\n", d.mcu_version >> 16 & 0xff,
                     d.mcu_version >> 8 & 0xff, d.mcu_version & 0xff);

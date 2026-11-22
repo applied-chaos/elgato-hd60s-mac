@@ -3,14 +3,18 @@
 
 #include "device_libusb.h"
 #include "status.h"
+#include "tx.h"
 
 #define FRAME_CAP (1920 * 1440 * 2)
+#define UNSUPPORTED_STABLE_FRAMES 15
 
 struct watch {
     struct hd60s_status st;
     struct hd60s_parser *parser;
     double first, last;
     unsigned long standard;
+    int unknown_w, unknown_h, unknown_interlaced;
+    unsigned long unknown_run;
     size_t audio_bytes;
 };
 
@@ -27,8 +31,13 @@ static void watch_frame(void *ctx, const uint8_t *frame, int w, int h, int inter
     (void)frame;
     if (!hd60s_size_standard(w, h)) {
         k->st.runts++;
+        k->unknown_run = w == k->unknown_w && h == k->unknown_h ? k->unknown_run + 1 : 1;
+        k->unknown_w = w;
+        k->unknown_h = h;
+        k->unknown_interlaced = interlaced;
         return;
     }
+    k->unknown_run = 0;
     k->last = now();
     if (!k->standard++)
         k->first = k->last;
@@ -68,6 +77,12 @@ void hd60s_sample(struct hd60s_status *out, double seconds, volatile sig_atomic_
             parser_init(&parser, frame, FRAME_CAP, watch_frame, watch_audio, &k);
             hd60s_stream(&d, &parser, stop, seconds);
             st->signal = k.standard ? SIGNAL_ACTIVE : SIGNAL_NONE;
+            if (k.unknown_run >= UNSUPPORTED_STABLE_FRAMES) {
+                st->signal = SIGNAL_UNSUPPORTED;
+                st->width = k.unknown_w;
+                st->height = k.unknown_h;
+                st->interlaced = k.unknown_interlaced;
+            }
             st->frames = parser.frames;
             st->discarded = parser.discarded;
             st->long_lines = parser.long_total;
@@ -84,6 +99,8 @@ void hd60s_sample(struct hd60s_status *out, double seconds, volatile sig_atomic_
         if (k.audio_bytes) {
             st->audio_rate = 48000;
             st->audio_channels = 2;
+            st->audio_source_rate =
+                hd60s_source_audio_hz(&d, tx_mode_find(st->width, st->height, st->interlaced, st->interlaced ? st->fps * 2 : st->fps));
         }
         hd60s_stop(&d);
         hd60s_close(&d);

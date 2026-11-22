@@ -1,5 +1,7 @@
 #include "status.h"
 
+#include "parser.h"
+
 #include <libusb.h>
 #include <limits.h>
 #include <math.h>
@@ -55,11 +57,7 @@ int hd60s_parse_owner_pid(const char *s, int *pid)
 
 int hd60s_size_standard(int w, int h)
 {
-    static const int sizes[][2] = {{1920, 1080}, {1280, 720}, {720, 576}, {720, 480}, {1440, 480}};
-    for (size_t i = 0; i < sizeof sizes / sizeof *sizes; i++)
-        if (w == sizes[i][0] && h == sizes[i][1])
-            return 1;
-    return 0;
+    return parser_is_sd(w, h) >= 0;
 }
 
 static int fw_known(uint32_t v)
@@ -224,6 +222,9 @@ void hd60s_print_text(const struct hd60s_status *s, FILE *out)
     case SIGNAL_NONE:
         fprintf(out, "Signal:   none\n");
         break;
+    case SIGNAL_UNSUPPORTED:
+        fprintf(out, "Signal:   %dx%d%s, unsupported mode\n", s->width, s->height, s->interlaced ? "i" : "p");
+        break;
     case SIGNAL_ACTIVE:
         mode_text(s, mode, sizeof mode);
         fprintf(out, "Signal:   %s%s\n", mode, s->field_order == FIELD_TOP_FIRST ? ", top field first" : "");
@@ -231,9 +232,12 @@ void hd60s_print_text(const struct hd60s_status *s, FILE *out)
         fprintf(out, "Colour:   %s\n", colour_name(s->colour));
         break;
     }
-    if (s->audio_rate)
-        fprintf(out, "Audio:    %d Hz, %d channels\n", s->audio_rate, s->audio_channels);
-    else
+    if (s->audio_rate) {
+        fprintf(out, "Audio:    %d Hz, %d channels", s->audio_rate, s->audio_channels);
+        if (s->audio_source_rate)
+            fprintf(out, " (source %d Hz)", s->audio_source_rate);
+        fputc('\n', out);
+    } else
         fprintf(out, "Audio:    none\n");
     fprintf(out, "Parser:   %lu frames, %lu discarded, %lu runts, %lu long lines\n", s->frames, s->discarded,
             s->runts, s->long_lines);
@@ -265,7 +269,7 @@ static void json_str(FILE *out, const char *s)
 
 void hd60s_print_json(const struct hd60s_status *s, FILE *out)
 {
-    static const char *const state[] = {"unknown", "none", "active"};
+    static const char *const state[] = {"unknown", "none", "active", "unsupported"};
     char msg[256];
     fprintf(out, "{\"device\":{\"present\":%s,\"port\":", s->present ? "true" : "false");
     if (s->port_path[0])
@@ -296,10 +300,16 @@ void hd60s_print_json(const struct hd60s_status *s, FILE *out)
                 s->width, s->height, s->interlaced ? "true" : "false",
                 s->field_order == FIELD_TOP_FIRST ? "top_first" : "none", s->fps, input_code(s->input_format),
                 s->colour == COLOUR_BT709 ? "bt709" : s->colour == COLOUR_BT601 ? "bt601" : "unknown");
+    if (s->signal == SIGNAL_UNSUPPORTED)
+        fprintf(out, ",\"width\":%d,\"height\":%d", s->width, s->height);
     fputs("},\"audio\":", out);
-    if (s->audio_rate)
-        fprintf(out, "{\"rate\":%d,\"channels\":%d}", s->audio_rate, s->audio_channels);
-    else
+    if (s->audio_rate) {
+        fprintf(out, "{\"rate\":%d,\"channels\":%d,\"source_rate\":", s->audio_rate, s->audio_channels);
+        if (s->audio_source_rate)
+            fprintf(out, "%d}", s->audio_source_rate);
+        else
+            fputs("null}", out);
+    } else
         fputs("null", out);
     fprintf(out, ",\"parser\":{\"frames\":%lu,\"discarded\":%lu,\"runts\":%lu,\"long_lines\":%lu},\"warnings\":[",
             s->frames, s->discarded, s->runts, s->long_lines);

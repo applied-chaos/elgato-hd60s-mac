@@ -65,6 +65,11 @@ func rows(_ r: [StatusView.Row]) -> [String] { r.map { "\($0.label)|\($0.value)|
         check(none.detail == "Plug the HD60 S into a USB 3 port on your Mac. If it is plugged in, try another cable.", "not connected detail")
         check(none.input.isEmpty && none.connection.isEmpty, "not connected hides both columns")
 
+        let odd2 = view(json(signal: "{\"state\":\"unsupported\",\"width\":1920,\"height\":1200}"))
+        check(odd2.dot == .warn && odd2.title == "Unsupported mode", "unsupported title")
+        check(odd2.detail == "The source is sending 1920 × 1200. Set it to 1080p, 720p, 576 or 480.", "unsupported detail \(odd2.detail)")
+        check(odd2.input.isEmpty && rows(odd2.connection).count == 2, "unsupported hides input")
+
         let failed = view(json(access: "failed", fw: nil, signal: "{\"state\":\"unknown\"}"))
         check(failed.dot == .warn && failed.title == "Can't open the HD60 S", "open failed")
 

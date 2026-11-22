@@ -22,6 +22,8 @@
 	<string>$(CURRENT_PROJECT_VERSION)</string>
 	<key>HD60SGroup</key>
 	<string>$(TeamIdentifierPrefix)net.mintopia.hd60s</string>
+	<key>HD60SFlavour</key>
+	<string>$(HD60S_FLAVOUR)</string>
 	<key>LSMinimumSystemVersion</key>
 	<string>26.0</string>
 </dict>
