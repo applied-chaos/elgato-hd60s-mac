@@ -11,6 +11,7 @@ private let height = Int32(outputHeight)
 private let noFramesTimeoutNs: UInt64 = 200_000_000
 private let statsEveryTicks = 600
 private let publishIntervalNs: UInt64 = 1_000_000_000
+private let settingsEveryTicks = 30
 private let log = Logger(subsystem: "net.mintopia.hd60s.camera", category: "capture")
 
 final class ProviderSource: NSObject, CMIOExtensionProviderSource {
@@ -106,7 +107,8 @@ final class StreamSource: NSObject, CMIOExtensionStreamSource {
     private var scaler: VTPixelTransferSession?
     private let statusOut = StatusPublisher()
     private var lastPublishNs: UInt64 = 0
-    private var device: UnsafeMutablePointer<hd60s>?
+    private let dev = UnsafeMutablePointer<hd60s>.allocate(capacity: 1)
+    private let settings = OSAllocatedUnfairLock(initialState: SettingsFile.load() ?? hd60s_settings())
 
     override init() {
         var desc: CMFormatDescription?
@@ -125,6 +127,7 @@ final class StreamSource: NSObject, CMIOExtensionStreamSource {
         CVPixelBufferPoolCreate(kCFAllocatorDefault, nil, attrs as CFDictionary, &pool)
         super.init()
         parser.initialize(to: hd60s_parser())
+        dev.initialize(to: hd60s())
         deinterlacer.initialize(to: deint())
         slate = makeSlate("Slate")
         unsupportedSlate = makeSlate("Unsupported")
@@ -226,11 +229,12 @@ final class StreamSource: NSObject, CMIOExtensionStreamSource {
         }
         let ctx = Unmanaged.passUnretained(self).toOpaque()
         while stop.pointee == 0 {
-            var d = hd60s()
             hd60s_open_wait_ms = 4000
-            if hd60s_open(&d) == 0 && hd60s_start(&d) == 0 {
+            let opened = hd60s_open(dev) == 0
+            if opened { dev.pointee.settings = settings.withLock { $0 } }
+            if opened && hd60s_start(dev) == 0 {
                 log.info("capture started")
-                statusOut.setFirmware(d.mcu_version)
+                statusOut.setFirmware(dev.pointee.mcu_version)
                 parser_init(parser, buf, cap, { ctx, frame, w, h, interlaced in
                     let me = Unmanaged<StreamSource>.fromOpaque(ctx!).takeUnretainedValue()
                     me.statusOut.frame(width: Int(w), height: Int(h), interlaced: interlaced != 0,
@@ -239,16 +243,12 @@ final class StreamSource: NSObject, CMIOExtensionStreamSource {
                     me.send(UnsafeMutablePointer(mutating: frame!), Int(w), Int(h), interlaced != 0, wide: me.parser.pointee.wide != 0,
                             bt601: me.parser.pointee.colour == COLOUR_BT601)
                 }, { _, pcm, len in audio_feed_push(pcm, len) }, ctx)
-                withUnsafeMutablePointer(to: &d) { dp in
-                    device = dp
-                    hd60s_stream(dp, parser, stop, 0)
-                    device = nil
-                }
+                hd60s_stream(dev, parser, stop, 0)
             } else {
                 log.error("device open failed")
             }
-            hd60s_stop(&d)
-            hd60s_close(&d)
+            hd60s_stop(dev)
+            hd60s_close(dev)
             for _ in 0..<10 where stop.pointee == 0 {
                 usleep(100_000)
             }
@@ -328,6 +328,11 @@ final class StreamSource: NSObject, CMIOExtensionStreamSource {
         }
         ticks += 1
         publishStatus()
+        if ticks % settingsEveryTicks == 0, let next = SettingsFile.load() {
+            settings.withLock { $0 = next }
+            // The capture thread reads this once a second; an aligned word write needs no lock.
+            dev.pointee.settings = next
+        }
         if ticks % statsEveryTicks == 0 {
             // ponytail: unsynchronised reads of counters the capture thread writes; fine for logging.
             #if DEXT

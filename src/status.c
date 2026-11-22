@@ -230,6 +230,7 @@ void hd60s_print_text(const struct hd60s_status *s, FILE *out)
         fprintf(out, "Signal:   %s%s\n", mode, s->field_order == FIELD_TOP_FIRST ? ", top field first" : "");
         fprintf(out, "Input:    %s\n", input_name(s->input_format));
         fprintf(out, "Colour:   %s\n", colour_name(s->colour));
+        fprintf(out, "Range:    %s\n", hd60s_range_names[s->range]);
         break;
     }
     if (s->audio_rate) {
@@ -296,10 +297,11 @@ void hd60s_print_json(const struct hd60s_status *s, FILE *out)
     fprintf(out, "}},\"signal\":{\"state\":\"%s\"", state[s->signal]);
     if (s->signal == SIGNAL_ACTIVE)
         fprintf(out,
-                ",\"width\":%d,\"height\":%d,\"interlaced\":%s,\"field_order\":\"%s\",\"fps\":%.2f,\"input\":\"%s\",\"colour\":\"%s\"",
+                ",\"width\":%d,\"height\":%d,\"interlaced\":%s,\"field_order\":\"%s\",\"fps\":%.2f,\"input\":\"%s\",\"colour\":\"%s\",\"range\":\"%s\"",
                 s->width, s->height, s->interlaced ? "true" : "false",
                 s->field_order == FIELD_TOP_FIRST ? "top_first" : "none", s->fps, input_code(s->input_format),
-                s->colour == COLOUR_BT709 ? "bt709" : s->colour == COLOUR_BT601 ? "bt601" : "unknown");
+                s->colour == COLOUR_BT709 ? "bt709" : s->colour == COLOUR_BT601 ? "bt601" : "unknown",
+                hd60s_range_names[s->range]);
     if (s->signal == SIGNAL_UNSUPPORTED)
         fprintf(out, ",\"width\":%d,\"height\":%d", s->width, s->height);
     fputs("},\"audio\":", out);

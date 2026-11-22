@@ -38,6 +38,7 @@
 		97F411CDE82413DF96975439 /* FrameFit.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6357F6F66A26419F5C78499F /* FrameFit.swift */; };
 		A042FF175789F53AC09AC388 /* Provider.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEB304182F383B96E72A3DA6 /* Provider.swift */; };
 		A0741C058C3F0F44A601E8B2 /* StatusPublisher.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA1A527633F29E5206403568 /* StatusPublisher.swift */; };
+		A703EF4E405EF19C801A7CD1 /* Settings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A1F118E4B438C42FC692C4A /* Settings.swift */; };
 		B1DDD38E14EBF1E10EF29F95 /* FrameRate.swift in Sources */ = {isa = PBXBuildFile; fileRef = D41EB16A58150036BD7A0F04 /* FrameRate.swift */; };
 		BD246132959F3785F1CF6769 /* parser.c in Sources */ = {isa = PBXBuildFile; fileRef = 58FCE89662E2C2249C89C7B2 /* parser.c */; };
 		C633D8757C8B17B9DFC56B92 /* PreviewFacts.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5454E7000D6BD6A61129AC90 /* PreviewFacts.swift */; };
@@ -95,6 +96,7 @@
 		00CDD57C9B403777274C1494 /* tx.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = tx.c; sourceTree = "<group>"; };
 		0BB1F64555B5906AFF622AED /* AudioPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioPlugin.swift; sourceTree = "<group>"; };
 		18241B2CA9D6FB72D10C87C1 /* RedHatDisplay.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = RedHatDisplay.ttf; sourceTree = "<group>"; };
+		1A1F118E4B438C42FC692C4A /* Settings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Settings.swift; sourceTree = "<group>"; };
 		25966C046E8F2FA284DB0F6E /* StatusPoller.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatusPoller.swift; sourceTree = "<group>"; };
 		2802D08CC9D0EF039BE94247 /* HD60SCamera.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = HD60SCamera.entitlements; sourceTree = "<group>"; };
 		38DF55540E5C678012FE392F /* deinterlace.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = deinterlace.c; sourceTree = "<group>"; };
@@ -218,6 +220,7 @@
 				87A0EC014D058589E38854EE /* Info.plist */,
 				8400EEE9F8976B5123BAA715 /* main.swift */,
 				FEB304182F383B96E72A3DA6 /* Provider.swift */,
+				1A1F118E4B438C42FC692C4A /* Settings.swift */,
 				D9B4906F3518E9B1364D6B76 /* Slate.png */,
 				FA1A527633F29E5206403568 /* StatusPublisher.swift */,
 				447A0964D026A28D46C588E0 /* Unsupported.png */,
@@ -411,6 +414,7 @@
 				97F411CDE82413DF96975439 /* FrameFit.swift in Sources */,
 				B1DDD38E14EBF1E10EF29F95 /* FrameRate.swift in Sources */,
 				A042FF175789F53AC09AC388 /* Provider.swift in Sources */,
+				A703EF4E405EF19C801A7CD1 /* Settings.swift in Sources */,
 				A0741C058C3F0F44A601E8B2 /* StatusPublisher.swift in Sources */,
 				0695B172DEC8713663941FD6 /* StatusSnapshot.swift in Sources */,
 				3EB0F22E0D9CAE0F9E6B99FD /* audio.c in Sources */,

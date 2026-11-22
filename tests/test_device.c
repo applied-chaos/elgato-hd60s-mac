@@ -130,29 +130,29 @@ static void policy_switches_colour_matrix_once_per_change(void)
 
 static void avi_parse_covers_each_format_and_colorimetry(void)
 {
-    struct hd60s_source s = hd60s_parse_avi(1, 0x00, 0x00);
+    struct hd60s_source s = hd60s_parse_avi(1, 0x00, 0x00, 0);
     assert(s.format == INPUT_RGB && s.colorimetry == COLOUR_UNKNOWN);
-    s = hd60s_parse_avi(1, 0x20, 0x40);
+    s = hd60s_parse_avi(1, 0x20, 0x40, 0);
     assert(s.format == INPUT_YCBCR422 && s.colorimetry == COLOUR_BT601);
-    s = hd60s_parse_avi(1, 0x40, 0x80);
+    s = hd60s_parse_avi(1, 0x40, 0x80, 0);
     assert(s.format == INPUT_YCBCR444 && s.colorimetry == COLOUR_BT709);
-    s = hd60s_parse_avi(1, 0x40, 0xc0);
+    s = hd60s_parse_avi(1, 0x40, 0xc0, 0);
     assert(s.format == INPUT_YCBCR444 && s.colorimetry == COLOUR_UNKNOWN);
-    s = hd60s_parse_avi(1, 0x60, 0x80); /* reserved Y1Y0: Elgato treats it as RGB */
+    s = hd60s_parse_avi(1, 0x60, 0x80, 0); /* reserved Y1Y0: Elgato treats it as RGB */
     assert(s.format == INPUT_RGB);
-    s = hd60s_parse_avi(1, 0x1f, 0x3f); /* other bits ignored */
+    s = hd60s_parse_avi(1, 0x1f, 0x3f, 0);
     assert(s.format == INPUT_RGB && s.colorimetry == COLOUR_UNKNOWN);
-    s = hd60s_parse_avi(0, 0x40, 0x80); /* no InfoFrame (DVI): RGB, no colorimetry */
+    s = hd60s_parse_avi(0, 0x40, 0x80, 0); /* no InfoFrame (DVI): RGB, no colorimetry */
     assert(s.format == INPUT_RGB && s.colorimetry == COLOUR_UNKNOWN);
 }
 
 static void csc_plan_is_data_driven(void)
 {
     struct hd60s_csc hd, sd, yuv, yuv_sd;
-    hd60s_csc_plan(&(struct hd60s_colour_cfg){INPUT_RGB, 0}, &hd);
-    hd60s_csc_plan(&(struct hd60s_colour_cfg){INPUT_RGB, 1}, &sd);
-    hd60s_csc_plan(&(struct hd60s_colour_cfg){INPUT_YCBCR444, 0}, &yuv);
-    hd60s_csc_plan(&(struct hd60s_colour_cfg){INPUT_YCBCR422, 1}, &yuv_sd);
+    hd60s_csc_plan(&(struct hd60s_colour_cfg){INPUT_RGB, 0, RANGE_AUTO, 0}, &hd);
+    hd60s_csc_plan(&(struct hd60s_colour_cfg){INPUT_RGB, 1, RANGE_AUTO, 0}, &sd);
+    hd60s_csc_plan(&(struct hd60s_colour_cfg){INPUT_YCBCR444, 0, RANGE_AUTO, 0}, &yuv);
+    hd60s_csc_plan(&(struct hd60s_colour_cfg){INPUT_YCBCR422, 1, RANGE_AUTO, 0}, &yuv_sd);
     assert(hd.mode == 0x40 && sd.mode == 0x40 && yuv.mode == 0x62);
     assert(memcmp(&hd, &sd, sizeof hd) != 0);
     assert(yuv.m[0] == 0x1000 && yuv.m[4] == 0x1000 && yuv.m[8] == 0x1000 && yuv.m[1] == 0);
@@ -161,8 +161,8 @@ static void csc_plan_is_data_driven(void)
 
 static void frame_colour_follows_source_for_ycbcr(void)
 {
-    struct hd60s_colour_cfg rgb_hd = {INPUT_RGB, 0}, rgb_sd = {INPUT_RGB, 1};
-    struct hd60s_colour_cfg y_hd = {INPUT_YCBCR444, 0}, y_sd = {INPUT_YCBCR422, 1};
+    struct hd60s_colour_cfg rgb_hd = {INPUT_RGB, 0, RANGE_AUTO, 0}, rgb_sd = {INPUT_RGB, 1, RANGE_AUTO, 0};
+    struct hd60s_colour_cfg y_hd = {INPUT_YCBCR444, 0, RANGE_AUTO, 0}, y_sd = {INPUT_YCBCR422, 1, RANGE_AUTO, 0};
     assert(hd60s_frame_colour(&rgb_hd, COLOUR_BT601) == COLOUR_BT709); /* device encodes RGB itself */
     assert(hd60s_frame_colour(&rgb_sd, COLOUR_BT709) == COLOUR_BT601);
     assert(hd60s_frame_colour(&y_hd, COLOUR_BT601) == COLOUR_BT601);
@@ -308,6 +308,85 @@ static void transfer_plan_defaults_to_bulk_and_picks_narrowest_sufficient_iso_al
     assert(d.usb.transfer == HD60S_BULK);
 }
 
+static struct hd60s_csc plan(enum hd60s_input_format in, int sd, enum hd60s_range r, int quant)
+{
+    struct hd60s_csc c;
+    hd60s_csc_plan(&(struct hd60s_colour_cfg){in, sd, r, quant}, &c);
+    return c;
+}
+
+static void colour_range_scales_the_matrix(void)
+{
+    struct hd60s_csc std = plan(INPUT_YCBCR444, 0, RANGE_STANDARD, 0);
+    struct hd60s_csc exp = plan(INPUT_YCBCR444, 0, RANGE_EXPANDED, 0);
+    assert(std.m[0] == 0x1000 && std.mode == 0x62 && std.m[10] == plan(INPUT_YCBCR444, 0, RANGE_AUTO, 0).m[10]);
+    assert(exp.m[0] == 0x0dc0 && exp.m[4] == 0x0dc0 && exp.m[8] == 0x0dc0 && exp.m[1] == 0); /* full to limited: 219/255 */
+    assert(exp.mode == 0x62 && exp.m[10] == (uint16_t)(((0x40 + 0x400) & 0x7fc0) | 1));
+
+    struct hd60s_csc rgb = plan(INPUT_RGB, 0, RANGE_STANDARD, 0), rgb_exp = plan(INPUT_RGB, 0, RANGE_EXPANDED, 0);
+    assert(rgb.m[0] > 0 && rgb.m[0] < 0x3fff && rgb_exp.m[0] == (uint16_t)(rgb.m[0] * 0xdc0 >> 12));
+    assert(rgb_exp.mode == 0x40 && memcmp(&rgb, &rgb_exp, sizeof rgb) != 0);
+}
+
+static void auto_range_follows_source_quantisation(void)
+{
+    struct hd60s_csc std = plan(INPUT_RGB, 0, RANGE_STANDARD, 0), full = plan(INPUT_RGB, 0, RANGE_EXPANDED, 0);
+    for (int q = 0; q < 4; q++) {
+        struct hd60s_csc a = plan(INPUT_RGB, 0, RANGE_AUTO, q);
+        assert(memcmp(&a, q == 2 ? &full : &std, sizeof a) == 0);
+        struct hd60s_csc s = plan(INPUT_RGB, 0, RANGE_STANDARD, q), e = plan(INPUT_RGB, 0, RANGE_EXPANDED, q);
+        assert(memcmp(&s, &std, sizeof s) == 0 && memcmp(&e, &full, sizeof e) == 0);
+    }
+}
+
+static void range_scaling_reaches_hardware_and_follows_the_source(void)
+{
+    struct hd60s d;
+    struct hd60s_parser p = {0};
+    struct hd60s_policy pol;
+    boot(&d, 0);
+    assert(hd60s_init(&d) == 0 && hd60s_start(&d) == 0);
+    p.last_w = 1920, p.last_h = 1080;
+    hd60s_policy_begin(&pol, 0);
+    hd60s_policy_tick(&d, &p, &pol, 0);
+    uint16_t std0 = (uint16_t)(fk.mst[0][0x93] << 8 | fk.mst[0][0x94]);
+    assert(d.settings.range == RANGE_AUTO && fk.mst[0][0x92] == 0x40);
+
+    fk.mst[2][0x0b] = 0x08;
+    fk.mst[2][0x4a] = 0x08; /* Q = 2, full range */
+    hd60s_policy_tick(&d, &p, &pol, 1000);
+    uint16_t full0 = (uint16_t)(fk.mst[0][0x93] << 8 | fk.mst[0][0x94]);
+    assert(full0 == (uint16_t)(std0 * 0xdc0 >> 12) && d.colour.quant == 2);
+    int before = fk.requests;
+    hd60s_policy_tick(&d, &p, &pol, 1100);
+    assert(fk.requests == before);
+
+    fk.mst[2][0x4a] = 0x04; /* Q = 1, limited */
+    hd60s_policy_tick(&d, &p, &pol, 2000);
+    assert((uint16_t)(fk.mst[0][0x93] << 8 | fk.mst[0][0x94]) == std0);
+
+    d.settings.range = RANGE_EXPANDED;
+    hd60s_policy_tick(&d, &p, &pol, 3000);
+    assert((uint16_t)(fk.mst[0][0x93] << 8 | fk.mst[0][0x94]) == full0);
+}
+
+static void settings_round_trip_and_reject_bad_input(void)
+{
+    char buf[64];
+    struct hd60s_settings s;
+    for (enum hd60s_range r = RANGE_AUTO; r <= RANGE_EXPANDED; r++) {
+        hd60s_settings_print(&(struct hd60s_settings){r}, buf, sizeof buf);
+        assert(hd60s_settings_parse(buf, &s) == 0 && s.range == r);
+    }
+    assert(hd60s_settings_parse("{ \"range\" : \"expanded\" }", &s) == 0 && s.range == RANGE_EXPANDED);
+    s.range = RANGE_STANDARD;
+    assert(hd60s_settings_parse("{\"range\":\"wide\"}", &s) < 0 && s.range == RANGE_STANDARD);
+    assert(hd60s_settings_parse("{}", &s) < 0 && hd60s_settings_parse("", &s) < 0);
+    assert(hd60s_settings_parse(NULL, &s) < 0);
+    assert(hd60s_range_from_name("auto") == RANGE_AUTO && hd60s_range_from_name("standard") == RANGE_STANDARD);
+    assert(hd60s_range_from_name("full") < 0);
+}
+
 int main(void)
 {
     transfer_plan_defaults_to_bulk_and_picks_narrowest_sufficient_iso_alt();
@@ -319,6 +398,10 @@ int main(void)
     csc_plan_is_data_driven();
     frame_colour_follows_source_for_ycbcr();
     policy_follows_source_colour_format();
+    colour_range_scales_the_matrix();
+    auto_range_follows_source_quantisation();
+    range_scaling_reaches_hardware_and_follows_the_source();
+    settings_round_trip_and_reject_bad_input();
     policy_reads_aspect_once_a_second();
     policy_finds_mode_from_a_stable_window();
     start_routes_hdmi_audio_by_default();

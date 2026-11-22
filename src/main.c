@@ -78,19 +78,20 @@ static void report(const struct capture *c)
 static int usage(void)
 {
     fprintf(stderr, "usage: hd60s info\n"
-                    "       hd60s status [--json]\n"
-                    "       hd60s capture [-n frames] [-o out.uyvy|-] [-a out.pcm] [-s hdmi|line|mix] [-g dB] [-m] [--iso]\n"
+                    "       hd60s status [--json] [-r range]\n"
+                    "       hd60s capture [-n frames] [-o out.uyvy|-] [-a out.pcm] [-s hdmi|line|mix] [-g dB] [-m] [-r range] [--iso]\n"
                     "video: raw YUY2 (ffmpeg yuyv422); audio: 48 kHz s16le stereo\n"
                     "transfer: bulk by default, --iso for isochronous (flaky hubs)\n"
-                    "audio: -s source (default hdmi), -g gain -12..12 dB in 0.5 steps (default -6), -m mute\n");
+                    "audio: -s source (default hdmi), -g gain -12..12 dB in 0.5 steps (default -6), -m mute\n"
+                    "range: auto (default), standard, expanded (source is full-range RGB)\n");
     return 2;
 }
 
 /* Reports without failing: a busy or missing device is a result, not an error. */
-static int status(int json)
+static int status(int json, struct hd60s_settings settings)
 {
     struct hd60s_status st;
-    hd60s_sample(&st, 2.0, &stop_requested);
+    hd60s_sample(&st, 2.0, settings, &stop_requested);
     if (json)
         hd60s_print_json(&st, stdout);
     else
@@ -103,8 +104,19 @@ int main(int argc, char **argv)
     static uint8_t frame[FRAME_CAP];
     if (argc < 2)
         return usage();
-    if (strcmp(argv[1], "status") == 0)
-        return status(argc > 2 && strcmp(argv[2], "--json") == 0);
+    struct hd60s_settings settings = {RANGE_AUTO};
+    if (strcmp(argv[1], "status") == 0) {
+        int json = 0;
+        for (int i = 2; i < argc; i++) {
+            if (strcmp(argv[i], "--json") == 0)
+                json = 1;
+            else if (strcmp(argv[i], "-r") == 0 && i + 1 < argc && hd60s_range_from_name(argv[i + 1]) >= 0)
+                settings.range = (enum hd60s_range)hd60s_range_from_name(argv[++i]);
+            else
+                return usage();
+        }
+        return status(json, settings);
+    }
     int info = strcmp(argv[1], "info") == 0;
     if (!info && strcmp(argv[1], "capture") != 0)
         return usage();
@@ -122,13 +134,15 @@ int main(int argc, char **argv)
             i--;
         }
     optind = 2;
-    while ((opt = getopt(argc, argv, "n:o:a:s:g:m")) != -1) {
+    while ((opt = getopt(argc, argv, "n:o:a:s:g:mr:")) != -1) {
         if (opt == 'n')
             c.want = strtol(optarg, NULL, 10);
         else if (opt == 'o')
             vpath = optarg;
         else if (opt == 'a')
             apath = optarg;
+        else if (opt == 'r' && hd60s_range_from_name(optarg) >= 0)
+            settings.range = (enum hd60s_range)hd60s_range_from_name(optarg);
         else if (opt == 's') {
             if (!audio_source_parse(optarg, &audio.source))
                 return usage();
@@ -157,7 +171,7 @@ int main(int argc, char **argv)
     struct hd60s d;
     int rc = 1;
     hd60s_open_wait_ms = 4000;
-    if (hd60s_open(&d) == 0 && hd60s_set_audio(&d, &audio) == 0 && hd60s_start(&d) == 0) {
+    if (hd60s_open(&d) == 0 && (d.settings = settings, hd60s_set_audio(&d, &audio) == 0) && hd60s_start(&d) == 0) {
         d.usb.transfer = transfer;
         if (info) {
             fprintf(stderr, "mcu firmware: %02x.%02x.%02x\n", d.mcu_version >> 16 & 0xff,

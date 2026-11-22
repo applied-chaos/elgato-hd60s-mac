@@ -5,6 +5,7 @@
 #include <signal.h>
 #include <stdio.h>
 
+#include "device.h"
 #include "parser.h"
 
 enum hd60s_speed { SPEED_UNKNOWN, SPEED_LOW, SPEED_FULL, SPEED_HIGH, SPEED_SUPER, SPEED_SUPER_PLUS };
@@ -36,6 +37,7 @@ struct hd60s_status {
     double fps; /* frame rate; interlaced counts frames, not fields */
     enum hd60s_colour colour;
     enum hd60s_input_format input_format;
+    enum hd60s_range range; /* the setting in force, not what the source sent */
     int audio_rate, audio_channels; /* stream format, 0 = no audio */
     int audio_source_rate;          /* rate the source sends before the device resamples to 48 kHz, 0 = unknown */
 
@@ -71,6 +73,6 @@ double hd60s_exact_fps(double measured, struct hd60s_rate r, int interlaced);
 void hd60s_probe_usb(struct hd60s_status *s);
 
 /* Probes, then opens the device and watches the stream for `seconds` (device must be free). */
-void hd60s_sample(struct hd60s_status *out, double seconds, volatile sig_atomic_t *stop);
+void hd60s_sample(struct hd60s_status *out, double seconds, struct hd60s_settings settings, volatile sig_atomic_t *stop);
 
 #endif

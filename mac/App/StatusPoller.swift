@@ -67,7 +67,7 @@ final class StatusPoller: ObservableObject {
         if st.owner == OWNER_NONE {
             var sampled = hd60s_status()
             var stop: sig_atomic_t = 0
-            hd60s_sample(&sampled, Self.sampleSeconds, &stop)
+            hd60s_sample(&sampled, Self.sampleSeconds, hd60s_settings(), &stop)
             // Leaves the device free between samples so a camera client's open gets in.
             Thread.sleep(forTimeInterval: Self.restSeconds)
             sampledFrames += sampled.frames

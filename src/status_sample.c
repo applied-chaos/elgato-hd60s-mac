@@ -55,18 +55,20 @@ static void watch_audio(void *ctx, const uint8_t *pcm, size_t len)
 }
 
 /* Reports without failing: a busy or missing device is a result, not an error. */
-void hd60s_sample(struct hd60s_status *out, double seconds, volatile sig_atomic_t *stop)
+void hd60s_sample(struct hd60s_status *out, double seconds, struct hd60s_settings settings, volatile sig_atomic_t *stop)
 {
     uint8_t *frame = malloc(FRAME_CAP);
     struct watch k = {0};
     struct hd60s_status *st = &k.st;
     hd60s_probe_usb(st);
+    st->range = settings.range;
     if (st->present && frame) {
         struct hd60s d;
         struct hd60s_parser parser;
         hd60s_quiet = 1;
         int opened = hd60s_open(&d) == 0;
         st->access = hd60s_access_from_error(d.open_err);
+        d.settings = settings;
         if (opened && hd60s_start(&d) == 0) {
             st->owner = OWNER_CLI;
             st->owner_pid = 0;
