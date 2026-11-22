@@ -42,6 +42,10 @@ dist: app
 	cp -R build/HD60S.app build/dist/
 	hdiutil create -quiet -volname "HD60S $(VERSION)" -srcfolder build/dist -ov -format UDZO build/HD60S-$(VERSION).dmg
 
+build/test_deinterlace: tests/test_deinterlace.c src/deinterlace.c src/deinterlace.h
+	@mkdir -p build
+	$(CC) $(CFLAGS) -fsanitize=address,undefined -o $@ tests/test_deinterlace.c src/deinterlace.c
+
 build/test_ring: tests/test_ring.c src/ring.c src/ring.h
 	@mkdir -p build
 	$(CC) $(CFLAGS) -fsanitize=address,undefined -o $@ tests/test_ring.c src/ring.c
@@ -54,8 +58,9 @@ build/test_plugin: tests/test_plugin.c mac/Audio/HD60SAudio.c
 	@mkdir -p build
 	$(CC) $(CFLAGS) -Wno-four-char-constants -fsanitize=address,undefined -o $@ tests/test_plugin.c -framework CoreFoundation
 
-test: build/test_parser build/test_ring build/test_plugin build/test_audio_plugin
+test: build/test_parser build/test_deinterlace build/test_ring build/test_plugin build/test_audio_plugin
 	build/test_parser
+	build/test_deinterlace
 	build/test_ring
 	build/test_plugin
 	build/test_audio_plugin

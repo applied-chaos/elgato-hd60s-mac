@@ -42,6 +42,7 @@ targets:
       - Extension
       - path: ../src/device.c
       - path: ../src/parser.c
+      - path: ../src/deinterlace.c
       - path: ../src/ring.c
     info:
       path: Extension/Info.plist

@@ -90,6 +90,7 @@ final class StreamSource: NSObject, CMIOExtensionStreamSource {
     private var worker: Thread?
     private let finished = DispatchSemaphore(value: 0)
     private let parser = UnsafeMutablePointer<hd60s_parser>.allocate(capacity: 1)
+    private let deinterlacer = UnsafeMutablePointer<deint>.allocate(capacity: 1)
     private let lastFrameNs = OSAllocatedUnfairLock(initialState: UInt64(0))
     private var slate: CVPixelBuffer?
     private var timer: DispatchSourceTimer?
@@ -110,6 +111,7 @@ final class StreamSource: NSObject, CMIOExtensionStreamSource {
         CVPixelBufferPoolCreate(kCFAllocatorDefault, nil, attrs as CFDictionary, &pool)
         super.init()
         parser.initialize(to: hd60s_parser())
+        deinterlacer.initialize(to: deint())
         slate = makeSlate()
         stream = CMIOExtensionStream(localizedName: "Elgato HD60 S", streamID: UUID(), direction: .source,
                                      clockType: .hostTime, source: self)
@@ -173,8 +175,8 @@ final class StreamSource: NSObject, CMIOExtensionStreamSource {
             var d = hd60s()
             if hd60s_open(&d) == 0 && hd60s_start(&d) == 0 {
                 log.info("capture started")
-                parser_init(parser, buf, cap, { ctx, frame, w, h, _ in
-                    Unmanaged<StreamSource>.fromOpaque(ctx!).takeUnretainedValue().send(frame!, Int(w), Int(h))
+                parser_init(parser, buf, cap, { ctx, frame, w, h, interlaced in
+                    Unmanaged<StreamSource>.fromOpaque(ctx!).takeUnretainedValue().send(UnsafeMutablePointer(mutating: frame!), Int(w), Int(h), interlaced != 0)
                 }, { _, pcm, len in audio_feed_push(pcm, len) }, ctx)
                 hd60s_stream(&d, parser, stop, 0)
             } else {
@@ -189,8 +191,9 @@ final class StreamSource: NSObject, CMIOExtensionStreamSource {
     }
 
     // ponytail: only 1920x1080 frames are forwarded; other modes need extra stream formats.
-    private func send(_ frame: UnsafePointer<UInt8>, _ w: Int, _ h: Int) {
+    private func send(_ frame: UnsafeMutablePointer<UInt8>, _ w: Int, _ h: Int, _ interlaced: Bool) {
         guard w == Int(width), h == Int(height) else { return }
+        if interlaced { deint_frame(deinterlacer, frame, Int32(w), Int32(h)) }
         var pb: CVPixelBuffer?
         guard CVPixelBufferPoolCreatePixelBuffer(kCFAllocatorDefault, pool, &pb) == kCVReturnSuccess, let pb else { return }
         CVPixelBufferLockBaseAddress(pb, [])
