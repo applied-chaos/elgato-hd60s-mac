@@ -67,7 +67,7 @@ static void field_ex(struct stream *s, int f, int first_line, int step, int line
     put(s, (uint8_t[8]){0x80, 0x10, 0x80, 0x10, 0x80, 0x10, 0x80, 0x10}, 8);
     code(s, 0x20 | fb);
     for (int i = 0; i < lines; i++) {
-        uint8_t line[64];
+        uint8_t line[2 * 1920];
         for (int x = 0; x < w * 2; x++)
             line[x] = pix(first_line + i * step, x);
         code(s, fb);
@@ -219,6 +219,22 @@ static void test_mode_change(void)
     free(st.b);
 }
 
+static void test_720p_frame_size(void)
+{
+    static uint8_t buf[1920 * 1440 * 2];
+    struct sink s = {0};
+    struct hd60s_parser p;
+    parser_init(&p, buf, sizeof buf, on_frame, on_audio, &s);
+    struct stream st = {0};
+    for (int i = 0; i < 3; i++)
+        field_ex(&st, 0, 0, 1, 720, 1280, NO_BLANKING);
+    feed_chunked(&p, &st, 4093);
+    assert(s.frames >= 2);
+    assert(s.last_w == 1280 && s.last_h == 720 && !s.last_interlaced);
+    assert(p.discarded == 0);
+    free(st.b);
+}
+
 int main(void)
 {
     test_progressive(1 << 20);
@@ -230,6 +246,7 @@ int main(void)
     test_corrupt_eav_keeps_frame_and_stride(H - 1);
     test_lost_sav_merges_lines_drops_frame();
     test_mode_change();
+    test_720p_frame_size();
     puts("parser tests passed");
     return 0;
 }

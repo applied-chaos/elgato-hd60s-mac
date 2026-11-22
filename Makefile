@@ -54,11 +54,16 @@ build/test_plugin: tests/test_plugin.c mac/Audio/HD60SAudio.c
 	@mkdir -p build
 	$(CC) $(CFLAGS) -Wno-four-char-constants -fsanitize=address,undefined -o $@ tests/test_plugin.c -framework CoreFoundation
 
-test: build/test_parser build/test_ring build/test_plugin build/test_audio_plugin
+build/test_frame_fit: tests/test_frame_fit.swift mac/Extension/FrameFit.swift
+	@mkdir -p build
+	swiftc -parse-as-library -o $@ mac/Extension/FrameFit.swift tests/test_frame_fit.swift
+
+test: build/test_parser build/test_ring build/test_plugin build/test_audio_plugin build/test_frame_fit
 	build/test_parser
 	build/test_ring
 	build/test_plugin
 	build/test_audio_plugin
+	build/test_frame_fit
 
 clean:
 	rm -rf build
