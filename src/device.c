@@ -24,16 +24,9 @@ enum {
 
 static void msleep(struct hd60s *d, int ms) { d->usb.sleep_ms(d->usb.ctx, ms); }
 
-static void replay_disable(struct hd60s *d);
-
 static int ctrl(struct hd60s *d, int in, uint8_t req, uint16_t val, uint16_t idx, uint8_t *buf,
                 uint16_t len)
 {
-    /* Elgato stops the firmware's I2C polling before any host I2C so the two never collide. */
-    if (req == REQ_I2C && d->watching && !d->watch_suspended) {
-        d->watch_suspended = 1;
-        replay_disable(d);
-    }
     int r = d->usb.ctrl(d->usb.ctx, in, req, val, idx, buf, len);
     if (r < 0 && !d->err)
         d->err = r;
@@ -172,35 +165,6 @@ static void power_down(struct hd60s *d)
 }
 
 static void replay_disable(struct hd60s *d) { ctrl(d, 0, REQ_REPLAY, 0, 0x100, NULL, 0); }
-
-/* Byte for byte from libUB530 (FUN_00010130): addr, reg, mask, value per entry. Never edit. */
-static const uint8_t WATCH_PROGRAM[40] = {
-    0x55, 0x80, 0x3c, 0x00, 0x6a, 0x80, 0x0f, 0x00, 0x6b, 0x80, 0xfe, 0x00, 0x01, 0x81,
-    0x07, 0x00, 0x0b, 0x82, 0xdf, 0x00, 0x0c, 0x82, 0x3f, 0x00, 0x0e, 0x82, 0x08, 0x00,
-    0x48, 0x82, 0x60, 0x00, 0x9b, 0x82, 0xf0, 0x00, 0x0e, 0x40, 0x80, 0x9a,
-};
-
-static int watch_upload(struct hd60s *d)
-{
-    uint8_t b[sizeof WATCH_PROGRAM];
-    memcpy(b, WATCH_PROGRAM, sizeof b);
-    if (d->usb.ctrl(d->usb.ctx, 0, REQ_REPLAY, 100, 0x101, b, sizeof b) < 0) {
-        d->watching = d->watch_suspended = 0;
-        replay_disable(d);
-        return -1;
-    }
-    d->watching = 1;
-    d->watch_suspended = 0;
-    return 0;
-}
-
-int hd60s_watch_start(struct hd60s *d) { return d->started ? watch_upload(d) : -1; }
-
-void hd60s_watch_stop(struct hd60s *d)
-{
-    d->watching = d->watch_suspended = 0;
-    replay_disable(d);
-}
 
 /* FUN_11997 with the HD60 S branch only. */
 static void mst_route(struct hd60s *d, unsigned mode)
@@ -491,17 +455,11 @@ void hd60s_stop(struct hd60s *d)
         receiver_pulse(d, 0x40, d->mst_saved);
         d->started = 0;
     }
-    hd60s_watch_stop(d);
     power_down(d);
+    replay_disable(d);
 }
 
-enum { TX_POLL_MS = 250, MODE_WINDOW_MS = 2000, ASPECT_POLL_MS = 1000, WATCH_POLL_MS = 1000, WATCH_SETTLE_MS = 3000 };
-
-void hd60s_policy_wake(struct hd60s_policy *s, long now_ms)
-{
-    s->last_poll = s->aspect_at = now_ms - 1000000;
-    s->settle_until = now_ms + WATCH_SETTLE_MS;
-}
+enum { TX_POLL_MS = 250, MODE_WINDOW_MS = 2000, ASPECT_POLL_MS = 1000 };
 
 void hd60s_policy_begin(struct hd60s_policy *s, long now_ms)
 {
@@ -522,12 +480,7 @@ void hd60s_policy_frame(struct hd60s_policy *s, int w, int h, int interlaced)
 
 void hd60s_policy_tick(struct hd60s *d, struct hd60s_parser *p, struct hd60s_policy *s, long now_ms)
 {
-    int slow = d->watching && now_ms >= s->settle_until;
-    int tx_due = now_ms - s->last_poll >= (slow ? WATCH_POLL_MS : TX_POLL_MS);
-    int aspect_due = now_ms - s->aspect_at >= ASPECT_POLL_MS;
-    if (slow && (tx_due || aspect_due))
-        tx_due = aspect_due = 1;
-    if (aspect_due) {
+    if (now_ms - s->aspect_at >= ASPECT_POLL_MS) {
         s->aspect_at = now_ms;
         int present = mst_read(d, 2, 0x0b) & 0x08;
         uint8_t db1 = (uint8_t)mst_read(d, 2, 0x48), db2 = (uint8_t)mst_read(d, 2, 0x49);
@@ -553,7 +506,7 @@ void hd60s_policy_tick(struct hd60s *d, struct hd60s_parser *p, struct hd60s_pol
         s->frames = 0;
         s->win_start = now_ms;
     }
-    if (tx_due) {
+    if (now_ms - s->last_poll >= TX_POLL_MS) {
         struct tx_bus tb = tx_bus(d);
         int hz = hd60s_source_audio_hz(d, s->mode);
         if (hz == s->hz_seen)
@@ -562,8 +515,6 @@ void hd60s_policy_tick(struct hd60s *d, struct hd60s_parser *p, struct hd60s_pol
         tx_poll(&d->tx, &tb, s->mode, s->hz);
         s->last_poll = now_ms;
     }
-    if (d->watch_suspended && d->watching)
-        watch_upload(d);
 }
 
 int hd60s_transfer_parse(const char *s, enum hd60s_transfer *out)

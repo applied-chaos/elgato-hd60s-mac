@@ -23,9 +23,19 @@ static void lsleep(void *ctx, int ms)
     nanosleep(&ts, NULL);
 }
 
-int hd60s_quiet;
+#define OPEN_RETRY_MS 50
 
-int hd60s_open(struct hd60s *d)
+static long now_ms(void)
+{
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return ts.tv_sec * 1000L + ts.tv_nsec / 1000000L;
+}
+
+int hd60s_quiet;
+int hd60s_open_wait_ms;
+
+static int open_once(struct hd60s *d)
 {
     memset(d, 0, sizeof *d);
     if (libusb_init(&d->lusb) < 0)
@@ -63,6 +73,26 @@ int hd60s_open(struct hd60s *d)
     return 0;
 }
 
+static int held_by_another(const struct hd60s *d)
+{
+    return d->open_err == LIBUSB_ERROR_BUSY || d->open_err == LIBUSB_ERROR_ACCESS;
+}
+
+int hd60s_open(struct hd60s *d)
+{
+    long deadline = now_ms() + hd60s_open_wait_ms;
+    int quiet = hd60s_quiet, r;
+    for (;;) {
+        hd60s_quiet = quiet || now_ms() + OPEN_RETRY_MS < deadline;
+        r = open_once(d);
+        hd60s_quiet = quiet;
+        if (r == 0 || !held_by_another(d) || now_ms() >= deadline)
+            return r;
+        hd60s_close(d);
+        lsleep(NULL, OPEN_RETRY_MS);
+    }
+}
+
 void hd60s_close(struct hd60s *d)
 {
     if (d->h) {
@@ -82,7 +112,6 @@ struct stream_ctx {
     int iso_packet_bytes;
     volatile sig_atomic_t *stop;
     int active;
-    volatile int watch_fired, watch_released;
     frame_cb frame_cb;
     void *frame_ctx;
     struct hd60s_policy policy;
@@ -93,13 +122,6 @@ static void on_frame_probe(void *ctx, const uint8_t *f, int w, int h, int interl
     struct stream_ctx *s = ctx;
     hd60s_policy_frame(&s->policy, w, h, interlaced);
     s->frame_cb(s->frame_ctx, f, w, h, interlaced);
-}
-
-static long now_ms(void)
-{
-    struct timespec ts;
-    clock_gettime(CLOCK_MONOTONIC, &ts);
-    return ts.tv_sec * 1000L + ts.tv_nsec / 1000000L;
 }
 
 static void LIBUSB_CALL on_xfer(struct libusb_transfer *t)
@@ -121,17 +143,6 @@ static void LIBUSB_CALL on_xfer(struct libusb_transfer *t)
     if (!*s->stop && libusb_submit_transfer(t) == 0)
         return;
     s->active--;
-}
-
-static int watch_enabled(void) { return !getenv("HD60S_NO_WATCH"); }
-
-static void LIBUSB_CALL on_watch(struct libusb_transfer *t)
-{
-    struct stream_ctx *s = t->user_data;
-    if (t->status == LIBUSB_TRANSFER_COMPLETED)
-        s->watch_fired = 1;
-    else
-        s->watch_released = 1;
 }
 
 static void iso_alt_bytes(struct hd60s *d, int out[HD60S_ISO_ALTS])
@@ -194,19 +205,6 @@ int hd60s_stream(struct hd60s *d, struct hd60s_parser *p, volatile sig_atomic_t 
         if (libusb_submit_transfer(xfers[i]) == 0)
             s.active++;
     }
-    struct libusb_transfer *wt = NULL;
-    uint8_t wbuf[8];
-    int claimed = 0;
-    if (watch_enabled() && (claimed = libusb_claim_interface(d->h, HD60S_IF_WATCH) == 0) && hd60s_watch_start(d) == 0 &&
-        (wt = libusb_alloc_transfer(0))) {
-        libusb_fill_interrupt_transfer(wt, d->h, HD60S_EP_WATCH, wbuf, sizeof wbuf, on_watch, &s, 0);
-        if (libusb_submit_transfer(wt) < 0) {
-            hd60s_watch_stop(d);
-            s.watch_released = 1;
-        }
-    } else {
-        s.watch_released = 1;
-    }
     long end = now_ms() + (long)(seconds * 1000);
     while (s.active) {
         if (*stop || (seconds > 0 && now_ms() >= end)) {
@@ -217,29 +215,9 @@ int hd60s_stream(struct hd60s *d, struct hd60s_parser *p, volatile sig_atomic_t 
         struct timeval tv = {0, 100000};
         libusb_handle_events_timeout_completed(d->lusb, &tv, NULL);
         /* Not from the transfer callback: the sync control transfers need the event loop. */
-        if (!*stop) {
-            if (s.watch_fired && !s.watch_released) {
-                s.watch_fired = 0;
-                hd60s_policy_wake(&s.policy, now_ms());
-                if (libusb_submit_transfer(wt) < 0)
-                    s.watch_released = 1;
-            }
-            if (s.watch_released && d->watching)
-                hd60s_watch_stop(d);
+        if (!*stop)
             hd60s_policy_tick(d, p, &s.policy, now_ms());
-        }
     }
-    hd60s_watch_stop(d);
-    if (wt) {
-        libusb_cancel_transfer(wt);
-        while (!s.watch_released && !s.watch_fired) {
-            struct timeval tv = {0, 100000};
-            libusb_handle_events_timeout_completed(d->lusb, &tv, NULL);
-        }
-        libusb_free_transfer(wt);
-    }
-    if (claimed)
-        libusb_release_interface(d->h, HD60S_IF_WATCH);
     p->on_frame = s.frame_cb;
     p->ctx = s.frame_ctx;
     for (int i = 0; i < plan.buffers; i++) {
