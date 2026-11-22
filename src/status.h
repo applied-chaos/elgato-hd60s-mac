@@ -51,6 +51,16 @@ const char *hd60s_warning_code(enum hd60s_warning w);
 void hd60s_print_text(const struct hd60s_status *s, FILE *out);
 void hd60s_print_json(const struct hd60s_status *s, FILE *out);
 
+/* Field or frame rate the MST3367 measured: tenths of Hz, and whether the 1000/1001 divisor applies. */
+struct hd60s_rate {
+    int tenths, ntsc;
+};
+/* FUN_11f22: counter is MST3367 bank 0 regs 0x59:0x5a & 0x3fff, 8 us ticks per vsync period. tenths is 0 for no reading. */
+struct hd60s_rate hd60s_rate_from_vsync(unsigned counter);
+double hd60s_rate_hz(struct hd60s_rate r);
+/* Frame rate for the status report: the exact rate if it agrees with the measured fps, else measured. */
+double hd60s_exact_fps(double measured, struct hd60s_rate r, int interlaced);
+
 /* Fills presence, speed, port and owner without opening the device. */
 void hd60s_probe_usb(struct hd60s_status *s);
 
