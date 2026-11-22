@@ -19,6 +19,7 @@ targets:
       - path: ../src/parser.c
       - path: ../src/deinterlace.c
       - path: ../src/tx.c
+      - path: ../src/audio.c
       - path: ../src/framering.c
       - path: ../src/link.c
     settings:
