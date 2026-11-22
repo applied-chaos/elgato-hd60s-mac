@@ -114,6 +114,30 @@ The Nuvoton MCU owns the board I2C bus. The bridge uses the "0x66" proxy target,
 | 0xAA | MCU commands | see the bridge above |
 | 0xD4 | audio device with 16-bit register addresses, probably a sample-rate converter (§6.8) | write `[00 reg val]`; read `[00 reg]` → 2 bytes, value in the second |
 | 0x88 | analogue decoder | internal inputs 5/6 only; unused on HD60 S |
+| 0xA4 | status LED controller? (7-bit 0x52, in the EEPROM range) | Elgato only writes `[01]`, `[07]`, `[06 n]`. **Do not touch**; see the 0xA4 section below |
+
+### I2C 0xA4 (7-bit 0x52): status LED controller, read-only investigation (ticket G4)
+
+**Verdict: UNSAFE to probe through the bridge, and not proven to be an LED MCU. No bus traffic to 0xA4 was sent and the hardware was not touched.** Static analysis only.
+
+What a bridge read puts on the wire (`FUN_1c746`, read branch):
+- OUT `wValue=0x5066`, data `[addr|1, rlen, wdata…]` = `[A5, rlen, sub]`, then IN `rlen` bytes. The host never emits the I2C phases; the Nuvoton MCU firmware does, and that firmware is not in the dylib.
+- By analogy with 0x9C and 0xD4 (same request), the MCU does "write `[sub]`, repeated start, read". For 0xA4 that means the write phase `[A4 sub]` goes out before any read.
+- A read with no `wdata` cannot be expressed by the helper (`wlen == 0` skips the OUT). A bare `[A5 rlen]` OUT or an address-only ACK probe is not a request Elgato's driver sends.
+
+Why a register read is not provably non-mutating:
+- On a 24Cxx EEPROM, `[A4 sub]` with no data byte only sets the address pointer, and reads do not start a write cycle. Safe there.
+- The host code shows a command protocol, not a memory map. Writes to 0x52 (`FUN_21b3e` to `FUN_21e52`): cmd 0 (+1 byte), 1/2 (no args), 3 (+16), 4 (+2), 5 (+14), 6 (+1, PlayAnimation n), 7 (stop), 8 (+1, +32), 9, 0xA, 0xB, 0xC (no args), 0xD (no args, then a **10-byte read**). Payloads of 0x11/0xF/0x22 bytes at "registers" 3/5/8 do not look like EEPROM use.
+- On a command MCU the write phase of a read (`[A4 06]`, `[A4 01]`, …) is itself a command; Elgato sends `[A4 01]` as a bare command. Reading "reg 6" would send PlayAnimation with no argument. Any `sub` in 1..0xC risks a state change.
+- The only read form in the driver is cmd 0x0D (`FUN_21df2`, 10-byte response). It has **no callers** in the dylib, so Elgato never sends it. The 0xA4 requests it does send are writes only: `[A4 01]` (`FUN_21b70`, one call site), `[A4 07]`, `[A4 06 n]`.
+- Whether 0x0D is a pure query is a guess (a pointer set if EEPROM, unknown if MCU).
+
+Consequences:
+- No writes to 0xA4 were made. "Does it ACK, is reg 6 readable, does it change on events" is **not answered** and cannot be answered safely through the bridge.
+- The payload shapes favour "LED/status MCU with a command set" over "EEPROM", but that is inferred, not observed.
+- Do not implement PlayAnimation. Do not probe through the bridge.
+- Safe routes: capture Elgato's real traffic (Windows USB trace, as was done for `AB 03 12`) to see what the MCU emits and reads back at 0xA4, or obtain the MCU firmware image (not the FX3 firmware).
+- The plain HD60 S may have no controllable LED at all (unconfirmed).
 
 ## 3. Sequences (PID 0x74)
 
@@ -427,6 +451,61 @@ Every mode the Pi's EDID offers was driven with `kmstest` (SMPTE pattern) and ca
 - **Aspect.** The source's AVI InfoFrame is readable from MST3367 bank 2: 0x0B bit3 = received, 0x49 (DB2) bits 5:4 = 1 for 4:3, 2 for 16:9, 0x4B = VIC. Measured on the Pi: 576p 0x49 = 0x28, VIC 18 (16:9); 480p 0x49 = 0x18, VIC 2 (4:3). `hd60s_stream` polls it once a second into `parser.wide`; the camera fills the frame for a 16:9 SD source and pillarboxes otherwise.
 - **Mode changes while streaming** are survived: the parser re-locks on the new size within a second (1080p60 -> 720p50 -> 576i50 -> 1080i60 -> 1080p60 tested). During the switch it emits a few runt frames of wrong height (e.g. 1280x12, 1280x703, 1920x1045) and one wrong-width frame, so consumers should gate on a size they have seen stable for a few frames. `hd60s` has no signal-loss indicator beyond "no frames arrive".
 - 50 Hz modes behave like 60 Hz apart from the frame period and longer horizontal blanking (1080p50 line is 2640 clocks, not 2200). No 50 Hz-specific handling is needed; audio stays 48 kHz and flows in every mode.
+
+### Advertised EDID
+The HD60 S presents this EDID to the source on its HDMI input. Read from the Pi's cached copy (`/sys/class/drm/card1-HDMI-A-1/edid`, `edid-decode` 1.3 base, CTA-861 rev 3). It is held in the device's flash and this driver never writes it.
+
+- Monitor name: `HD60 S`. Manufacturer `EGA`, product `0x0001`, week 17 of 2013.
+- Base block: preferred 1920x1080p60 (148.5 MHz, 708x398 mm). Standard timings 1280x720p60, 1920x1080p60.
+- Colour: YCbCr 4:4:4 and 4:2:2 advertised (RGB is the baseline). No quantisation range flags are advertised.
+- Underscan IT video by default. Basic audio supported. CEC physical address 1.0.0.0. HDMI VSDB: DC_36bit, max TMDS 200 MHz.
+
+Video modes (CTA VDB, `native` = flagged native):
+
+| VIC | Resolution | Rate (Hz) | Aspect | Pixel clock (MHz) | Notes |
+|---|---|---|---|---|---|
+| 5 | 1920x1080i | 60 | 16:9 | 74.25 | native |
+| 4 | 1280x720p | 60 | 16:9 | 74.25 | |
+| 3 | 720x480p | 59.94 | 16:9 | 27 | |
+| 2 | 720x480p | 59.94 | 4:3 | 27 | |
+| 18 | 720x576p | 50 | 16:9 | 27 | |
+| 19 | 1280x720p | 50 | 16:9 | 74.25 | |
+| 20 | 1920x1080i | 50 | 16:9 | 74.25 | native |
+| 22 | 1440x576i | 50 | 16:9 | 27 | |
+| 7 | 1440x480i | 59.94 | 16:9 | 27 | |
+| 6 | 1440x480i | 59.94 | 4:3 | 27 | |
+| 17 | 720x576p | 50 | 4:3 | 27 | |
+| 21 | 1440x576i | 50 | 4:3 | 27 | |
+| 33 | 1920x1080p | 25 | 16:9 | 74.25 | native |
+| 34 | 1920x1080p | 30 | 16:9 | 74.25 | native |
+| 39 | 1920x1080i | 50 | 16:9 | 72 | |
+| 31 | 1920x1080p | 50 | 16:9 | 148.5 | |
+| 16 | 1920x1080p | 60 | 16:9 | 148.5 | |
+
+Detailed timings (DTDs): 1440x480i59.94, 720x480p59.94 (3:2), 1280x720p60, 1920x1080i60.
+
+Audio SADs: LPCM, 2 channels, 16-bit, 32/44.1/48 kHz. Speaker allocation: FL/FR.
+
+Raw EDID (256 bytes, base block then CTA block):
+
+```
+00 ff ff ff ff ff ff 00 14 e1 01 00 00 00 00 00
+11 17 01 03 80 00 02 78 1a cf 74 a3 57 4c b0 23
+09 48 4c 00 00 00 81 c0 d1 c0 01 01 01 01 01 01
+01 01 01 01 01 01 02 3a 80 18 71 38 2d 40 58 2c
+45 00 c4 8e 21 00 00 1e 00 00 00 18 00 1c 16 20
+58 2c 25 00 c4 8e 21 00 00 9e 00 00 00 fc 00 48
+44 36 30 20 53 0a 20 20 20 20 20 20 0a 00 00 fd
+00 17 3d 19 46 0f 00 0a 20 20 20 20 20 20 01 d2
+02 03 26 f4 51 85 04 03 02 12 13 94 16 07 06 11
+15 a1 a2 27 1f 10 23 09 07 01 83 01 00 00 67 03
+0c 00 10 00 20 28 8c 0a a0 14 51 f0 16 00 26 7c
+43 00 c4 8e 21 00 00 98 8c 0a d0 8a 20 e0 2d 10
+10 3e 96 00 c4 8e 21 00 00 19 01 1d 00 72 51 d0
+1e 20 6e 28 55 00 c4 8e 21 00 00 1f 01 1d 80 18
+71 1c 16 20 58 2c 25 00 c4 8e 21 00 00 9e 00 00
+00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 14
+```
 
 ## Unknown / unverified
 - Audio channel order (left first) is assumed from I2S convention, not tested with a one-sided signal.
