@@ -39,7 +39,7 @@ targets:
       SUPPORTED_PLATFORMS: driverkit
       DRIVERKIT_DEPLOYMENT_TARGET: "25.0"
       PRODUCT_BUNDLE_IDENTIFIER: net.mintopia.hd60s.dext
-      PROVISIONING_PROFILE_SPECIFIER: $(HD60S_DEXT_PROFILE)
+      PROVISIONING_PROFILE_SPECIFIER: ""
       CODE_SIGN_STYLE: Automatic
       OTHER_LDFLAGS: [-framework, AudioDriverKit, -framework, DriverKit]
       ENABLE_HARDENED_RUNTIME: YES

@@ -53,7 +53,7 @@ dmg = rm -rf build/dist && mkdir -p build/dist && cp -R $(1) build/dist/HD60S.ap
 dist: app
 	$(call dmg,build/HD60S.app,build/HD60S-$(VERSION).dmg)
 
-# DriverKit flavour (Apple Development, never notarised).
+# DriverKit flavour (local only: Xcode automatic signing, not published).
 dist-dext: DEXT_CONFIG = Release
 dist-dext: dext-dev
 	$(call dmg,build/HD60S-dext.app,build/HD60S-DriverKit-$(VERSION).dmg)
