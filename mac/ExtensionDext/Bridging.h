@@ -1,2 +1,4 @@
-#include "../Extension/Bridging.h"
+#include "device_libusb.h"
+#include "parser.h"
+#include "deinterlace.h"
 #include "DextFeed.h"
