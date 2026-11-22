@@ -99,16 +99,17 @@ int main(void)
     s.height = 1080;
     s.fps = 59.95;
     s.colour = COLOUR_BT709;
+    s.input_format = INPUT_YCBCR422;
     s.audio_rate = 48000;
     s.audio_channels = 2;
     s.frames = 120;
     t = render(hd60s_print_text, &s);
-    assert(strstr(t, "1920x1080p 59.95 fps") && strstr(t, "BT.709") && strstr(t, "48000 Hz, 2 channels"));
+    assert(strstr(t, "1920x1080p 59.95 fps") && strstr(t, "BT.709") && strstr(t, "Input:    YCbCr 4:2:2") && strstr(t, "48000 Hz, 2 channels"));
 
     /* JSON contract. */
     char *j = render(hd60s_print_json, &s);
     assert(strstr(j, "\"signal\":{\"state\":\"active\",\"width\":1920,\"height\":1080,\"interlaced\":false"));
-    assert(strstr(j, "\"warnings\":[]"));
+    assert(strstr(j, "\"warnings\":[]") && strstr(j, "\"input\":\"ycbcr422\",\"colour\":\"bt709\""));
     s.interlaced = 1;
     s.field_order = FIELD_TOP_FIRST;
     s.speed = SPEED_HIGH;

@@ -146,7 +146,8 @@ static int status(int json)
             st->fps = k.standard > 1 && span > 0 ? (double)(k.standard - 1) / span : 0;
             st->fps = hd60s_exact_fps(st->fps, hd60s_rate_from_vsync(hd60s_vsync_counter(&d)), st->interlaced);
             st->field_order = st->interlaced ? FIELD_TOP_FIRST : FIELD_NONE;
-            st->colour = COLOUR_BT709; /* colour_convert(d, 0, 0) runs for every mode */
+            st->colour = parser.colour;
+            st->input_format = parser.input_format;
         }
         if (k.audio_bytes) {
             st->audio_rate = 48000;

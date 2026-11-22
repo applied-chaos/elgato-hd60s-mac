@@ -28,7 +28,7 @@ int fr_valid(const struct fr_header *h, size_t mapped)
     return mapped >= fr_bytes() && h->magic == FR_MAGIC && h->version == FR_VERSION;
 }
 
-void fr_publish(struct fr_header *h, const uint8_t *frame, int width, int height, int interlaced, int wide)
+void fr_publish(struct fr_header *h, const uint8_t *frame, int width, int height, int interlaced, int wide, int colour)
 {
     size_t len = (size_t)width * (size_t)height * 2;
     if (width <= 0 || height <= 0 || len > FR_SLOT_BYTES)
@@ -44,6 +44,7 @@ void fr_publish(struct fr_header *h, const uint8_t *frame, int width, int height
     s->height = height;
     s->interlaced = interlaced;
     s->wide = wide;
+    s->colour = colour;
     s->len = (uint32_t)len;
     atomic_store_explicit(&s->seq, n, memory_order_release);
     atomic_store_explicit(&h->latest, n, memory_order_release);
@@ -57,7 +58,7 @@ uint32_t fr_take(const struct fr_header *h, uint32_t seen, uint8_t *out, size_t 
     const struct fr_slot *s = &h->slot[n % FR_SLOTS];
     if (atomic_load_explicit(&s->seq, memory_order_acquire) != n)
         return 0;
-    struct fr_frame f = {s->width, s->height, s->interlaced, s->wide, s->len};
+    struct fr_frame f = {s->width, s->height, s->interlaced, s->wide, s->colour, s->len};
     if (f.width <= 0 || f.height <= 0 || f.len != (size_t)f.width * (size_t)f.height * 2 || f.len > FR_SLOT_BYTES ||
         f.len > cap)
         return 0;
