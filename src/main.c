@@ -145,7 +145,8 @@ static int status(int json)
             double span = k.last - k.first;
             st->fps = k.standard > 1 && span > 0 ? (double)(k.standard - 1) / span : 0;
             st->field_order = st->interlaced ? FIELD_TOP_FIRST : FIELD_NONE;
-            st->colour = COLOUR_BT709; /* colour_convert(d, 0, 0) runs for every mode */
+            st->colour = parser.colour;
+            st->input_format = parser.input_format;
         }
         if (k.audio_bytes) {
             st->audio_rate = 48000;

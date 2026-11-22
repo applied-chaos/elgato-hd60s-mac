@@ -184,6 +184,16 @@ static const char *colour_name(enum hd60s_colour c)
     return c == COLOUR_BT709 ? "BT.709" : c == COLOUR_BT601 ? "BT.601" : "unknown";
 }
 
+static const char *input_name(enum hd60s_input_format f)
+{
+    return f == INPUT_YCBCR444 ? "YCbCr 4:4:4" : f == INPUT_YCBCR422 ? "YCbCr 4:2:2" : "RGB";
+}
+
+static const char *input_code(enum hd60s_input_format f)
+{
+    return f == INPUT_YCBCR444 ? "ycbcr444" : f == INPUT_YCBCR422 ? "ycbcr422" : "rgb";
+}
+
 static void mode_text(const struct hd60s_status *s, char *buf, size_t n)
 {
     snprintf(buf, n, "%dx%d%s %.2f fps", s->width, s->height, s->interlaced ? "i" : "p", s->fps);
@@ -212,6 +222,7 @@ void hd60s_print_text(const struct hd60s_status *s, FILE *out)
     case SIGNAL_ACTIVE:
         mode_text(s, mode, sizeof mode);
         fprintf(out, "Signal:   %s%s\n", mode, s->field_order == FIELD_TOP_FIRST ? ", top field first" : "");
+        fprintf(out, "Input:    %s\n", input_name(s->input_format));
         fprintf(out, "Colour:   %s\n", colour_name(s->colour));
         break;
     }
@@ -272,9 +283,9 @@ void hd60s_print_json(const struct hd60s_status *s, FILE *out)
     fprintf(out, "}},\"signal\":{\"state\":\"%s\"", state[s->signal]);
     if (s->signal == SIGNAL_ACTIVE)
         fprintf(out,
-                ",\"width\":%d,\"height\":%d,\"interlaced\":%s,\"field_order\":\"%s\",\"fps\":%.2f,\"colour\":\"%s\"",
+                ",\"width\":%d,\"height\":%d,\"interlaced\":%s,\"field_order\":\"%s\",\"fps\":%.2f,\"input\":\"%s\",\"colour\":\"%s\"",
                 s->width, s->height, s->interlaced ? "true" : "false",
-                s->field_order == FIELD_TOP_FIRST ? "top_first" : "none", s->fps,
+                s->field_order == FIELD_TOP_FIRST ? "top_first" : "none", s->fps, input_code(s->input_format),
                 s->colour == COLOUR_BT709 ? "bt709" : s->colour == COLOUR_BT601 ? "bt601" : "unknown");
     fputs("},\"audio\":", out);
     if (s->audio_rate)

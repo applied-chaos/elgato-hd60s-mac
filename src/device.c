@@ -311,43 +311,66 @@ static uint16_t coeff_clamp(uint16_t c)
     return v < 0x3fff ? v : 0x3fff;
 }
 
-/* FUN_10b6b + FUN_103ea: RGB to YCbCr matrix; BT.601 for SD, BT.709 otherwise. */
-static void colour_convert(struct hd60s *d, int sd, int input_is_yuv)
+/* AVI InfoFrame bytes as the MST3367 holds them. Elgato treats the reserved Y1Y0 = 3 as RGB. */
+struct hd60s_source hd60s_parse_avi(int present, uint8_t db1, uint8_t db2)
+{
+    struct hd60s_source s = {INPUT_RGB, COLOUR_UNKNOWN};
+    if (!present)
+        return s;
+    int y = db1 >> 5 & 3, c = db2 >> 6;
+    s.format = y == 1 ? INPUT_YCBCR422 : y == 2 ? INPUT_YCBCR444 : INPUT_RGB;
+    s.colorimetry = c == 1 ? COLOUR_BT601 : c == 2 ? COLOUR_BT709 : COLOUR_UNKNOWN;
+    return s;
+}
+
+/* FUN_10b6b + FUN_103ea: RGB input gets an RGB to YCbCr matrix (601 for SD, else 709); YCbCr input passes through. */
+void hd60s_csc_plan(const struct hd60s_colour_cfg *c, struct hd60s_csc *out)
 {
     uint8_t raw[24];
-    uint8_t mode = 0x62;
-    if (input_is_yuv) {
+    memset(out, 0, sizeof *out);
+    if (c->input != INPUT_RGB) {
         memcpy(raw, ub530_csc_rgb, 16);
         memcpy(raw + 16, ub530_csc_rgb_tail, 8);
+        out->mode = 0x62;
     } else {
-        memcpy(raw, sd ? ub530_csc_601 : ub530_csc_709, 16);
-        memcpy(raw + 16, sd ? ub530_csc_601_tail : ub530_csc_709_tail, 2);
+        memcpy(raw, c->sd ? ub530_csc_601 : ub530_csc_709, 16);
+        memcpy(raw + 16, c->sd ? ub530_csc_601_tail : ub530_csc_709_tail, 2);
         memcpy(raw + 18, ub530_csc_rgb_tail + 2, 6);
-        mode = 0x40;
+        out->mode = 0x40;
     }
-    uint16_t m[12];
     for (int i = 0; i < 12; i++)
-        m[i] = (uint16_t)(raw[2 * i] | raw[2 * i + 1] << 8);
+        out->m[i] = (uint16_t)(raw[2 * i] | raw[2 * i + 1] << 8);
+    /* Picture controls at Elgato's defaults (brightness 0x81, others neutral). */
+    // ponytail: brightness/contrast/saturation/hue fixed; port FUN_103ea's maths if controls are wanted
+    for (int i = 0; i < 9; i++)
+        out->m[i] = coeff_clamp(out->m[i]);
+    out->m[10] = (uint16_t)(((0x40 + out->m[10]) & 0x7fc0) | 1);
+}
 
+enum hd60s_colour hd60s_frame_colour(const struct hd60s_colour_cfg *c, enum hd60s_colour colorimetry)
+{
+    if (c->input != INPUT_RGB && colorimetry != COLOUR_UNKNOWN)
+        return colorimetry;
+    return c->sd ? COLOUR_BT601 : COLOUR_BT709;
+}
+
+static void colour_convert(struct hd60s *d, const struct hd60s_colour_cfg *c)
+{
+    struct hd60s_csc csc;
+    hd60s_csc_plan(c, &csc);
     uint8_t ab = (uint8_t)mst_read(d, 0, 0xab);
     mst_write(d, 0, 0xab, ab | 0x80);
     mst_write(d, 0, 0x90, 0x15);
     mst_write(d, 0, 0x91, 0x15);
-    mst_write(d, 0, 0x92, mode);
-
-    /* Picture controls at Elgato's defaults (brightness 0x81, others neutral). */
-    // ponytail: brightness/contrast/saturation/hue fixed; port FUN_103ea's maths if controls are wanted
-    for (int i = 0; i < 9; i++)
-        m[i] = coeff_clamp(m[i]);
-    m[10] = (uint16_t)(((0x40 + m[10]) & 0x7fc0) | 1);
+    mst_write(d, 0, 0x92, csc.mode);
     mst_update(d, 0, 0xab, 0x80, 0x15);
     mst_update(d, 0, 0xac, 0xc0, 0x15);
     mst_write(d, 0, 0xad, 0x05);
     mst_write(d, 0, 0x1e, 0x11);
     mst_write(d, 0, 0x1f, 0x01);
     for (int i = 0; i < 12; i++) {
-        mst_write(d, 0, (uint8_t)(0x93 + 2 * i), (uint8_t)(m[i] >> 8));
-        mst_write(d, 0, (uint8_t)(0x94 + 2 * i), (uint8_t)m[i]);
+        mst_write(d, 0, (uint8_t)(0x93 + 2 * i), (uint8_t)(csc.m[i] >> 8));
+        mst_write(d, 0, (uint8_t)(0x94 + 2 * i), (uint8_t)csc.m[i]);
     }
     mst_update(d, 0, 0xb0, 0xc2, 0x21);
     mst_write(d, 0, 0xab, ab & 0x7f);
@@ -400,8 +423,8 @@ int hd60s_start(struct hd60s *d)
             break;
         msleep(d, 5);
     }
-    colour_convert(d, 0, 0);
-    d->sd = 0;
+    d->colour = (struct hd60s_colour_cfg){INPUT_RGB, 0};
+    colour_convert(d, &d->colour);
     struct tx_bus tb = tx_bus(d);
     tx_start(&d->tx, &tb);
     d->started = !d->err;
@@ -424,17 +447,12 @@ void hd60s_stop(struct hd60s *d)
 
 enum { TX_POLL_MS = 250, MODE_WINDOW_MS = 2000, ASPECT_POLL_MS = 1000 };
 
-/* Source AVI InfoFrame (same MST3367 bank 2 block the driver reads the VIC from): DB2 bits 5:4 = 2 is 16:9. */
-static int source_is_16x9(struct hd60s *d)
-{
-    return (mst_read(d, 2, 0x0b) & 0x08) && ((mst_read(d, 2, 0x49) >> 4) & 3) == 2;
-}
-
 void hd60s_policy_begin(struct hd60s_policy *s, long now_ms)
 {
     memset(s, 0, sizeof *s);
     s->win_start = s->last_poll = now_ms;
     s->aspect_at = now_ms - ASPECT_POLL_MS;
+    s->src.format = INPUT_RGB;
 }
 
 void hd60s_policy_frame(struct hd60s_policy *s, int w, int h, int interlaced)
@@ -450,13 +468,22 @@ void hd60s_policy_tick(struct hd60s *d, struct hd60s_parser *p, struct hd60s_pol
 {
     if (now_ms - s->aspect_at >= ASPECT_POLL_MS) {
         s->aspect_at = now_ms;
-        p->wide = source_is_16x9(d);
+        int present = mst_read(d, 2, 0x0b) & 0x08;
+        uint8_t db1 = (uint8_t)mst_read(d, 2, 0x48), db2 = (uint8_t)mst_read(d, 2, 0x49);
+        s->src = hd60s_parse_avi(present, db1, db2);
+        p->wide = present && (db2 >> 4 & 3) == 2;
     }
+    struct hd60s_colour_cfg want = d->colour;
     int sd = parser_is_sd(p->last_w, p->last_h);
-    if (sd >= 0 && sd != d->sd) {
-        colour_convert(d, sd, 0);
-        d->sd = sd;
+    if (sd >= 0)
+        want.sd = sd;
+    want.input = s->src.format;
+    if (want.sd != d->colour.sd || want.input != d->colour.input) {
+        colour_convert(d, &want);
+        d->colour = want;
     }
+    p->input_format = d->colour.input;
+    p->colour = hd60s_frame_colour(&d->colour, s->src.colorimetry);
     if (now_ms - s->win_start >= MODE_WINDOW_MS) {
         double fps = s->frames * (s->interlaced ? 2000.0 : 1000.0) / (double)(now_ms - s->win_start);
         s->mode = s->frames && s->run * 4 >= s->frames * 3 ? tx_mode_find(s->w, s->h, s->interlaced, fps) : NULL;
