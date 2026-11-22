@@ -200,7 +200,7 @@ finish() {
 
 run_wizard() {
 
-TOTAL_STAGES=6
+TOTAL_STAGES=8
 REPO="applied-chaos/elgato-hd60s-mac"
 TEAM="46A7P6HL4Z"
 cd "$(dirname "$0")/.."
@@ -220,15 +220,22 @@ ask_file() {
   printf -v "$key" '%s' "$path"
 }
 
-# check_profile FILE BUNDLE_ID: sanity-checks a downloaded provisioning profile.
+# check_profile FILE BUNDLE_ID [dev]: sanity-checks a downloaded provisioning profile.
+# Developer ID (default) profiles provision all devices; dev profiles list devices.
 check_profile() {
-  local file="$1" bundle="$2" plist appid
+  local file="$1" bundle="$2" kind="${3:-}" plist appid
   plist=$(security cms -D -i "$file" 2>/dev/null) || { warn "not a provisioning profile"; return 1; }
   appid=$(plutil -extract Entitlements.com\\.apple\\.application-identifier raw - <<<"$plist" 2>/dev/null || true)
   if [[ "$appid" != "$TEAM.$bundle" ]]; then
     warn "profile is for '$appid', expected $TEAM.$bundle"; return 1
   fi
-  if plutil -extract ProvisionsAllDevices raw - <<<"$plist" >/dev/null 2>&1; then
+  if [[ "$kind" == dev ]]; then
+    if plutil -extract ProvisionedDevices raw - <<<"$plist" >/dev/null 2>&1; then
+      note "Development profile: $(plutil -extract Name raw - <<<"$plist"), $(plutil -extract ProvisionedDevices raw - <<<"$plist") device(s), expires $(plutil -extract ExpirationDate raw - <<<"$plist")"
+    else
+      warn "this isn't a development profile (pick Development, and tick your Mac)"; return 1
+    fi
+  elif plutil -extract ProvisionsAllDevices raw - <<<"$plist" >/dev/null 2>&1; then
     note "Developer ID profile: $(plutil -extract Name raw - <<<"$plist"), expires $(plutil -extract ExpirationDate raw - <<<"$plist")"
   else
     warn "this isn't a Developer ID profile (pick Distribution → Developer ID)"; return 1
@@ -334,6 +341,62 @@ set_secret ASC_KEY_P8 "$(base64 -i "$ASC_KEY_FILE")"
 set_secret ASC_KEY_ID "$ASC_KEY_ID"
 set_secret ASC_ISSUER_ID "$ASC_ISSUER_ID"
 say "Keep the .p8 somewhere safe (a password manager); Apple won't let you download it again."
+pause
+
+stage "Apple Development certificate (DriverKit DMG)"
+say "The DriverKit DMG is signed with Apple Development, not Developer ID, and is not notarised."
+if security find-identity -v -p codesigning | grep -q "Apple Development:"; then
+  say "Found an Apple Development certificate in your keychain."
+else
+  step "Xcode → Settings → Accounts → team $TEAM → Manage Certificates… → + → Apple Development."
+  open -a Xcode >/dev/null 2>&1 || true
+  pause "Press Enter once it's created"
+fi
+DEV_P12_PASSWORD=$(openssl rand -base64 18)
+say "Export it with its private key:"
+step "Keychain Access → login keychain → My Certificates."
+step "Right-click 'Apple Development: …' → Export… → save as ~/Desktop/apple-development.p12"
+step "When asked for a password, use this one (copy it now):"
+printf '\n      %s%s%s\n\n' "$BOLD" "$DEV_P12_PASSWORD" "$RESET"
+open -a "Keychain Access" >/dev/null 2>&1 || true
+dev_p12_opens() {
+  openssl pkcs12 -in "$DEV_P12_FILE" -passin "pass:$DEV_P12_PASSWORD" -nokeys -legacy 2>/dev/null | grep -q "Apple Development" \
+    || openssl pkcs12 -in "$DEV_P12_FILE" -passin "pass:$DEV_P12_PASSWORD" -nokeys 2>/dev/null | grep -q "Apple Development"
+}
+ask_file DEV_P12_FILE "Path to the exported .p12:" "$HOME/Desktop/apple-development.p12"
+until dev_p12_opens; do
+  warn "that .p12 doesn't open with the password or has no Apple Development certificate."
+  ask_secret DEV_P12_PASSWORD "Type the password you used (or Ctrl-C and export again):"
+done
+set_secret MACOS_DEV_CERTIFICATE_P12 "$(base64 -i "$DEV_P12_FILE")"
+set_secret MACOS_DEV_CERTIFICATE_PASSWORD "$DEV_P12_PASSWORD"
+if confirm "Delete $DEV_P12_FILE now it's uploaded? (it holds your signing key)"; then
+  rm -P "$DEV_P12_FILE" 2>/dev/null || rm -f "$DEV_P12_FILE"; note "deleted"
+fi
+pause
+
+stage "Development provisioning profiles (DriverKit DMG)"
+say "Three profiles, each listing the Macs allowed to run the DriverKit DMG."
+say "Register each Mac's UDID first: Devices → +."
+open_url "https://developer.apple.com/account/resources/devices/list"
+pause "Press Enter once your Macs are registered"
+open_url "https://developer.apple.com/account/resources/profiles/add"
+step "Development → macOS App Development → Continue. App ID: net.mintopia.hd60s."
+step "Select the Apple Development certificate and every Mac → name 'HD60S App Development' → Download."
+until ask_file DEV_APP_PROFILE_FILE "Path to the downloaded profile:" "$HOME/Downloads/HD60S_App_Development.provisionprofile" \
+      && check_profile "$DEV_APP_PROFILE_FILE" net.mintopia.hd60s dev; do :; done
+set_secret MACOS_DEV_APP_PROFILE "$(base64 -i "$DEV_APP_PROFILE_FILE")"
+step "Same again for App ID net.mintopia.hd60s.camera → name 'HD60S Camera Development'."
+until ask_file DEV_CAMERA_PROFILE_FILE "Path to the downloaded profile:" "$HOME/Downloads/HD60S_Camera_Development.provisionprofile" \
+      && check_profile "$DEV_CAMERA_PROFILE_FILE" net.mintopia.hd60s.camera dev; do :; done
+set_secret MACOS_DEV_CAMERA_PROFILE "$(base64 -i "$DEV_CAMERA_PROFILE_FILE")"
+step "Last: Development → DriverKit App Development, App ID net.mintopia.hd60s.dext → name 'HD60S DriverKit Development'."
+note "The App ID needs the DriverKit and DriverKit Family Audio Device capabilities; Xcode registers it on a first dev build."
+until ask_file DEV_DEXT_PROFILE_FILE "Path to the downloaded profile:" "$HOME/Downloads/HD60S_DriverKit_Development.provisionprofile" \
+      && check_profile "$DEV_DEXT_PROFILE_FILE" net.mintopia.hd60s.dext dev; do :; done
+security cms -D -i "$DEV_DEXT_PROFILE_FILE" | grep -q "com.apple.developer.driverkit.family.audio" \
+  || warn "profile lacks the DriverKit audio family entitlement: tick it on the App ID and regenerate"
+set_secret MACOS_DEV_DEXT_PROFILE "$(base64 -i "$DEV_DEXT_PROFILE_FILE")"
 pause
 
 finish
