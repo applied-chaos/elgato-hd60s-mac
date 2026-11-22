@@ -516,3 +516,30 @@ void hd60s_policy_tick(struct hd60s *d, struct hd60s_parser *p, struct hd60s_pol
         s->last_poll = now_ms;
     }
 }
+
+int hd60s_transfer_parse(const char *s, enum hd60s_transfer *out)
+{
+    if (strcmp(s, "bulk") == 0)
+        *out = HD60S_BULK;
+    else if (strcmp(s, "iso") == 0 || strcmp(s, "isochronous") == 0)
+        *out = HD60S_ISO;
+    else
+        return 0;
+    return 1;
+}
+
+int hd60s_xfer_plan(enum hd60s_transfer mode, const int alt_bytes[HD60S_ISO_ALTS], struct hd60s_xfer_plan *out)
+{
+    if (mode == HD60S_BULK) {
+        *out = (struct hd60s_xfer_plan){.alt = 4, .buffers = 16};
+        return 0;
+    }
+    int best = -1;
+    for (int i = 0; i < HD60S_ISO_ALTS; i++)
+        if (alt_bytes[i] >= HD60S_ISO_MIN_BYTES && (best < 0 || alt_bytes[i] < alt_bytes[best]))
+            best = i;
+    if (best < 0)
+        return -1;
+    *out = (struct hd60s_xfer_plan){.alt = best + 1, .buffers = 4, .packets = 160, .packet_bytes = alt_bytes[best]};
+    return 0;
+}

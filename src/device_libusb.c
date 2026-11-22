@@ -54,7 +54,7 @@ int hd60s_open(struct hd60s *d)
             fprintf(stderr, "hd60s: cannot claim interface 0\n");
         return -1;
     }
-    d->usb = (struct hd60s_usb){d, lctrl, lsleep};
+    d->usb = (struct hd60s_usb){.ctx = d, .ctrl = lctrl, .sleep_ms = lsleep};
     if (hd60s_init(d) < 0) {
         if (!d->err)
             fprintf(stderr, "hd60s: MCU bridge did not answer\n");
@@ -74,11 +74,12 @@ void hd60s_close(struct hd60s *d)
     memset(d, 0, sizeof *d);
 }
 
-#define NUM_XFERS 16
+#define MAX_XFERS 16
 #define XFER_SIZE (512 * 1024)
 
 struct stream_ctx {
     struct hd60s_parser *parser;
+    int iso_packet_bytes;
     volatile sig_atomic_t *stop;
     int active;
     frame_cb frame_cb;
@@ -104,7 +105,14 @@ static void LIBUSB_CALL on_xfer(struct libusb_transfer *t)
 {
     struct stream_ctx *s = t->user_data;
     if (t->status == LIBUSB_TRANSFER_COMPLETED || t->status == LIBUSB_TRANSFER_TIMED_OUT) {
-        parser_feed(s->parser, t->buffer, (size_t)t->actual_length);
+        if (t->type == LIBUSB_TRANSFER_TYPE_ISOCHRONOUS) {
+            for (int i = 0; i < t->num_iso_packets; i++)
+                if (t->iso_packet_desc[i].status == LIBUSB_TRANSFER_COMPLETED)
+                    parser_feed(s->parser, t->buffer + (size_t)i * s->iso_packet_bytes,
+                                t->iso_packet_desc[i].actual_length);
+        } else {
+            parser_feed(s->parser, t->buffer, (size_t)t->actual_length);
+        }
     } else if (t->status != LIBUSB_TRANSFER_CANCELLED) {
         fprintf(stderr, "hd60s: transfer status %d\n", t->status);
         *s->stop = 1;
@@ -114,21 +122,63 @@ static void LIBUSB_CALL on_xfer(struct libusb_transfer *t)
     s->active--;
 }
 
+static void iso_alt_bytes(struct hd60s *d, int out[HD60S_ISO_ALTS])
+{
+    struct libusb_config_descriptor *cfg;
+    if (libusb_get_active_config_descriptor(libusb_get_device(d->h), &cfg) < 0)
+        return;
+    const struct libusb_interface *intf = &cfg->interface[0];
+    for (int i = 0; i < intf->num_altsetting; i++) {
+        const struct libusb_interface_descriptor *a = &intf->altsetting[i];
+        if (a->bAlternateSetting < 1 || a->bAlternateSetting > HD60S_ISO_ALTS)
+            continue;
+        for (int e = 0; e < a->bNumEndpoints; e++) {
+            const struct libusb_endpoint_descriptor *ep = &a->endpoint[e];
+            if (ep->bEndpointAddress != HD60S_EP_VIDEO || (ep->bmAttributes & 3) != LIBUSB_TRANSFER_TYPE_ISOCHRONOUS)
+                continue;
+            struct libusb_ss_endpoint_companion_descriptor *ss;
+            int n = (ep->wMaxPacketSize & 0x7ff) * (1 + (ep->wMaxPacketSize >> 11 & 3));
+            if (libusb_get_ss_endpoint_companion_descriptor(NULL, ep, &ss) == 0) {
+                n = ss->wBytesPerInterval;
+                libusb_free_ss_endpoint_companion_descriptor(ss);
+            }
+            out[a->bAlternateSetting - 1] = n;
+        }
+    }
+    libusb_free_config_descriptor(cfg);
+}
+
 int hd60s_stream(struct hd60s *d, struct hd60s_parser *p, volatile sig_atomic_t *stop, double seconds)
 {
     struct stream_ctx s = {.parser = p, .stop = stop, .frame_cb = p->on_frame, .frame_ctx = p->ctx};
-    struct libusb_transfer *xfers[NUM_XFERS];
-    if (libusb_set_interface_alt_setting(d->h, 0, 4) < 0) {
-        fprintf(stderr, "hd60s: cannot select bulk alt setting\n");
+    struct libusb_transfer *xfers[MAX_XFERS];
+    int alt_bytes[HD60S_ISO_ALTS] = {0};
+    struct hd60s_xfer_plan plan;
+    if (d->usb.transfer == HD60S_ISO)
+        iso_alt_bytes(d, alt_bytes);
+    if (hd60s_xfer_plan(d->usb.transfer, alt_bytes, &plan) < 0) {
+        fprintf(stderr, "hd60s: no isochronous alt setting on this device\n");
         return -1;
     }
+    if (libusb_set_interface_alt_setting(d->h, 0, plan.alt) < 0) {
+        fprintf(stderr, "hd60s: cannot select alt setting %d\n", plan.alt);
+        return -1;
+    }
+    s.iso_packet_bytes = plan.packet_bytes;
     p->on_frame = on_frame_probe;
     p->ctx = &s;
     hd60s_policy_begin(&s.policy, now_ms());
-    for (int i = 0; i < NUM_XFERS; i++) {
-        xfers[i] = libusb_alloc_transfer(0);
-        libusb_fill_bulk_transfer(xfers[i], d->h, HD60S_EP_VIDEO, malloc(XFER_SIZE), XFER_SIZE,
-                                  on_xfer, &s, 1000);
+    for (int i = 0; i < plan.buffers; i++) {
+        xfers[i] = libusb_alloc_transfer(plan.packets);
+        if (plan.packets) {
+            int size = plan.packets * plan.packet_bytes;
+            libusb_fill_iso_transfer(xfers[i], d->h, HD60S_EP_VIDEO, malloc((size_t)size), size, plan.packets,
+                                     on_xfer, &s, 1000);
+            libusb_set_iso_packet_lengths(xfers[i], plan.packet_bytes);
+        } else {
+            libusb_fill_bulk_transfer(xfers[i], d->h, HD60S_EP_VIDEO, malloc(XFER_SIZE), XFER_SIZE,
+                                      on_xfer, &s, 1000);
+        }
         if (libusb_submit_transfer(xfers[i]) == 0)
             s.active++;
     }
@@ -136,7 +186,7 @@ int hd60s_stream(struct hd60s *d, struct hd60s_parser *p, volatile sig_atomic_t 
     while (s.active) {
         if (*stop || (seconds > 0 && now_ms() >= end)) {
             *stop = 1;
-            for (int i = 0; i < NUM_XFERS; i++)
+            for (int i = 0; i < plan.buffers; i++)
                 libusb_cancel_transfer(xfers[i]);
         }
         struct timeval tv = {0, 100000};
@@ -147,7 +197,7 @@ int hd60s_stream(struct hd60s *d, struct hd60s_parser *p, volatile sig_atomic_t 
     }
     p->on_frame = s.frame_cb;
     p->ctx = s.frame_ctx;
-    for (int i = 0; i < NUM_XFERS; i++) {
+    for (int i = 0; i < plan.buffers; i++) {
         free(xfers[i]->buffer);
         libusb_free_transfer(xfers[i]);
     }

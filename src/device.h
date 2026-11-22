@@ -11,9 +11,28 @@
 #define HD60S_PID 0x0074
 #define HD60S_EP_VIDEO 0x83
 
+/* Bulk is the default (iface 0 alt 4); isochronous is alt 1-3 and suits flaky hubs. */
+enum hd60s_transfer { HD60S_BULK, HD60S_ISO };
+
+/* Bytes per service interval of EP 0x83 in alt settings 1-3 (0 = absent), which iso picks from. */
+#define HD60S_ISO_ALTS 3
+struct hd60s_xfer_plan {
+    int alt;
+    int buffers;
+    int packets;      /* iso packets per buffer, 0 for bulk */
+    int packet_bytes; /* iso bytes per packet, 0 for bulk */
+};
+
+int hd60s_transfer_parse(const char *s, enum hd60s_transfer *out);
+/* Bytes per 125 us interval that 1080p60 YUY2 needs (1920*1080*2*60/8000). */
+#define HD60S_ISO_MIN_BYTES 31104
+/* Iso takes the narrowest alt that carries 1080p60: alt 3 delivers no data on a Mac (tested). -1 if none does. */
+int hd60s_xfer_plan(enum hd60s_transfer mode, const int alt_bytes[HD60S_ISO_ALTS], struct hd60s_xfer_plan *out);
+
 /* Transport seam: libusb on the Mac, IOUSBHostInterface in the driver extension. */
 struct hd60s_usb {
     void *ctx;
+    enum hd60s_transfer transfer; /* the driver extension supports bulk only */
     /* Vendor control request (bmRequestType 0xC0 in / 0x40 out). Bytes moved, or < 0 on failure. */
     int (*ctrl)(void *ctx, int in, uint8_t req, uint16_t val, uint16_t idx, uint8_t *buf, uint16_t len);
     void (*sleep_ms)(void *ctx, int ms);
