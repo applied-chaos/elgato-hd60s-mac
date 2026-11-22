@@ -13,7 +13,8 @@ struct hd60s_parser {
     size_t cap;
     frame_cb on_frame;
     audio_cb on_audio;
-    void *ctx;
+    void *ctx;       /* frame callback context */
+    void *audio_ctx; /* audio callback context; stays put when ctx is swapped */
 
     uint8_t carry[4];
     int carry_len;

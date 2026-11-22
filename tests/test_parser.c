@@ -131,12 +131,19 @@ static void test_interlaced(int first_field)
     free(st.b);
 }
 
+static void ignore_frame(void *ctx, const uint8_t *f, int w, int h, int interlaced)
+{
+    (void)ctx; (void)f; (void)w; (void)h; (void)interlaced;
+}
+
 static void test_audio(void)
 {
     static uint8_t buf[1 << 16];
     struct sink s = {0};
     struct hd60s_parser p;
     parser_init(&p, buf, sizeof buf, on_frame, on_audio, &s);
+    p.on_frame = ignore_frame; /* swapped frame ctx (hd60s_stream probe) must not redirect audio */
+    p.ctx = NULL;
     struct stream st = {0};
     /* Payload deliberately contains a timing-code pattern that must not be treated as one. */
     uint8_t pcm[8] = {0xff, 0x00, 0x00, 0x00, 0x01, 0x02, 0x03, 0x04};
@@ -149,8 +156,6 @@ static void test_audio(void)
     assert(s.audio_len == 3 * sizeof pcm);
     for (int i = 0; i < 3; i++)
         assert(memcmp(s.audio + i * sizeof pcm, pcm, sizeof pcm) == 0);
-    assert(s.frames >= 2);
-    check_progressive_frame(s.last);
     free(st.b);
 }
 

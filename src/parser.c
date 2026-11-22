@@ -11,6 +11,7 @@ void parser_init(struct hd60s_parser *p, uint8_t *buf, size_t cap, frame_cb on_f
     p->on_frame = on_frame;
     p->on_audio = on_audio;
     p->ctx = ctx;
+    p->audio_ctx = ctx;
     p->prev_v = -1;
 }
 
@@ -144,7 +145,7 @@ void parser_feed(struct hd60s_parser *p, const uint8_t *d, size_t len)
     while (len) {
         if (p->audio_left) {
             size_t n = len < p->audio_left ? len : p->audio_left;
-            p->on_audio(p->ctx, d, n);
+            p->on_audio(p->audio_ctx, d, n);
             p->audio_left -= n;
             d += n;
             len -= n;
