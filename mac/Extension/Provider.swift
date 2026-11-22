@@ -10,6 +10,7 @@ private let width = Int32(outputWidth)
 private let height = Int32(outputHeight)
 private let noFramesTimeoutNs: UInt64 = 200_000_000
 private let statsEveryTicks = 600
+private let settingsEveryTicks = 30
 private let log = Logger(subsystem: "net.mintopia.hd60s.camera", category: "capture")
 
 final class ProviderSource: NSObject, CMIOExtensionProviderSource {
@@ -100,6 +101,8 @@ final class StreamSource: NSObject, CMIOExtensionStreamSource {
     private var timer: DispatchSourceTimer?
     private var ticks = 0
     private var scaler: VTPixelTransferSession?
+    private let dev = UnsafeMutablePointer<hd60s>.allocate(capacity: 1)
+    private let settings = OSAllocatedUnfairLock(initialState: SettingsFile.load() ?? hd60s_settings())
 
     override init() {
         var desc: CMFormatDescription?
@@ -118,6 +121,7 @@ final class StreamSource: NSObject, CMIOExtensionStreamSource {
         CVPixelBufferPoolCreate(kCFAllocatorDefault, nil, attrs as CFDictionary, &pool)
         super.init()
         parser.initialize(to: hd60s_parser())
+        dev.initialize(to: hd60s())
         deinterlacer.initialize(to: deint())
         slate = makeSlate()
         stream = CMIOExtensionStream(localizedName: "Elgato HD60 S", streamID: UUID(), direction: .source,
@@ -212,20 +216,21 @@ final class StreamSource: NSObject, CMIOExtensionStreamSource {
         }
         let ctx = Unmanaged.passUnretained(self).toOpaque()
         while stop.pointee == 0 {
-            var d = hd60s()
-            if hd60s_open(&d) == 0 && hd60s_start(&d) == 0 {
+            let opened = hd60s_open(dev) == 0
+            if opened { dev.pointee.settings = settings.withLock { $0 } }
+            if opened && hd60s_start(dev) == 0 {
                 log.info("capture started")
                 parser_init(parser, buf, cap, { ctx, frame, w, h, interlaced in
                     let me = Unmanaged<StreamSource>.fromOpaque(ctx!).takeUnretainedValue()
                     me.send(UnsafeMutablePointer(mutating: frame!), Int(w), Int(h), interlaced != 0, wide: me.parser.pointee.wide != 0,
                             bt601: me.parser.pointee.colour == COLOUR_BT601)
                 }, { _, pcm, len in audio_feed_push(pcm, len) }, ctx)
-                hd60s_stream(&d, parser, stop, 0)
+                hd60s_stream(dev, parser, stop, 0)
             } else {
                 log.error("device open failed")
             }
-            hd60s_stop(&d)
-            hd60s_close(&d)
+            hd60s_stop(dev)
+            hd60s_close(dev)
             for _ in 0..<10 where stop.pointee == 0 {
                 usleep(100_000)
             }
@@ -296,6 +301,11 @@ final class StreamSource: NSObject, CMIOExtensionStreamSource {
             emit(slate)
         }
         ticks += 1
+        if ticks % settingsEveryTicks == 0, let next = SettingsFile.load() {
+            settings.withLock { $0 = next }
+            // The capture thread reads this once a second; an aligned word write needs no lock.
+            dev.pointee.settings = next
+        }
         if ticks % statsEveryTicks == 0 {
             // ponytail: unsynchronised reads of counters the capture thread writes; fine for logging.
             #if DEXT

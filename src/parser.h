@@ -7,6 +7,9 @@
 enum hd60s_colour { COLOUR_UNKNOWN, COLOUR_BT709, COLOUR_BT601 };
 /* Source pixel format from the AVI InfoFrame (Y1Y0). */
 enum hd60s_input_format { INPUT_RGB, INPUT_YCBCR444, INPUT_YCBCR422 };
+/* HDMI colour range, SetHDMIColorRange. Expanded compresses full-range RGB to limited. */
+enum hd60s_range { RANGE_AUTO, RANGE_STANDARD, RANGE_EXPANDED };
+static const char *const hd60s_range_names[] = {"auto", "standard", "expanded"};
 
 /* Width in pixels, height in lines; frame is YUY2 (Y Cb Y Cr), stride = width * 2. */
 typedef void (*frame_cb)(void *ctx, const uint8_t *frame, int width, int height, int interlaced);

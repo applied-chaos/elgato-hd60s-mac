@@ -59,6 +59,7 @@ struct HD60SDriver_IVars {
     Xfer xfers[kXfers];
     uint32_t generation = 0;
     bool streamFailed = false, stopping = false;
+    int range = RANGE_AUTO; /* written by the user client, read on the USB queue */
 
     struct hd60s dev;
     struct hd60s_parser parser;
@@ -320,6 +321,11 @@ kern_return_t HD60SDriver::CopyFrameRing(IOMemoryDescriptor **memory)
     return kIOReturnSuccess;
 }
 
+void HD60SDriver::SetRange(int range)
+{
+    __atomic_store_n(&ivars->range, range, __ATOMIC_RELAXED);
+}
+
 int HD60SDriver::Control(int in, uint8_t req, uint16_t val, uint16_t idx, uint8_t *buf, uint16_t len)
 {
     auto *iv = ivars;
@@ -386,6 +392,7 @@ void HD60SDriver::BringUp()
 {
     auto *iv = ivars;
     memset(&iv->dev, 0, sizeof iv->dev);
+    iv->dev.settings.range = static_cast<enum hd60s_range>(__atomic_load_n(&iv->range, __ATOMIC_RELAXED));
     iv->dev.usb = {this, ctrlThunk, sleepThunk};
     iv->streamFailed = false;
     iv->generation++;
@@ -452,7 +459,10 @@ void IMPL(HD60SDriver, PolicyOccurred)
     case LINK_TEAR_DOWN: TearDown(false); break;
     case LINK_NONE: break;
     }
-    if (iv->link.state == LINK_UP) hd60s_policy_tick(&iv->dev, &iv->parser, &iv->policy, static_cast<long>(nowMs(iv)));
+    if (iv->link.state == LINK_UP) {
+        iv->dev.settings.range = static_cast<enum hd60s_range>(__atomic_load_n(&iv->range, __ATOMIC_RELAXED));
+        hd60s_policy_tick(&iv->dev, &iv->parser, &iv->policy, static_cast<long>(nowMs(iv)));
+    }
     if (static_cast<uint64_t>(now) - iv->lastAudioLog >= kAudioLogMs) {
         iv->lastAudioLog = static_cast<uint64_t>(now);
         os_log(OS_LOG_DEFAULT, "HD60S dext audio: %d ppm, %lu rephases, %llu pads, %llu late, %llu overflow, max lateness %llu us",

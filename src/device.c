@@ -1,5 +1,6 @@
 #include "device.h"
 
+#include <stdio.h>
 #include <string.h>
 
 #include "ub530_tables.h"
@@ -318,15 +319,24 @@ static uint16_t coeff_clamp(uint16_t c)
 }
 
 /* AVI InfoFrame bytes as the MST3367 holds them. Elgato treats the reserved Y1Y0 = 3 as RGB. */
-struct hd60s_source hd60s_parse_avi(int present, uint8_t db1, uint8_t db2)
+struct hd60s_source hd60s_parse_avi(int present, uint8_t db1, uint8_t db2, uint8_t db3)
 {
-    struct hd60s_source s = {INPUT_RGB, COLOUR_UNKNOWN};
+    struct hd60s_source s = {INPUT_RGB, COLOUR_UNKNOWN, 0};
     if (!present)
         return s;
     int y = db1 >> 5 & 3, c = db2 >> 6;
     s.format = y == 1 ? INPUT_YCBCR422 : y == 2 ? INPUT_YCBCR444 : INPUT_RGB;
     s.colorimetry = c == 1 ? COLOUR_BT601 : c == 2 ? COLOUR_BT709 : COLOUR_UNKNOWN;
+    s.quant = db3 >> 2 & 3;
     return s;
+}
+
+/* Elgato's dev+0x7c: one nibble per source Q (Q=0 bits 0-3, Q=1 bits 4-7, Q=2 bits 8-11). Bit 0 compresses, bit 1 expands. */
+static const uint32_t range_word[] = {[RANGE_AUTO] = 0x80000100, [RANGE_STANDARD] = 0x80000000, [RANGE_EXPANDED] = 0x80000111};
+
+static unsigned range_bits(enum hd60s_range r, int quant)
+{
+    return range_word[r] >> (quant == 2 ? 8 : quant == 1 ? 4 : 0) & 0xf;
 }
 
 /* FUN_10b6b + FUN_103ea: RGB input gets an RGB to YCbCr matrix (601 for SD, else 709); YCbCr input passes through. */
@@ -346,6 +356,17 @@ void hd60s_csc_plan(const struct hd60s_colour_cfg *c, struct hd60s_csc *out)
     }
     for (int i = 0; i < 12; i++)
         out->m[i] = (uint16_t)(raw[2 * i] | raw[2 * i + 1] << 8);
+    unsigned bits = range_bits(c->range, c->quant);
+    uint32_t k = 0x1000;
+    if (bits & 2) {
+        k = 0x129e;
+        out->mode |= out->mode & 0x22 ? 4 : 0x15;
+    } else if (bits & 1) {
+        k = 0xdc0;
+        out->m[10] = 0x400;
+    }
+    for (int i = 0; i < 9; i++)
+        out->m[i] = (uint16_t)((uint32_t)((int16_t)out->m[i] * (int32_t)k) >> 12);
     /* Picture controls at Elgato's defaults (brightness 0x81, others neutral). */
     // ponytail: brightness/contrast/saturation/hue fixed; port FUN_103ea's maths if controls are wanted
     for (int i = 0; i < 9; i++)
@@ -429,7 +450,7 @@ int hd60s_start(struct hd60s *d)
             break;
         msleep(d, 5);
     }
-    d->colour = (struct hd60s_colour_cfg){INPUT_RGB, 0};
+    d->colour = (struct hd60s_colour_cfg){INPUT_RGB, 0, d->settings.range, 0};
     colour_convert(d, &d->colour);
     struct tx_bus tb = tx_bus(d);
     tx_start(&d->tx, &tb);
@@ -476,7 +497,8 @@ void hd60s_policy_tick(struct hd60s *d, struct hd60s_parser *p, struct hd60s_pol
         s->aspect_at = now_ms;
         int present = mst_read(d, 2, 0x0b) & 0x08;
         uint8_t db1 = (uint8_t)mst_read(d, 2, 0x48), db2 = (uint8_t)mst_read(d, 2, 0x49);
-        s->src = hd60s_parse_avi(present, db1, db2);
+        uint8_t db3 = (uint8_t)mst_read(d, 2, 0x4a);
+        s->src = hd60s_parse_avi(present, db1, db2, db3);
         p->wide = present && (db2 >> 4 & 3) == 2;
     }
     struct hd60s_colour_cfg want = d->colour;
@@ -484,7 +506,9 @@ void hd60s_policy_tick(struct hd60s *d, struct hd60s_parser *p, struct hd60s_pol
     if (sd >= 0)
         want.sd = sd;
     want.input = s->src.format;
-    if (want.sd != d->colour.sd || want.input != d->colour.input) {
+    want.range = d->settings.range;
+    want.quant = s->src.quant;
+    if (memcmp(&want, &d->colour, sizeof want)) {
         colour_convert(d, &want);
         d->colour = want;
     }
@@ -505,4 +529,42 @@ void hd60s_policy_tick(struct hd60s *d, struct hd60s_parser *p, struct hd60s_pol
         tx_poll(&d->tx, &tb, s->mode, s->hz);
         s->last_poll = now_ms;
     }
+}
+
+int hd60s_range_from_name(const char *name)
+{
+    for (int r = RANGE_AUTO; r <= RANGE_EXPANDED; r++)
+        if (name && strcmp(name, hd60s_range_names[r]) == 0)
+            return r;
+    return -1;
+}
+
+void hd60s_settings_print(const struct hd60s_settings *s, char *buf, size_t n)
+{
+    snprintf(buf, n, "{\"range\":\"%s\"}", hd60s_range_names[s->range]);
+}
+
+int hd60s_settings_parse(const char *json, struct hd60s_settings *out)
+{
+    const char *p = json ? strstr(json, "\"range\"") : NULL;
+    if (!p)
+        return -1;
+    p += 7;
+    p += strspn(p, " \t\r\n");
+    if (*p++ != ':')
+        return -1;
+    p += strspn(p, " \t\r\n");
+    if (*p++ != '"')
+        return -1;
+    const char *end = strchr(p, '"');
+    char name[16];
+    if (!end || (size_t)(end - p) >= sizeof name)
+        return -1;
+    memcpy(name, p, (size_t)(end - p));
+    name[end - p] = 0;
+    int r = hd60s_range_from_name(name);
+    if (r < 0)
+        return -1;
+    out->range = (enum hd60s_range)r;
+    return 0;
 }

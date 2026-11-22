@@ -77,8 +77,9 @@ static void report(const struct capture *c)
 static int usage(void)
 {
     fprintf(stderr, "usage: hd60s info\n"
-                    "       hd60s status [--json]\n"
-                    "       hd60s capture [-n frames] [-o out.uyvy|-] [-a out.pcm]\n"
+                    "       hd60s status [--json] [-r range]\n"
+                    "       hd60s capture [-n frames] [-o out.uyvy|-] [-a out.pcm] [-r range]\n"
+                    "range: auto (default), standard, expanded (source is full-range RGB)\n"
                     "video: raw YUY2 (ffmpeg yuyv422); audio: 48 kHz s16le stereo\n");
     return 2;
 }
@@ -114,7 +115,7 @@ static void watch_audio(void *ctx, const uint8_t *pcm, size_t len)
 }
 
 /* Reports without failing: a busy or missing device is a result, not an error. */
-static int status(int json)
+static int status(int json, struct hd60s_settings settings)
 {
     static uint8_t frame[FRAME_CAP];
     struct watch k = {0};
@@ -126,6 +127,8 @@ static int status(int json)
         hd60s_quiet = 1;
         int opened = hd60s_open(&d) == 0;
         st->access = hd60s_access_from_error(d.open_err);
+        d.settings = settings;
+        st->range = settings.range;
         if (opened && hd60s_start(&d) == 0) {
             st->owner = OWNER_CLI;
             st->owner_pid = 0;
@@ -168,8 +171,19 @@ int main(int argc, char **argv)
     static uint8_t frame[FRAME_CAP];
     if (argc < 2)
         return usage();
-    if (strcmp(argv[1], "status") == 0)
-        return status(argc > 2 && strcmp(argv[2], "--json") == 0);
+    struct hd60s_settings settings = {RANGE_AUTO};
+    if (strcmp(argv[1], "status") == 0) {
+        int json = 0;
+        for (int i = 2; i < argc; i++) {
+            if (strcmp(argv[i], "--json") == 0)
+                json = 1;
+            else if (strcmp(argv[i], "-r") == 0 && i + 1 < argc && hd60s_range_from_name(argv[i + 1]) >= 0)
+                settings.range = (enum hd60s_range)hd60s_range_from_name(argv[++i]);
+            else
+                return usage();
+        }
+        return status(json, settings);
+    }
     int info = strcmp(argv[1], "info") == 0;
     if (!info && strcmp(argv[1], "capture") != 0)
         return usage();
@@ -178,13 +192,15 @@ int main(int argc, char **argv)
     const char *vpath = NULL, *apath = NULL;
     int opt;
     optind = 2;
-    while ((opt = getopt(argc, argv, "n:o:a:")) != -1) {
+    while ((opt = getopt(argc, argv, "n:o:a:r:")) != -1) {
         if (opt == 'n')
             c.want = strtol(optarg, NULL, 10);
         else if (opt == 'o')
             vpath = optarg;
         else if (opt == 'a')
             apath = optarg;
+        else if (opt == 'r' && hd60s_range_from_name(optarg) >= 0)
+            settings.range = (enum hd60s_range)hd60s_range_from_name(optarg);
         else
             return usage();
     }
@@ -202,7 +218,7 @@ int main(int argc, char **argv)
     signal(SIGPIPE, SIG_IGN); /* a closed reader becomes a write error, so the device is still stopped cleanly */
     struct hd60s d;
     int rc = 1;
-    if (hd60s_open(&d) == 0 && hd60s_start(&d) == 0) {
+    if (hd60s_open(&d) == 0 && (d.settings = settings, hd60s_start(&d) == 0)) {
         if (info) {
             fprintf(stderr, "mcu firmware: %02x.%02x.%02x\n", d.mcu_version >> 16 & 0xff,
                     d.mcu_version >> 8 & 0xff, d.mcu_version & 0xff);

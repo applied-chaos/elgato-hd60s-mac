@@ -45,10 +45,12 @@ The command-line tool captures raw video and audio:
 
 ```sh
 build/hd60s info                                  # firmware, resolution and frame rate
-build/hd60s status [--json]                        # device, USB link, owner, signal, audio, warnings
+build/hd60s status [--json] [-r range]             # device, USB link, owner, signal, audio, warnings
 build/hd60s capture -n 300 -o out.yuv -a out.pcm  # 300 frames of YUY2 and 48 kHz s16le
 build/hd60s capture -o - | ffplay -f rawvideo -pixel_format yuyv422 -video_size 1920x1080 -framerate 60 -
 ```
+
+`-r auto|standard|expanded` sets the HDMI colour range (default `auto`). `expanded` compresses full-range RGB to limited, for sources that send 0-255. `auto` does the same only when the source's AVI InfoFrame says full range (some sources, such as the Raspberry Pi with this EDID, send full range without saying so; use `expanded` for them). The camera extension reads `{"range":"auto|standard|expanded"}` from `settings.json` in the app group container about once a second; the DriverKit flavour takes it through its user client (external method 0, one scalar: 0 auto, 1 standard, 2 expanded).
 
 ## Releasing
 

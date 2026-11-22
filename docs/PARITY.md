@@ -50,8 +50,8 @@ App status messages: "No Signal", "Protected with HDCP", "USB 3 is required for 
 | # | Item | Status | Notes |
 |---|---|---|---|
 | B1 | YCbCr input detection | missing | See detail below. **High impact**: PS4/PS5 "YUV422", Xbox, Switch and Apple TV commonly send YCbCr |
-| B2 | HDMI colour range Standard/Expanded | missing | See detail below. Ours is always Standard, so full-range sources look washed out (blacks above 16) |
-| B3 | Automatic colour range | missing (beyond Elgato) | libUB530 already supports per-quantisation nibbles: with `dev+0x7c = 0x80000100`, it compresses only when AVI Q=2. Libraries and Elgato Studio offer Auto; the mac app doesn't. Make Auto the default, with Standard/Expanded overrides |
+| B2 | HDMI colour range Standard/Expanded | done (#18) | `hd60s -r`, `settings.json`, dext user client. Pi measured: Full source Standard Y 2..255, Expanded 18..235; Limited source Standard 17..235 |
+| B3 | Automatic colour range | done (#18), the default | libUB530 supports a nibble per source Q: `dev+0x7c = 0x80000100` compresses only when the AVI says full range (Q=2). The Pi sends Q=0 for Broadcast RGB Full (the Elgato EDID has no QS bit), so Auto behaves as Standard there; use Expanded |
 | B4 | BT.601 matrix for SD | done | #10 (650c25e) re-runs `colour_convert` on SD/HD changes. Differences from Elgato: 1440x480i gets 601 here (Elgato 709, width test 640/720/768 only); 640 isn't covered (A2) |
 | B5 | Source colorimetry for YCbCr input (AVI C1C0, MST b2:0x49 >> 6) | missing | Elgato reads it into `fmt+0x54` but never uses it for the matrix. With B1, the device passes YCbCr through untouched, so the camera tag must follow the source's colorimetry, falling back to 601 for SD and 709 for HD |
 | B6 | `status` colour field | partial (bug) | `src/main.c:148` still hard-codes `COLOUR_BT709` with a stale comment. Since #10, SD is 601 |
