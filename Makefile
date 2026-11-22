@@ -50,15 +50,20 @@ build/test_audio_plugin: tests/test_audio_plugin.swift mac/App/AudioPlugin.swift
 	@mkdir -p build
 	swiftc -parse-as-library -o $@ mac/App/AudioPlugin.swift tests/test_audio_plugin.swift
 
+build/test_frame_rates: tests/test_frame_rates.swift mac/Extension/FrameRate.swift
+	@mkdir -p build
+	swiftc -parse-as-library -o $@ mac/Extension/FrameRate.swift tests/test_frame_rates.swift
+
 build/test_plugin: tests/test_plugin.c mac/Audio/HD60SAudio.c
 	@mkdir -p build
 	$(CC) $(CFLAGS) -Wno-four-char-constants -fsanitize=address,undefined -o $@ tests/test_plugin.c -framework CoreFoundation
 
-test: build/test_parser build/test_ring build/test_plugin build/test_audio_plugin
+test: build/test_parser build/test_ring build/test_plugin build/test_audio_plugin build/test_frame_rates
 	build/test_parser
 	build/test_ring
 	build/test_plugin
 	build/test_audio_plugin
+	build/test_frame_rates
 
 clean:
 	rm -rf build
