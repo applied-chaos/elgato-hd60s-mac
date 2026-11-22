@@ -315,7 +315,6 @@ final class StreamSource: NSObject, CMIOExtensionStreamSource {
         return VTPixelTransferSessionTransferImage(scaler, from: src, to: out) == noErr
     }
 
-    // Elgato shows the HDCP message instead of the picture, so a protected source never reaches the camera.
     private func refreshLink() {
         #if DEXT
         let c = dext_feed_counters()
