@@ -3,6 +3,7 @@
 
 #include <stdint.h>
 
+#include "audio.h"
 #include "parser.h"
 #include "tx.h"
 
@@ -54,6 +55,8 @@ struct hd60s {
     int started;
     struct hd60s_colour_cfg colour;
     struct tx tx;          /* HDMI-out transmitter state */
+    struct audio_settings audio;
+    int audio_routed_dvi;
 };
 
 /* Periodic work while streaming: aspect, colour matrix, HDMI-out mode. */
@@ -65,10 +68,12 @@ struct hd60s_policy {
     int hz, hz_seen; /* source audio rate, accepted once two polls agree */
 };
 
-/* usb must be set. Wakes the MCU and finds its bridge. */
+/* usb must be set. Wakes the MCU and finds its bridge. Resets audio to AUDIO_DEFAULT: call hd60s_set_audio after. */
 int hd60s_init(struct hd60s *d);
 int hd60s_start(struct hd60s *d);
 void hd60s_stop(struct hd60s *d);
+/* Gain is clamped to +-12 dB. Sent now if started, otherwise at hd60s_start. 0, or -1 on a transport error. */
+int hd60s_set_audio(struct hd60s *d, const struct audio_settings *s);
 
 void hd60s_policy_begin(struct hd60s_policy *s, long now_ms);
 void hd60s_policy_frame(struct hd60s_policy *s, int w, int h, int interlaced);
