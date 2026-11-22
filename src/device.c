@@ -108,6 +108,18 @@ static struct tx_bus tx_bus(struct hd60s *d)
     return (struct tx_bus){d, tx_bus_read, tx_bus_write, tx_bus_read_n, tx_bus_sleep};
 }
 
+/* Source sample rate from the receiver's ACR packet (b2:0x40-42 CTS, 0x43-45 N). 0 when b2:0x0b shows no audio. */
+static int source_audio_hz(struct hd60s *d, const struct tx_mode *m)
+{
+    if (!m || (mst_read(d, 2, 0x0b) & 0x62) != 0x62)
+        return 0;
+    uint32_t v[6];
+    for (int i = 0; i < 6; i++)
+        v[i] = (uint32_t)mst_read(d, 2, (uint8_t)(0x40 + i));
+    uint32_t cts = v[0] | v[1] << 8 | (v[2] & 0xf) << 16, n = v[3] | v[4] << 8 | (v[5] & 0xf) << 16;
+    return tx_audio_rate(m->pclk_khz, n, cts);
+}
+
 static int gpio_read(struct hd60s *d, uint8_t pin)
 {
     uint8_t v = 0;
@@ -453,7 +465,11 @@ void hd60s_policy_tick(struct hd60s *d, struct hd60s_parser *p, struct hd60s_pol
     }
     if (now_ms - s->last_poll >= TX_POLL_MS) {
         struct tx_bus tb = tx_bus(d);
-        tx_poll(&d->tx, &tb, s->mode);
+        int hz = source_audio_hz(d, s->mode);
+        if (hz == s->hz_seen)
+            s->hz = hz;
+        s->hz_seen = hz;
+        tx_poll(&d->tx, &tb, s->mode, s->hz);
         s->last_poll = now_ms;
     }
 }

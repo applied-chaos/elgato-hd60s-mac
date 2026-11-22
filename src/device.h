@@ -39,6 +39,7 @@ struct hd60s_policy {
     long win_start, last_poll, aspect_at;
     int w, h, interlaced, frames, run; /* frame size must hold for 3/4 of the window's frames */
     const struct tx_mode *mode;
+    int hz, hz_seen; /* source audio rate, accepted once two polls agree */
 };
 
 /* usb must be set. Wakes the MCU and finds its bridge. */

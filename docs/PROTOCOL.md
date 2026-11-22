@@ -344,6 +344,13 @@ HDCP off (`FUN_2109e`): 0x22 = 0, 0x20 = 0, 0x04 \|= 1, 0x10 = 1, clear interrup
 4. Audio InfoFrame (`FUN_1fb78` → `FUN_1fbfc`): b1:0x68 = 0x01, 0x6B = 0x00, 0x6C = 0x00, 0x6D = 0x70 (checksum), then 0xCE = 0x03.
 5. 0x04 &= ~0x04 (release audio).
 
+**Driver (`src/tx.c`), confirmed on hardware with the Pi as source (HD60 S ELD advertises LPCM 2 ch, 32/44.1/48 kHz, 16/20/24 bit):**
+- Source rate: MST b2:0x40-42 = CTS, b2:0x43-45 = N (little-endian, low 20 bits), valid only while b2:0x0b & 0x62 == 0x62 (0x7e with audio, 0x1c without; N/CTS keep stale values). fs = pixel clock x N / (128 x CTS), snapped to a standard rate. The source picks its own N (vc4 sends 5632 at 44.1 kHz), so N is never used to guess the rate.
+- Output N: 4096 / 6272 / 6144 for 32 / 44.1 / 48 kHz at 27, 74.25 and 148.5 MHz; 4576 / 7007 / 6864 at 25.175 MHz. The chip measures CTS (0xC5 = 0), so 1001 clocks use the same N.
+- Channel status b1:0x98 = IEC 60958 fs code (44.1 k 0, 48 k 2, 32 k 3), b1:0x99 = (~fs << 4) | 0x0B (0xFB, 0xDB, 0xCB). Audio InfoFrame is rate independent (`01 00 00 00 00`, checksum 0x70).
+- Only 32, 44.1 and 48 kHz are passed: every sink with basic audio must take them. Other rates, DVI sinks and sinks without basic audio keep audio off (0xCE = 0, 0xE0 = 0).
+- Audio is reprogrammed in state 5, and on a rate change while running between AV mute and unmute.
+
 ### 6.8 I2C 0xD4 (not the transmitter)
 - `FUN_20a4e` (init) writes 208 bytes from DAT_29110 to 0xD4 registers 0x0000–0x00CF, one OUT `[D4 00 idx val]` each. After each one it reads back (OUT `[D5 02 00 idx]`, IN 2) and compares the second byte. All match: `tx+0x1bc = 1`.
 - `FUN_2163c` then rewrites 0xD4 regs 0x2A/0x2B/0x2E/0x2F/0x39/0x01 by pixel clock (27.0/27.027/74.176/74.25/148.35/148.5 MHz) and measured source audio rate.
