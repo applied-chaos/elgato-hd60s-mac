@@ -176,8 +176,18 @@ static void test_avi(void)
     tx_avi(a, TX_YCC444, m1080p60());
     assert(!memcmp(a, "\x50\xa8\x00\x10\x00\x67", 6));
     tx_avi(a, TX_RGB, tx_mode_find(720, 576, 1, 50.0));
-    assert(a[0] == 0x10 && a[1] == 0x98 && a[3] == 21 && a[4] == 1);
+    assert(a[0] == 0x10 && a[1] == 0x58 && a[3] == 21 && a[4] == 1);
     assert((uint8_t)(a[0] + a[1] + a[2] + a[3] + a[4] + a[5] + 0x82 + 2 + 13) == 0);
+    /* colorimetry C1C0: 01 = BT.601 for SD rows, 10 = BT.709 for HD rows */
+    assert(a[1] >> 6 == 1);
+    tx_avi(a, TX_RGB, tx_mode_find(720, 480, 0, 59.94));
+    assert(a[1] == 0x58 && a[3] == 2);
+    tx_avi(a, TX_RGB, tx_mode_find(640, 480, 0, 60.0));
+    assert(a[1] >> 6 == 1);
+    tx_avi(a, TX_RGB, tx_mode_find(1280, 720, 0, 60.0));
+    assert(a[1] >> 6 == 2);
+    tx_avi(a, TX_RGB, tx_mode_find(1920, 1080, 1, 60.0));
+    assert(a[1] >> 6 == 2);
 }
 
 static void test_transitions(void)
