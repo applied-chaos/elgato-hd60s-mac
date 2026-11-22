@@ -407,7 +407,7 @@ Census of every call made from the transmitter code (0x1caf4–0x21b1e, from the
 ### 6.10 Open questions for the hardware test
 1. With a TV already connected before start, does a hotplug interrupt (0x06 bit0) fire after init, or must the driver read 0x0E bit6 itself and enter state 1?
 2. Are the per-mode MST3367 writes (§6.4 step 3) needed for the TV picture? The mode survey shows capture does not need them in any mode. Are they harmless to capture? Do b0:0xB2 bits 0–1 written on unmute change captured colour?
-3. Is 0xD4 needed for passthrough audio, and is it volatile? Does a 44.1 kHz source capture correctly without it?
+3. Is 0xD4 needed for passthrough audio, and is it volatile? (Capture side answered: a 44.1 or 32 kHz source captures at the right pitch without it, §6.11.)
 4. Does a TV without YCbCr support (RGB out, BT.601/709 matrix) show correct colour?
 5. 148.5 MHz detection uses the table row, so PC modes with a high pixel clock (1680x1050 etc., VIC 32 default) get low-speed AFE settings. Do they work?
 6. HDCP sources (PS5 with HDCP on): does the TV authenticate, and does capture still work? (Capture of HDCP content is expected to fail regardless.)
@@ -536,7 +536,7 @@ Only 640 wide is SD (BT.601 matrix, `parser_is_sd` = 1); the PC sizes use the HD
 - Audio channel order (left first) is assumed from I2S convention, not tested with a one-sided signal.
 - 0xEC padding bytes and the meaning of 0xEC, 0xC2 and 0xC7. Possibly LED/clock/enable.
 - Passthrough: documented in §6 from the decompile only; not implemented or tested. Open questions in §6.10.
-- Isoch alt 1–3 packet sizing.
+- Isoch alt 3 (39936 B per interval) delivers no data on macOS; alt 1 (16384) and alt 2 (32768) do. Alt 2 captures 1080p60 cleanly, so `--iso` uses the narrowest alt that carries 1080p60.
 - GPIO pin semantics (52 = enable, 57 = ready) are inferred from usage only.
 - Whether the app auto-prompts firmware updates. The version check is not traced.
 
@@ -547,3 +547,9 @@ Only 640 wide is SD (BT.601 matrix, `parser_is_sd` = 1); the PC sizes use the HD
 3. ship frames to an arm64 camera extension.
 
 Rosetta's lifetime on macOS limits this approach.
+
+### 6.11 Source sample rate on the capture stream
+
+- Measured with the Pi sending a 440 Hz sine at 32, 44.1 and 48 kHz (`/root/tone.sh`), 30 s captures: the stream is always 48 kHz and the pitch stays 440 Hz (440.1 Hz by FFT, sample counts within 0.1% of 48000 x duration). The device resamples; nothing needs to reach Core Audio, the CLI capture or the dext, which stay fixed at 48 kHz.
+- MST b2:0x9B & 0xC0 follows the source: 0x40 = 48 kHz, 0x00 = 44.1 kHz, 0xC0 = 32 kHz (matches Elgato's `FUN_12a2f`). N/CTS (b2:0x40-45, §6.7) agrees: N 6144 / 5632 / 4096.
+- `hd60s status` reports the source rate from the same N/CTS decode the transmitter uses (`hd60s_source_audio_hz`), as `(source N Hz)` in the text and `audio.source_rate` in JSON (null when unknown, e.g. no audio packets).

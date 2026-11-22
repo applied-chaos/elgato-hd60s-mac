@@ -92,7 +92,7 @@ App status messages: "No Signal", "Protected with HDCP", "USB 3 is required for 
 | # | Item | Status | Notes |
 |---|---|---|---|
 | D1 | HDMI LPCM stereo 48 kHz capture | done | — |
-| D2 | Source sample rate | partial (verify) | See detail below |
+| D2 | Source sample rate | done (#25: device resamples to 48 kHz; status reports the source rate) | See detail below |
 | D3 | Analogue line-in (3.5 mm, Chat Link) | done (#20; line-in capture unverified, no cable on the test rig) | `hd60s capture -s line` or `-s mix`; see detail below |
 | D4 | Analogue gain (−12…+12 dB) and hardware mute | done (#20) | `-g dB`, `-m`; steps measured, see detail below |
 | D5 | HDMI vs DVI re-check of audio routing on every mode change | done (#20: re-run when the receiver's DVI flag changes; blank-start then enable now gives audio) | Elgato runs `FUN_1caf4` from `FUN_1d10a` on each new mode (step 3.5), so DVI→HDMI or no-signal→HDMI picks the right branch (MST b1:0x01 bit2). Ours runs `select_hdmi_audio` once in `hd60s_start`, so starting before the source is up, or a DVI-to-HDMI switch, can leave the wrong routing. Pi (start with the Pi blanked, then enable). Ticket: **Re-run HDMI audio routing when the source mode changes** |
@@ -101,7 +101,7 @@ App status messages: "No Signal", "Protected with HDCP", "USB 3 is required for 
 
 **D2, source sample rate.**
 - What Elgato does: `FUN_12a2f` reads MST b2:0x9B & 0xF0 (0 → 44.1 kHz, 0xC0 → 32 kHz, else 48 kHz), then, for the HD60 S family (`FUN_17a0c`), **jumps to force 48000**. So Elgato always reports 48 kHz; we match.
-- Unknown: what the stream carries for a 44.1 kHz source on a unit without the 0xD4 sample-rate converter.
+- Measured (#25): the stream is 48 kHz for 32, 44.1 and 48 kHz sources, pitch correct, so nothing is passed on to consumers; `status` reports the source rate (N/CTS decode, matches b2:0x9B).
 - Test: Pi, `speaker-test -r 44100` or a sine at 44.1 kHz, then measure pitch and frame rate. If it isn't resampled, add rate detection from b2:0x9B and report it to Core Audio.
 - Ticket: **Verify 32/44.1 kHz HDMI audio capture and report the real rate**
 
@@ -178,7 +178,7 @@ App status messages: "No Signal", "Protected with HDCP", "USB 3 is required for 
 
 | # | Item | Status | Notes |
 |---|---|---|---|
-| H1 | Isochronous transfer mode | missing (low) | Elgato offers "USB Transfer Mode: Bulk/Isochronous" (default bulk, `BeddoRTUseBulk`): iface 0 alt 1–3, EP 0x83, 4 buffers × 160 × bytes-per-interval. Useful for flaky hubs. Mac only, no source needed. Ticket: **Offer isochronous USB transfer as a fallback** |
+| H1 | Isochronous transfer mode | done | Elgato offers "USB Transfer Mode: Bulk/Isochronous" (default bulk, `BeddoRTUseBulk`): iface 0 alt 1–3, EP 0x83, 4 buffers × 160 × bytes-per-interval. Useful for flaky hubs. Mac only, no source needed. Ticket: **Offer isochronous USB transfer as a fallback**. Done: `hd60s capture --iso`; bulk stays default. The dext is bulk only |
 | H2 | Firmware change notification (replay program + EP 0x81 interrupt) | partial (low) | Ours polls every 250 ms. Elgato uploads 10 I2C watch entries via 0xC6 wValue=100 wIndex=1 and arms EP 0x81, which gives faster mode and hotplug reaction with less bus traffic. Pi. Ticket: **Use the firmware's I2C watch program for signal-change wake-ups** |
 | H3 | Latency modes | n/a | There is no device-side latency mode. "Instant Gameview" is the app's preview path. `dev+0xa8` (0x10 or 1 by frame rate) has an unknown purpose and no public setter |
 
@@ -203,9 +203,9 @@ App status messages: "No Signal", "Protected with HDCP", "USB 3 is required for 
 
 ## Count
 
-- **Missing (16):** A7, B1, B2, B3, B5, C1, D3, D4, E2, E3, E4, E5, F1, G4, G5, H1.
+- **Missing (13):** A7, B1, B2, B3, B5, C1, E2, E3, E4, E5, F1, G4, G5.
   - E2 is existing ticket #16. G5 folds into F1. E5 is conditional on E1.
-- **Partial (10):** A4, A5, B6, D2, D5, D7, E1, E6, G1, H2.
+- **Partial (6):** B6, D7, E1, E6, G1, H2.
   - D7 maps to existing #5/#6. G1 is the app side of #14. E1 is the TV run of #13.
 
 Highest value first: B1 (YCbCr sources likely mis-coloured today), B2/B3 (colour range), F1 (HDCP message), D3/D4 (line-in and gain), then the TV-dependent E items.

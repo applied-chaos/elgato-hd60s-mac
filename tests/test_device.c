@@ -89,7 +89,7 @@ static void boot(struct hd60s *d, int fail_at)
     memset(&fk, 0, sizeof fk);
     fk.fail_at = fail_at;
     memset(d, 0, sizeof *d);
-    d->usb = (struct hd60s_usb){&fk, fake_ctrl, fake_sleep};
+    d->usb = (struct hd60s_usb){.ctx = &fk, .ctrl = fake_ctrl, .sleep_ms = fake_sleep};
 }
 
 static void init_runs_vendor_sequence_and_reads_mcu_version(void)
@@ -358,11 +358,28 @@ static void watch_never_overlaps_host_i2c_and_slows_polling(void)
     assert(fk.requests > before && fk.c6_i2c_while_armed == 0 && fk.armed);
 }
 
+static void transfer_plan_defaults_to_bulk_and_picks_narrowest_sufficient_iso_alt(void)
+{
+    struct hd60s_xfer_plan p;
+    enum hd60s_transfer m = HD60S_ISO;
+    int alts[HD60S_ISO_ALTS] = {16384, 32768, 39936};
+    assert(hd60s_transfer_parse("bulk", &m) && m == HD60S_BULK);
+    assert(hd60s_transfer_parse("iso", &m) && m == HD60S_ISO);
+    assert(!hd60s_transfer_parse("usb", &m));
+    assert(hd60s_xfer_plan(HD60S_BULK, alts, &p) == 0 && p.alt == 4 && p.packets == 0);
+    assert(hd60s_xfer_plan(HD60S_ISO, alts, &p) == 0 && p.alt == 2 && p.packets == 160 && p.packet_bytes == 32768 && p.buffers == 4);
+    int none[HD60S_ISO_ALTS] = {0, 16384, 0};
+    assert(hd60s_xfer_plan(HD60S_ISO, none, &p) < 0);
+    struct hd60s d = {0};
+    assert(d.usb.transfer == HD60S_BULK);
+}
+
 int main(void)
 {
     watch_uploads_elgatos_program_and_stop_disarms();
     watch_upload_failure_falls_back_to_polling();
     watch_never_overlaps_host_i2c_and_slows_polling();
+    transfer_plan_defaults_to_bulk_and_picks_narrowest_sufficient_iso_alt();
     init_runs_vendor_sequence_and_reads_mcu_version();
     init_ignores_vendor_init_failures();
     first_transport_error_fails_start();

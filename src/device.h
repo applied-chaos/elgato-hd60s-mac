@@ -13,9 +13,27 @@
 #define HD60S_EP_WATCH 0x81
 #define HD60S_IF_WATCH 1
 
+/* Bulk is the default (iface 0 alt 4); isochronous is alt 1-3 and suits flaky hubs. */
+enum hd60s_transfer { HD60S_BULK, HD60S_ISO };
+
+/* Bytes per service interval of EP 0x83 in alt settings 1-3 (0 = absent), which iso picks from. */
+#define HD60S_ISO_ALTS 3
+struct hd60s_xfer_plan {
+    int alt;
+    int buffers;
+    int packets;      /* iso packets per buffer, 0 for bulk */
+    int packet_bytes; /* iso bytes per packet, 0 for bulk */
+};
+
+int hd60s_transfer_parse(const char *s, enum hd60s_transfer *out);
+#define HD60S_ISO_MIN_BYTES (1920 * 1080 * 2 * 60 / 8000)
+/* Iso takes the narrowest alt that carries 1080p60: alt 3 delivers no data on a Mac on a Mac. -1 if none does. */
+int hd60s_xfer_plan(enum hd60s_transfer mode, const int alt_bytes[HD60S_ISO_ALTS], struct hd60s_xfer_plan *out);
+
 /* Transport seam: libusb on the Mac, IOUSBHostInterface in the driver extension. */
 struct hd60s_usb {
     void *ctx;
+    enum hd60s_transfer transfer;
     /* Vendor control request (bmRequestType 0xC0 in / 0x40 out). Bytes moved, or < 0 on failure. */
     int (*ctrl)(void *ctx, int in, uint8_t req, uint16_t val, uint16_t idx, uint8_t *buf, uint16_t len);
     void (*sleep_ms)(void *ctx, int ms);
@@ -92,6 +110,8 @@ void hd60s_policy_frame(struct hd60s_policy *s, int w, int h, int interlaced);
 void hd60s_policy_tick(struct hd60s *d, struct hd60s_parser *p, struct hd60s_policy *s, long now_ms);
 
 int mst_read(struct hd60s *d, uint8_t bank, uint8_t reg);
+/* Source audio rate from the receiver's ACR packet for the given video mode; 0 if no audio or no mode. */
+int hd60s_source_audio_hz(struct hd60s *d, const struct tx_mode *m);
 /* Vsync period counter for hd60s_rate_from_vsync; 0 if unreadable. */
 unsigned hd60s_vsync_counter(struct hd60s *d);
 int i2c_read(struct hd60s *d, uint8_t addr, uint8_t sub);
