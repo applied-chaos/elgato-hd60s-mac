@@ -114,6 +114,30 @@ The Nuvoton MCU owns the board I2C bus. The bridge uses the "0x66" proxy target,
 | 0xAA | MCU commands | see the bridge above |
 | 0xD4 | audio device with 16-bit register addresses, probably a sample-rate converter (§6.8) | write `[00 reg val]`; read `[00 reg]` → 2 bytes, value in the second |
 | 0x88 | analogue decoder | internal inputs 5/6 only; unused on HD60 S |
+| 0xA4 | status LED controller? (7-bit 0x52, in the EEPROM range) | Elgato only writes `[01]`, `[07]`, `[06 n]`. **Do not touch**; see the 0xA4 section below |
+
+### I2C 0xA4 (7-bit 0x52): status LED controller, read-only investigation (ticket G4)
+
+**Verdict: UNSAFE to probe through the bridge, and not proven to be an LED MCU. No bus traffic to 0xA4 was sent and the hardware was not touched.** Static analysis only.
+
+What a bridge read puts on the wire (`FUN_1c746`, read branch):
+- OUT `wValue=0x5066`, data `[addr|1, rlen, wdata…]` = `[A5, rlen, sub]`, then IN `rlen` bytes. The host never emits the I2C phases; the Nuvoton MCU firmware does, and that firmware is not in the dylib.
+- By analogy with 0x9C and 0xD4 (same request), the MCU does "write `[sub]`, repeated start, read". For 0xA4 that means the write phase `[A4 sub]` goes out before any read.
+- A read with no `wdata` cannot be expressed by the helper (`wlen == 0` skips the OUT). A bare `[A5 rlen]` OUT or an address-only ACK probe is not a request Elgato's driver sends.
+
+Why a register read is not provably non-mutating:
+- On a 24Cxx EEPROM, `[A4 sub]` with no data byte only sets the address pointer, and reads do not start a write cycle. Safe there.
+- The host code shows a command protocol, not a memory map. Writes to 0x52 (`FUN_21b3e` to `FUN_21e52`): cmd 0 (+1 byte), 1/2 (no args), 3 (+16), 4 (+2), 5 (+14), 6 (+1, PlayAnimation n), 7 (stop), 8 (+1, +32), 9, 0xA, 0xB, 0xC (no args), 0xD (no args, then a **10-byte read**). Payloads of 0x11/0xF/0x22 bytes at "registers" 3/5/8 do not look like EEPROM use.
+- On a command MCU the write phase of a read (`[A4 06]`, `[A4 01]`, …) is itself a command; Elgato sends `[A4 01]` as a bare command. Reading "reg 6" would send PlayAnimation with no argument. Any `sub` in 1..0xC risks a state change.
+- The only read form in the driver is cmd 0x0D (`FUN_21df2`, 10-byte response). It has **no callers** in the dylib, so Elgato never sends it. The 0xA4 requests it does send are writes only: `[A4 01]` (`FUN_21b70`, one call site), `[A4 07]`, `[A4 06 n]`.
+- Whether 0x0D is a pure query is a guess (a pointer set if EEPROM, unknown if MCU).
+
+Consequences:
+- No writes to 0xA4 were made. "Does it ACK, is reg 6 readable, does it change on events" is **not answered** and cannot be answered safely through the bridge.
+- The payload shapes favour "LED/status MCU with a command set" over "EEPROM", but that is inferred, not observed.
+- Do not implement PlayAnimation. Do not probe through the bridge.
+- Safe routes: capture Elgato's real traffic (Windows USB trace, as was done for `AB 03 12`) to see what the MCU emits and reads back at 0xA4, or obtain the MCU firmware image (not the FX3 firmware).
+- The plain HD60 S may have no controllable LED at all (unconfirmed).
 
 ## 3. Sequences (PID 0x74)
 
