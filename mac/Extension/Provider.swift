@@ -97,6 +97,9 @@ final class StreamSource: NSObject, CMIOExtensionStreamSource {
     private let deinterlacer = UnsafeMutablePointer<deint>.allocate(capacity: 1)
     private let lastFrameNs = OSAllocatedUnfairLock(initialState: UInt64(0))
     private var slate: CVPixelBuffer?
+    private var unsupportedSlate: CVPixelBuffer?
+    private var unsupported = UnsupportedWatch()
+    private let unsupportedNs = OSAllocatedUnfairLock(initialState: UInt64(0))
     private var timer: DispatchSourceTimer?
     private var ticks = 0
     private var scaler: VTPixelTransferSession?
@@ -119,7 +122,8 @@ final class StreamSource: NSObject, CMIOExtensionStreamSource {
         super.init()
         parser.initialize(to: hd60s_parser())
         deinterlacer.initialize(to: deint())
-        slate = makeSlate()
+        slate = makeSlate("Slate")
+        unsupportedSlate = makeSlate("Unsupported")
         stream = CMIOExtensionStream(localizedName: "Elgato HD60 S", streamID: UUID(), direction: .source,
                                      clockType: .hostTime, source: self)
     }
@@ -233,7 +237,9 @@ final class StreamSource: NSObject, CMIOExtensionStreamSource {
 
     // Frames of any known mode are scaled into the 1080p output, aspect preserved; runts from a mode switch are dropped.
     private func send(_ frame: UnsafeMutablePointer<UInt8>, _ w: Int, _ h: Int, _ interlaced: Bool, wide: Bool) {
-        guard let r = fitRect(width: w, height: h, wide: wide) else { return }
+        let fit = fitRect(width: w, height: h, wide: wide)
+        if unsupported.note(width: w, height: h, known: fit != nil) { unsupportedNs.withLock { $0 = hostNs() } }
+        guard let r = fit else { return }
         if interlaced { deint_frame(deinterlacer, frame, Int32(w), Int32(h)) }
         var pb: CVPixelBuffer?
         guard CVPixelBufferPoolCreatePixelBuffer(kCFAllocatorDefault, pool, &pb) == kCVReturnSuccess, let pb else { return }
@@ -290,8 +296,10 @@ final class StreamSource: NSObject, CMIOExtensionStreamSource {
             send(dextFrame, Int(info.width), Int(info.height), info.interlaced != 0, wide: info.wide != 0)
         }
         #endif
-        if let slate, hostNs() &- lastFrameNs.withLock({ $0 }) > noFramesTimeoutNs {
-            emit(slate)
+        if hostNs() &- lastFrameNs.withLock({ $0 }) > noFramesTimeoutNs {
+            // A stable unknown timing seen within the last second means "unsupported", otherwise no signal.
+            let odd = hostNs() &- unsupportedNs.withLock({ $0 }) < 1_000_000_000
+            if let s = odd ? unsupportedSlate : slate { emit(s) }
         }
         ticks += 1
         if ticks % statsEveryTicks == 0 {
@@ -307,11 +315,11 @@ final class StreamSource: NSObject, CMIOExtensionStreamSource {
         }
     }
 
-    private func makeSlate() -> CVPixelBuffer? {
-        guard let url = Bundle.main.url(forResource: "Slate", withExtension: "png"),
+    private func makeSlate(_ name: String) -> CVPixelBuffer? {
+        guard let url = Bundle.main.url(forResource: name, withExtension: "png"),
               let src = CGImageSourceCreateWithURL(url as CFURL, nil),
               let image = CGImageSourceCreateImageAtIndex(src, 0, nil) else {
-            log.error("slate image missing")
+            log.error("slate image missing: \(name)")
             return nil
         }
         var rgb: CVPixelBuffer?

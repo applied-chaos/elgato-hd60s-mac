@@ -78,9 +78,9 @@ build/test_tx: tests/test_tx.c src/tx.c src/tx.h
 	@mkdir -p build
 	$(CC) $(CFLAGS) -fsanitize=address,undefined -o $@ tests/test_tx.c src/tx.c
 
-build/test_status: tests/test_status.c src/status.c src/status.h
+build/test_status: tests/test_status.c src/status.c src/status.h src/parser.c src/parser.h
 	@mkdir -p build
-	$(CC) $(CFLAGS) -fsanitize=address,undefined -o $@ tests/test_status.c src/status.c
+	$(CC) $(CFLAGS) -fsanitize=address,undefined -o $@ tests/test_status.c src/status.c src/parser.c
 
 build/test_ring: tests/test_ring.c src/ring.c src/ring.h
 	@mkdir -p build

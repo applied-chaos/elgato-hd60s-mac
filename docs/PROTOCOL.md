@@ -427,6 +427,13 @@ Every mode the Pi's EDID offers was driven with `kmstest` (SMPTE pattern) and ca
 - **Mode changes while streaming** are survived: the parser re-locks on the new size within a second (1080p60 -> 720p50 -> 576i50 -> 1080i60 -> 1080p60 tested). During the switch it emits a few runt frames of wrong height (e.g. 1280x12, 1280x703, 1920x1045) and one wrong-width frame, so consumers should gate on a size they have seen stable for a few frames. `hd60s` has no signal-loss indicator beyond "no frames arrive".
 - 50 Hz modes behave like 60 Hz apart from the frame period and longer horizontal blanking (1080p50 line is 2640 clocks, not 2200). No 50 Hz-specific handling is needed; audio stays 48 kHz and flows in every mode.
 
+## PC modes (Pi forced with `kmstest` modelines, `hd60s status` and `capture -n 20`)
+The Pi's EDID lists no PC timings, so each was forced with an explicit modeline (`kmstest -c HDMI-A-1 -r <pclk Hz>,<hact>/<hfp>/<hsw>/<hbp>/<hsp>,<vact>/<vfp>/<vsw>/<vbp>/<vsp> -T smpte`; `--dmt` lookups by name fail on the Pi). The unmodified driver detects and frames all of them, with 0 discarded frames and 0 long lines:
+
+640x480@60, 800x600@60, 1024x768@60, 1152x864@75, 1280x768@60, 1280x800@60, 1280x960@60, 1280x1024@60, 1360x768@60, 1400x1050@60, 1440x900@60. 1600x900 (reduced blanking) is detected too but is not a known mode, so `status` reports `unsupported` and the camera shows the "Unsupported mode" slate. 1366x768 was rejected by the Pi's own mode set (odd active width), so it was not tested.
+
+Only 640 wide is SD (BT.601 matrix, `parser_is_sd` = 1); the PC sizes use the HD matrix and fit by their own aspect (square pixels).
+
 ## Unknown / unverified
 - Audio channel order (left first) is assumed from I2S convention, not tested with a one-sided signal.
 - 0xEC padding bytes and the meaning of 0xEC, 0xC2 and 0xC7. Possibly LED/clock/enable.
