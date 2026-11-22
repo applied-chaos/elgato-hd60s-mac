@@ -461,6 +461,7 @@ void IMPL(HD60SDriver, PolicyOccurred)
         iv->maxLate = 0;
     }
     fr_status(iv->frames, iv->link.state, iv->parser.frames, iv->parser.discarded, iv->parser.long_total, iv->link.failures);
+    fr_device(iv->frames, iv->dev.mcu_version, iv->parser.top_first);
     iv->policyTimer->WakeAtTime(kIOTimerClockMachAbsoluteTime, mach_absolute_time() + kPolicyMs * iv->msTicks, 0);
 }
 

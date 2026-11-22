@@ -80,7 +80,7 @@ static int bring_up(void)
     return 0;
 }
 
-int dext_feed_poll(uint8_t *out, size_t cap, struct fr_frame *info)
+static int step(void)
 {
     long now = now_ms();
     enum link_action a = link_step(&session, session.state == LINK_UP && atomic_load(&lost) ? LINK_LOST : LINK_TICK, now);
@@ -88,7 +88,22 @@ int dext_feed_poll(uint8_t *out, size_t cap, struct fr_frame *info)
         a = link_step(&session, bring_up() == 0 ? LINK_UP_OK : LINK_UP_FAILED, now);
     if (a == LINK_TEAR_DOWN)
         tear_down();
-    if (session.state != LINK_UP)
+    return session.state == LINK_UP;
+}
+
+int dext_feed_peek(struct fr_frame *info, struct fr_counters *counters)
+{
+    if (!step())
+        return 0;
+    *counters = fr_counters((const struct fr_header *)addr);
+    *info = (struct fr_frame){0};
+    fr_latest((const struct fr_header *)addr, info);
+    return 1;
+}
+
+int dext_feed_poll(uint8_t *out, size_t cap, struct fr_frame *info)
+{
+    if (!step())
         return 0;
     uint32_t n = fr_take((const struct fr_header *)addr, seen, out, cap, info);
     if (!n)
@@ -99,7 +114,7 @@ int dext_feed_poll(uint8_t *out, size_t cap, struct fr_frame *info)
 
 struct fr_counters dext_feed_counters(void)
 {
-    struct fr_counters none = {LINK_DOWN, 0, 0, 0, 0};
+    struct fr_counters none = {LINK_DOWN, 0, 0, 0, 0, 0, 0};
     return session.state == LINK_UP ? fr_counters((const struct fr_header *)addr) : none;
 }
 
