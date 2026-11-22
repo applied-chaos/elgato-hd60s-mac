@@ -79,8 +79,9 @@ static int usage(void)
 {
     fprintf(stderr, "usage: hd60s info\n"
                     "       hd60s status [--json]\n"
-                    "       hd60s capture [-n frames] [-o out.uyvy|-] [-a out.pcm] [-s hdmi|line|mix] [-g dB] [-m]\n"
+                    "       hd60s capture [-n frames] [-o out.uyvy|-] [-a out.pcm] [-s hdmi|line|mix] [-g dB] [-m] [--iso]\n"
                     "video: raw YUY2 (ffmpeg yuyv422); audio: 48 kHz s16le stereo\n"
+                    "transfer: bulk by default, --iso for isochronous (flaky hubs)\n"
                     "audio: -s source (default hdmi), -g gain -12..12 dB in 0.5 steps (default -6), -m mute\n");
     return 2;
 }
@@ -112,6 +113,14 @@ int main(int argc, char **argv)
     const char *vpath = NULL, *apath = NULL;
     struct audio_settings audio = AUDIO_DEFAULT;
     int opt;
+    enum hd60s_transfer transfer = HD60S_BULK;
+    for (int i = 2; i < argc; i++)
+        if (strcmp(argv[i], "--iso") == 0) {
+            transfer = HD60S_ISO;
+            memmove(&argv[i], &argv[i + 1], (size_t)(argc - i) * sizeof *argv);
+            argc--;
+            i--;
+        }
     optind = 2;
     while ((opt = getopt(argc, argv, "n:o:a:s:g:m")) != -1) {
         if (opt == 'n')
@@ -149,6 +158,7 @@ int main(int argc, char **argv)
     int rc = 1;
     hd60s_open_wait_ms = 4000;
     if (hd60s_open(&d) == 0 && hd60s_set_audio(&d, &audio) == 0 && hd60s_start(&d) == 0) {
+        d.usb.transfer = transfer;
         if (info) {
             fprintf(stderr, "mcu firmware: %02x.%02x.%02x\n", d.mcu_version >> 16 & 0xff,
                     d.mcu_version >> 8 & 0xff, d.mcu_version & 0xff);

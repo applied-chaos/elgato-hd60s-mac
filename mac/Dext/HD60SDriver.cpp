@@ -386,7 +386,7 @@ void HD60SDriver::BringUp()
 {
     auto *iv = ivars;
     memset(&iv->dev, 0, sizeof iv->dev);
-    iv->dev.usb = {this, ctrlThunk, sleepThunk};
+    iv->dev.usb = {this, HD60S_BULK, ctrlThunk, sleepThunk};
     iv->streamFailed = false;
     iv->generation++;
     if (hd60s_init(&iv->dev) < 0 || hd60s_start(&iv->dev) < 0 || iv->intf->SelectAlternateSetting(4) != kIOReturnSuccess) {

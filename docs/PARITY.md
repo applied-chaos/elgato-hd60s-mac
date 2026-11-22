@@ -178,7 +178,7 @@ App status messages: "No Signal", "Protected with HDCP", "USB 3 is required for 
 
 | # | Item | Status | Notes |
 |---|---|---|---|
-| H1 | Isochronous transfer mode | missing (low) | Elgato offers "USB Transfer Mode: Bulk/Isochronous" (default bulk, `BeddoRTUseBulk`): iface 0 alt 1–3, EP 0x83, 4 buffers × 160 × bytes-per-interval. Useful for flaky hubs. Mac only, no source needed. Ticket: **Offer isochronous USB transfer as a fallback** |
+| H1 | Isochronous transfer mode | done | Elgato offers "USB Transfer Mode: Bulk/Isochronous" (default bulk, `BeddoRTUseBulk`): iface 0 alt 1–3, EP 0x83, 4 buffers × 160 × bytes-per-interval. Useful for flaky hubs. Mac only, no source needed. Ticket: **Offer isochronous USB transfer as a fallback**. Done: `hd60s capture --iso`; bulk stays default. The dext is bulk only |
 | H2 | Firmware change notification (replay program + EP 0x81 interrupt) | partial (low) | Ours polls every 250 ms. Elgato uploads 10 I2C watch entries via 0xC6 wValue=100 wIndex=1 and arms EP 0x81, which gives faster mode and hotplug reaction with less bus traffic. Pi. Ticket: **Use the firmware's I2C watch program for signal-change wake-ups** |
 | H3 | Latency modes | n/a | There is no device-side latency mode. "Instant Gameview" is the app's preview path. `dev+0xa8` (0x10 or 1 by frame rate) has an unknown purpose and no public setter |
 
@@ -203,9 +203,9 @@ App status messages: "No Signal", "Protected with HDCP", "USB 3 is required for 
 
 ## Count
 
-- **Missing (16):** A7, B1, B2, B3, B5, C1, D3, D4, E2, E3, E4, E5, F1, G4, G5, H1.
+- **Missing (13):** A7, B1, B2, B3, B5, C1, E2, E3, E4, E5, F1, G4, G5.
   - E2 is existing ticket #16. G5 folds into F1. E5 is conditional on E1.
-- **Partial (10):** A4, A5, B6, D2, D5, D7, E1, E6, G1, H2.
+- **Partial (6):** B6, D7, E1, E6, G1, H2.
   - D7 maps to existing #5/#6. G1 is the app side of #14. E1 is the TV run of #13.
 
 Highest value first: B1 (YCbCr sources likely mis-coloured today), B2/B3 (colour range), F1 (HDCP message), D3/D4 (line-in and gain), then the TV-dependent E items.
