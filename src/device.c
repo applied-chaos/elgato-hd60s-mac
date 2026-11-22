@@ -357,22 +357,35 @@ static void receiver_pulse(struct hd60s *d, uint8_t r24, const uint8_t *r27)
     mst_write(d, 0, 0xb3, 0);
 }
 
+int hd60s_quiet;
+
 int hd60s_open(struct hd60s *d)
 {
     memset(d, 0, sizeof *d);
     if (libusb_init(&d->usb) < 0)
         return -1;
-    d->h = libusb_open_device_with_vid_pid(d->usb, HD60S_VID, HD60S_PID);
+    d->open_err = LIBUSB_ERROR_NO_DEVICE;
+    libusb_device **list;
+    ssize_t n = libusb_get_device_list(d->usb, &list);
+    for (ssize_t i = 0; i < n && !d->h; i++) {
+        struct libusb_device_descriptor dd;
+        if (libusb_get_device_descriptor(list[i], &dd) == 0 && dd.idVendor == HD60S_VID && dd.idProduct == HD60S_PID)
+            d->open_err = libusb_open(list[i], &d->h);
+    }
+    if (n >= 0)
+        libusb_free_device_list(list, 1);
     if (!d->h) {
-        fprintf(stderr, "hd60s: no %04x:%04x found (or it is busy)\n", HD60S_VID, HD60S_PID);
+        if (!hd60s_quiet)
+            fprintf(stderr, "hd60s: no %04x:%04x found (or it is busy)\n", HD60S_VID, HD60S_PID);
         return -1;
     }
     int cfg = 0;
     libusb_get_configuration(d->h, &cfg);
-    if (cfg != 1 && libusb_set_configuration(d->h, 1) < 0)
+    if (cfg != 1 && (d->open_err = libusb_set_configuration(d->h, 1)) < 0)
         return -1;
-    if (libusb_claim_interface(d->h, 0) < 0) {
-        fprintf(stderr, "hd60s: cannot claim interface 0\n");
+    if ((d->open_err = libusb_claim_interface(d->h, 0)) < 0) {
+        if (!hd60s_quiet)
+            fprintf(stderr, "hd60s: cannot claim interface 0\n");
         return -1;
     }
 
