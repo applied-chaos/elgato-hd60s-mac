@@ -24,15 +24,14 @@ struct hd60s_xfer_plan {
 };
 
 int hd60s_transfer_parse(const char *s, enum hd60s_transfer *out);
-/* Bytes per 125 us interval that 1080p60 YUY2 needs (1920*1080*2*60/8000). */
-#define HD60S_ISO_MIN_BYTES 31104
-/* Iso takes the narrowest alt that carries 1080p60: alt 3 delivers no data on a Mac (tested). -1 if none does. */
+#define HD60S_ISO_MIN_BYTES (1920 * 1080 * 2 * 60 / 8000)
+/* Iso takes the narrowest alt that carries 1080p60: alt 3 delivers no data on a Mac on a Mac. -1 if none does. */
 int hd60s_xfer_plan(enum hd60s_transfer mode, const int alt_bytes[HD60S_ISO_ALTS], struct hd60s_xfer_plan *out);
 
 /* Transport seam: libusb on the Mac, IOUSBHostInterface in the driver extension. */
 struct hd60s_usb {
     void *ctx;
-    enum hd60s_transfer transfer; /* the driver extension supports bulk only */
+    enum hd60s_transfer transfer;
     /* Vendor control request (bmRequestType 0xC0 in / 0x40 out). Bytes moved, or < 0 on failure. */
     int (*ctrl)(void *ctx, int in, uint8_t req, uint16_t val, uint16_t idx, uint8_t *buf, uint16_t len);
     void (*sleep_ms)(void *ctx, int ms);

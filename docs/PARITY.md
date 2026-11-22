@@ -178,7 +178,7 @@ App status messages: "No Signal", "Protected with HDCP", "USB 3 is required for 
 
 | # | Item | Status | Notes |
 |---|---|---|---|
-| H1 | Isochronous transfer mode | done | Elgato offers "USB Transfer Mode: Bulk/Isochronous" (default bulk, `BeddoRTUseBulk`): iface 0 alt 1–3, EP 0x83, 4 buffers × 160 × bytes-per-interval. Useful for flaky hubs. Mac only, no source needed. Ticket: **Offer isochronous USB transfer as a fallback** | `hd60s capture --iso`; bulk stays default.
+| H1 | Isochronous transfer mode | done | Elgato offers "USB Transfer Mode: Bulk/Isochronous" (default bulk, `BeddoRTUseBulk`): iface 0 alt 1–3, EP 0x83, 4 buffers × 160 × bytes-per-interval. Useful for flaky hubs. Mac only, no source needed. Ticket: **Offer isochronous USB transfer as a fallback**. Done: `hd60s capture --iso`; bulk stays default. The dext is bulk only |
 | H2 | Firmware change notification (replay program + EP 0x81 interrupt) | partial (low) | Ours polls every 250 ms. Elgato uploads 10 I2C watch entries via 0xC6 wValue=100 wIndex=1 and arms EP 0x81, which gives faster mode and hotplug reaction with less bus traffic. Pi. Ticket: **Use the firmware's I2C watch program for signal-change wake-ups** |
 | H3 | Latency modes | n/a | There is no device-side latency mode. "Instant Gameview" is the app's preview path. `dev+0xa8` (0x10 or 1 by frame rate) has an unknown purpose and no public setter |
 
