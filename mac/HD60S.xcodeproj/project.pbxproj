@@ -18,6 +18,7 @@
 		68456F4805398A5E16120F98 /* AudioPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0BB1F64555B5906AFF622AED /* AudioPlugin.swift */; };
 		717A4907EF90ADB8B070AEE9 /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8400EEE9F8976B5123BAA715 /* main.swift */; };
 		868DB0A334D8F095951F5C12 /* HD60SAudio.c in Sources */ = {isa = PBXBuildFile; fileRef = 5CAE976973A9661138B5E396 /* HD60SAudio.c */; };
+		8A5FB167BBB7D6BE364E769C /* deinterlace.c in Sources */ = {isa = PBXBuildFile; fileRef = 38DF55540E5C678012FE392F /* deinterlace.c */; };
 		8FC432765E9249BF3968EB02 /* RedHatText.ttf in Resources */ = {isa = PBXBuildFile; fileRef = E4BA9DEAA185A1CA9EF0C297 /* RedHatText.ttf */; };
 		91FA4C5D25BF43BF77944006 /* net.mintopia.hd60s.camera.systemextension in Embed System Extensions */ = {isa = PBXBuildFile; fileRef = 906664122934AE5F648909BB /* net.mintopia.hd60s.camera.systemextension */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		935F140DCE2EC4E8C40E4C5A /* HD60SApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5250AEE80161FAD7E2AB87AB /* HD60SApp.swift */; };
@@ -75,6 +76,7 @@
 		0BB1F64555B5906AFF622AED /* AudioPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioPlugin.swift; sourceTree = "<group>"; };
 		18241B2CA9D6FB72D10C87C1 /* RedHatDisplay.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = RedHatDisplay.ttf; sourceTree = "<group>"; };
 		2802D08CC9D0EF039BE94247 /* HD60SCamera.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = HD60SCamera.entitlements; sourceTree = "<group>"; };
+		38DF55540E5C678012FE392F /* deinterlace.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = deinterlace.c; sourceTree = "<group>"; };
 		3D657EA2382F0CC167FE569B /* device.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = device.c; sourceTree = "<group>"; };
 		5250AEE80161FAD7E2AB87AB /* HD60SApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HD60SApp.swift; sourceTree = "<group>"; };
 		58FCE89662E2C2249C89C7B2 /* parser.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = parser.c; sourceTree = "<group>"; };
@@ -127,6 +129,7 @@
 		739FC2D357B6074DA250405C /* src */ = {
 			isa = PBXGroup;
 			children = (
+				38DF55540E5C678012FE392F /* deinterlace.c */,
 				3D657EA2382F0CC167FE569B /* device.c */,
 				58FCE89662E2C2249C89C7B2 /* parser.c */,
 				82A96EFD70066EE24A64F776 /* ring.c */,
@@ -340,6 +343,7 @@
 				97F411CDE82413DF96975439 /* FrameFit.swift in Sources */,
 				B1DDD38E14EBF1E10EF29F95 /* FrameRate.swift in Sources */,
 				A042FF175789F53AC09AC388 /* Provider.swift in Sources */,
+				8A5FB167BBB7D6BE364E769C /* deinterlace.c in Sources */,
 				274C386DB52799C980E9E44C /* device.c in Sources */,
 				717A4907EF90ADB8B070AEE9 /* main.swift in Sources */,
 				E2A40B2FADCE6E73189BED86 /* parser.c in Sources */,
