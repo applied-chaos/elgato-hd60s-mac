@@ -18,7 +18,6 @@ func check(_ ok: Bool, _ what: String, line: UInt = #line) {
         check(DextStatus.found(enabled: true, awaitingApproval: true) == .installed, "enabled wins")
         check(DextStatus.found(enabled: false, awaitingApproval: false) == .notInstalled, "none")
         check(DextStatus.notBundled.label == nil && DextStatus.installed.label == "installed", "hidden unless bundled")
-        // flavour: read from the Info.plist, unknown or missing means userspace
         check(Flavour(infoValue: "driverkit") == .driverKit && Flavour(infoValue: "userspace") == .userspace, "flavour parse")
         check(Flavour(infoValue: nil) == .userspace && Flavour(infoValue: "other") == .userspace, "flavour default")
         let plug = "/app/HD60SAudio.driver"
@@ -32,7 +31,6 @@ func check(_ ok: Bool, _ what: String, line: UInt = #line) {
         check(Flavour.driverKit.uninstallStep(audio: .notInstalled) == .none && Flavour.driverKit.uninstallStep(audio: .installed) == .admin(uninstall), "driverkit uninstall prompts only for a plug-in")
         check(Flavour.driverKit.installStep(audio: .outdated, plugInSource: nil) == .admin(uninstall), "driverkit removes old plug-in")
         check(Flavour.userspace.showsAudioPlugIn && !Flavour.driverKit.showsAudioPlugIn, "plug-in line only in userspace")
-        // reinstall offered over an installed camera only when the driverkit build has work left
         check(!Flavour.userspace.offersReinstall(cameraInstalled: true, audio: .installed, dext: .notBundled), "userspace unchanged")
         check(Flavour.driverKit.offersReinstall(cameraInstalled: true, audio: .installed, dext: .installed), "stale plug-in")
         check(Flavour.driverKit.offersReinstall(cameraInstalled: true, audio: .notInstalled, dext: .notInstalled), "dext missing")

@@ -16,7 +16,6 @@ enum AdminOutcome: Equatable { case done, cancelled, failed(String) }
 
 enum InstallStep: Equatable { case none, admin(String), missingPlugIn }
 
-// Which build this is: set per project spec in Info.plist (HD60SFlavour).
 enum Flavour: String {
     case userspace, driverKit = "driverkit"
 
@@ -26,7 +25,6 @@ enum Flavour: String {
 
     var showsAudioPlugIn: Bool { self == .userspace }
 
-    // Userspace installs its HAL plug-in; DriverKit removes any left by a userspace install so only the dext's input shows.
     func installStep(audio: AudioStatus, plugInSource: String?) -> InstallStep {
         switch self {
         case .userspace: plugInSource.map { .admin(AudioPlugin.installScript(source: $0)) } ?? .missingPlugIn
@@ -38,7 +36,6 @@ enum Flavour: String {
         self == .driverKit && audio == .notInstalled ? .none : .admin(AudioPlugin.uninstallScript())
     }
 
-    // The camera is already installed (userspace build), so Install would otherwise stay disabled.
     func offersReinstall(cameraInstalled: Bool, audio: AudioStatus, dext: DextStatus) -> Bool {
         self == .driverKit && cameraInstalled && dext != .working && dext != .needsApproval
             && (audio != .notInstalled || dext == .notInstalled)

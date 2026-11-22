@@ -1,5 +1,4 @@
 name: HD60SDev
-# The dext carries audio, so this flavour has no HAL plug-in, feed device, jitter ring or audio hal mach lookup.
 # Arrays append on include, so lists that differ from project.yml are replaced with :REPLACE.
 include: [project.yml]
 targets:
