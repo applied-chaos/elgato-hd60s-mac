@@ -514,6 +514,13 @@ Raw EDID (256 bytes, base block then CTA block):
 - A source mode change loses about 30 ms of samples, then audio resumes in real time with no backlog. With no signal, audio stops completely and resumes with the signal.
 - The DriverKit flavour clocks its audio device from this (`src/aclock.c`): zero timestamps follow a line fitted to completion times (second-order loop, ~4 s, clamped to +-1000 ppm), and samples are written into the IO buffer as they arrive, with no jitter buffer. A hole of more than 20 ms re-phases the samples onto the clock and leaves silence. The device reports 0 latency and a 192-frame (4 ms) input safety offset, so audio input latency is 4 ms plus the client's IO buffer (the userspace flavour's ring holds 30 ms). Measured end-to-end latency and A/V offset in the dext: not yet (needs install).
 
+## PC modes (Pi forced with `kmstest` modelines, `hd60s status` and `capture -n 20`)
+The Pi's EDID lists no PC timings, so each was forced with an explicit modeline (`kmstest -c HDMI-A-1 -r <pclk Hz>,<hact>/<hfp>/<hsw>/<hbp>/<hsp>,<vact>/<vfp>/<vsw>/<vbp>/<vsp> -T smpte`; `--dmt` lookups by name fail on the Pi). The unmodified driver detects and frames all of them, with 0 discarded frames and 0 long lines:
+
+640x480@60, 800x600@60, 1024x768@60, 1152x864@75, 1280x768@60, 1280x800@60, 1280x960@60, 1280x1024@60, 1360x768@60, 1400x1050@60, 1440x900@60. 1600x900 (reduced blanking) is detected too but is not a known mode, so `status` reports `unsupported` and the camera shows the "Unsupported mode" slate. 1366x768 was rejected by the Pi's own mode set (odd active width), so it was not tested.
+
+Only 640 wide is SD (BT.601 matrix, `parser_is_sd` = 1); the PC sizes use the HD matrix and fit by their own aspect (square pixels).
+
 ## Unknown / unverified
 - Audio channel order (left first) is assumed from I2S convention, not tested with a one-sided signal.
 - 0xEC padding bytes and the meaning of 0xEC, 0xC2 and 0xC7. Possibly LED/clock/enable.

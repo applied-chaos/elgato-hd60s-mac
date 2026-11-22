@@ -37,7 +37,8 @@ struct hd60s_parser {
     enum hd60s_input_format input_format;
 };
 
-/* 1 for a standard SD frame size, 0 for 720p/1080p, -1 otherwise (runts while the source switches mode). */
+/* 1 for an SD frame size (640x480, 720x480/576, 1440x480), 0 for HD and PC/DMT sizes, -1 otherwise (runts
+ * while the source switches mode, or a timing with no known mode). */
 int parser_is_sd(int width, int height);
 
 void parser_init(struct hd60s_parser *p, uint8_t *buf, size_t cap, frame_cb on_frame,
