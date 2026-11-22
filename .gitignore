@@ -4,3 +4,4 @@ build/
 /vendor/
 .impeccable/hook.cache.json
 .hardware
+mac/HD60SDev.xcodeproj/

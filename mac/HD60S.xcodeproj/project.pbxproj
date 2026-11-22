@@ -11,15 +11,20 @@
 		274C386DB52799C980E9E44C /* device.c in Sources */ = {isa = PBXBuildFile; fileRef = 3D657EA2382F0CC167FE569B /* device.c */; };
 		36E46DC83957DF142005C5DC /* AudioFeed.c in Sources */ = {isa = PBXBuildFile; fileRef = B94D97025BF605D9F19C6F7B /* AudioFeed.c */; };
 		3BE7F6CBBF0A32B2E1AADBB1 /* Slate.png in Resources */ = {isa = PBXBuildFile; fileRef = D9B4906F3518E9B1364D6B76 /* Slate.png */; };
+		3D9B486C89BDD72174A60838 /* DextStatus.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9788A62CEE0CF0C4A1436A57 /* DextStatus.swift */; };
 		3ED78A9D91174746CC6F58BA /* RedHatDisplay.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 18241B2CA9D6FB72D10C87C1 /* RedHatDisplay.ttf */; };
 		56F2C184E36B4C0F6FCBE1AF /* ring.c in Sources */ = {isa = PBXBuildFile; fileRef = 82A96EFD70066EE24A64F776 /* ring.c */; };
+		59DFC7F8E006C47170E3D391 /* DextInstaller.swift in Sources */ = {isa = PBXBuildFile; fileRef = E474B4536D66208D95CEF6B3 /* DextInstaller.swift */; };
 		68456F4805398A5E16120F98 /* AudioPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0BB1F64555B5906AFF622AED /* AudioPlugin.swift */; };
 		717A4907EF90ADB8B070AEE9 /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8400EEE9F8976B5123BAA715 /* main.swift */; };
 		868DB0A334D8F095951F5C12 /* HD60SAudio.c in Sources */ = {isa = PBXBuildFile; fileRef = 5CAE976973A9661138B5E396 /* HD60SAudio.c */; };
+		8A5FB167BBB7D6BE364E769C /* deinterlace.c in Sources */ = {isa = PBXBuildFile; fileRef = 38DF55540E5C678012FE392F /* deinterlace.c */; };
 		8FC432765E9249BF3968EB02 /* RedHatText.ttf in Resources */ = {isa = PBXBuildFile; fileRef = E4BA9DEAA185A1CA9EF0C297 /* RedHatText.ttf */; };
 		91FA4C5D25BF43BF77944006 /* net.mintopia.hd60s.camera.systemextension in Embed System Extensions */ = {isa = PBXBuildFile; fileRef = 906664122934AE5F648909BB /* net.mintopia.hd60s.camera.systemextension */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		935F140DCE2EC4E8C40E4C5A /* HD60SApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5250AEE80161FAD7E2AB87AB /* HD60SApp.swift */; };
+		97F411CDE82413DF96975439 /* FrameFit.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6357F6F66A26419F5C78499F /* FrameFit.swift */; };
 		A042FF175789F53AC09AC388 /* Provider.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEB304182F383B96E72A3DA6 /* Provider.swift */; };
+		B1DDD38E14EBF1E10EF29F95 /* FrameRate.swift in Sources */ = {isa = PBXBuildFile; fileRef = D41EB16A58150036BD7A0F04 /* FrameRate.swift */; };
 		CB1B48B6A5A96319F7FC9477 /* OFL.txt in Resources */ = {isa = PBXBuildFile; fileRef = C7F46965F4F9398B418F05A8 /* OFL.txt */; };
 		E2A40B2FADCE6E73189BED86 /* parser.c in Sources */ = {isa = PBXBuildFile; fileRef = 58FCE89662E2C2249C89C7B2 /* parser.c */; };
 		E6161C4A5DAFF37A3B872C3C /* HD60SAudio.bundle in Embed Dependencies */ = {isa = PBXBuildFile; fileRef = 9F047EFF5D3A895B3B3B2B7D /* HD60SAudio.bundle */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
@@ -71,23 +76,28 @@
 		0BB1F64555B5906AFF622AED /* AudioPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioPlugin.swift; sourceTree = "<group>"; };
 		18241B2CA9D6FB72D10C87C1 /* RedHatDisplay.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = RedHatDisplay.ttf; sourceTree = "<group>"; };
 		2802D08CC9D0EF039BE94247 /* HD60SCamera.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = HD60SCamera.entitlements; sourceTree = "<group>"; };
+		38DF55540E5C678012FE392F /* deinterlace.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = deinterlace.c; sourceTree = "<group>"; };
 		3D657EA2382F0CC167FE569B /* device.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = device.c; sourceTree = "<group>"; };
 		5250AEE80161FAD7E2AB87AB /* HD60SApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HD60SApp.swift; sourceTree = "<group>"; };
 		58FCE89662E2C2249C89C7B2 /* parser.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = parser.c; sourceTree = "<group>"; };
 		5CAE976973A9661138B5E396 /* HD60SAudio.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = HD60SAudio.c; sourceTree = "<group>"; };
+		6357F6F66A26419F5C78499F /* FrameFit.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FrameFit.swift; sourceTree = "<group>"; };
 		7077DBB0AE4A216DE906C000 /* AudioFeed.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = AudioFeed.h; sourceTree = "<group>"; };
 		791CD22A7A5BCBF5CA41DEC9 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		82A96EFD70066EE24A64F776 /* ring.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = ring.c; sourceTree = "<group>"; };
 		8400EEE9F8976B5123BAA715 /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
 		87A0EC014D058589E38854EE /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		906664122934AE5F648909BB /* net.mintopia.hd60s.camera.systemextension */ = {isa = PBXFileReference; explicitFileType = "wrapper.system-extension"; includeInIndex = 0; path = net.mintopia.hd60s.camera.systemextension; sourceTree = BUILT_PRODUCTS_DIR; };
+		9788A62CEE0CF0C4A1436A57 /* DextStatus.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DextStatus.swift; sourceTree = "<group>"; };
 		9F047EFF5D3A895B3B3B2B7D /* HD60SAudio.bundle */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = HD60SAudio.bundle; sourceTree = BUILT_PRODUCTS_DIR; };
 		A3E0C3F3545569814FC50DBC /* HD60S.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = HD60S.entitlements; sourceTree = "<group>"; };
 		AFAB7175D82262FE4407375C /* Bridging.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = Bridging.h; sourceTree = "<group>"; };
 		B4395BC9C75FEE1900F4B5D8 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		B94D97025BF605D9F19C6F7B /* AudioFeed.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = AudioFeed.c; sourceTree = "<group>"; };
 		C7F46965F4F9398B418F05A8 /* OFL.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = OFL.txt; sourceTree = "<group>"; };
+		D41EB16A58150036BD7A0F04 /* FrameRate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FrameRate.swift; sourceTree = "<group>"; };
 		D9B4906F3518E9B1364D6B76 /* Slate.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = Slate.png; sourceTree = "<group>"; };
+		E474B4536D66208D95CEF6B3 /* DextInstaller.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DextInstaller.swift; sourceTree = "<group>"; };
 		E4BA9DEAA185A1CA9EF0C297 /* RedHatText.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = RedHatText.ttf; sourceTree = "<group>"; };
 		F49628C23DF697B188482304 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		FB242BD55A0D36E0CF6E0153 /* HD60S.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = HD60S.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -119,6 +129,7 @@
 		739FC2D357B6074DA250405C /* src */ = {
 			isa = PBXGroup;
 			children = (
+				38DF55540E5C678012FE392F /* deinterlace.c */,
 				3D657EA2382F0CC167FE569B /* device.c */,
 				58FCE89662E2C2249C89C7B2 /* parser.c */,
 				82A96EFD70066EE24A64F776 /* ring.c */,
@@ -132,6 +143,8 @@
 			children = (
 				791CD22A7A5BCBF5CA41DEC9 /* Assets.xcassets */,
 				0BB1F64555B5906AFF622AED /* AudioPlugin.swift */,
+				E474B4536D66208D95CEF6B3 /* DextInstaller.swift */,
+				9788A62CEE0CF0C4A1436A57 /* DextStatus.swift */,
 				A3E0C3F3545569814FC50DBC /* HD60S.entitlements */,
 				5250AEE80161FAD7E2AB87AB /* HD60SApp.swift */,
 				B4395BC9C75FEE1900F4B5D8 /* Info.plist */,
@@ -146,6 +159,8 @@
 				B94D97025BF605D9F19C6F7B /* AudioFeed.c */,
 				7077DBB0AE4A216DE906C000 /* AudioFeed.h */,
 				AFAB7175D82262FE4407375C /* Bridging.h */,
+				6357F6F66A26419F5C78499F /* FrameFit.swift */,
+				D41EB16A58150036BD7A0F04 /* FrameRate.swift */,
 				2802D08CC9D0EF039BE94247 /* HD60SCamera.entitlements */,
 				87A0EC014D058589E38854EE /* Info.plist */,
 				8400EEE9F8976B5123BAA715 /* main.swift */,
@@ -314,6 +329,8 @@
 			buildActionMask = 2147483647;
 			files = (
 				68456F4805398A5E16120F98 /* AudioPlugin.swift in Sources */,
+				59DFC7F8E006C47170E3D391 /* DextInstaller.swift in Sources */,
+				3D9B486C89BDD72174A60838 /* DextStatus.swift in Sources */,
 				935F140DCE2EC4E8C40E4C5A /* HD60SApp.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -323,7 +340,10 @@
 			buildActionMask = 2147483647;
 			files = (
 				36E46DC83957DF142005C5DC /* AudioFeed.c in Sources */,
+				97F411CDE82413DF96975439 /* FrameFit.swift in Sources */,
+				B1DDD38E14EBF1E10EF29F95 /* FrameRate.swift in Sources */,
 				A042FF175789F53AC09AC388 /* Provider.swift in Sources */,
+				8A5FB167BBB7D6BE364E769C /* deinterlace.c in Sources */,
 				274C386DB52799C980E9E44C /* device.c in Sources */,
 				717A4907EF90ADB8B070AEE9 /* main.swift in Sources */,
 				E2A40B2FADCE6E73189BED86 /* parser.c in Sources */,

@@ -6,9 +6,8 @@ import ImageIO
 import os
 import VideoToolbox
 
-private let width: Int32 = 1920
-private let height: Int32 = 1080
-private let frameDuration = CMTime(value: 1001, timescale: 60000)
+private let width = Int32(outputWidth)
+private let height = Int32(outputHeight)
 private let noFramesTimeoutNs: UInt64 = 200_000_000
 private let statsEveryTicks = 600
 private let log = Logger(subsystem: "net.mintopia.hd60s.camera", category: "capture")
@@ -84,23 +83,28 @@ final class DeviceSource: NSObject, CMIOExtensionDeviceSource {
 
 final class StreamSource: NSObject, CMIOExtensionStreamSource {
     private(set) var stream: CMIOExtensionStream!
-    private let format: CMIOExtensionStreamFormat
+    private let formatList: [CMIOExtensionStreamFormat]
+    private let rate = OSAllocatedUnfairLock(initialState: FrameRate.ntsc)
     private var pool: CVPixelBufferPool!
     private let stop = UnsafeMutablePointer<sig_atomic_t>.allocate(capacity: 1)
     private var worker: Thread?
     private let finished = DispatchSemaphore(value: 0)
     private let parser = UnsafeMutablePointer<hd60s_parser>.allocate(capacity: 1)
+    private let deinterlacer = UnsafeMutablePointer<deint>.allocate(capacity: 1)
     private let lastFrameNs = OSAllocatedUnfairLock(initialState: UInt64(0))
     private var slate: CVPixelBuffer?
     private var timer: DispatchSourceTimer?
     private var ticks = 0
+    private var scaler: VTPixelTransferSession?
 
     override init() {
         var desc: CMFormatDescription?
         CMVideoFormatDescriptionCreate(allocator: kCFAllocatorDefault, codecType: kCVPixelFormatType_422YpCbCr8_yuvs,
                                        width: width, height: height, extensions: nil, formatDescriptionOut: &desc)
-        format = CMIOExtensionStreamFormat(formatDescription: desc!, maxFrameDuration: frameDuration,
-                                           minFrameDuration: frameDuration, validFrameDurations: nil)
+        formatList = FrameRate.all.map {
+            CMIOExtensionStreamFormat(formatDescription: desc!, maxFrameDuration: $0.duration,
+                                      minFrameDuration: $0.duration, validFrameDurations: nil)
+        }
         let attrs: [String: Any] = [
             kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_422YpCbCr8_yuvs,
             kCVPixelBufferWidthKey as String: width,
@@ -110,27 +114,34 @@ final class StreamSource: NSObject, CMIOExtensionStreamSource {
         CVPixelBufferPoolCreate(kCFAllocatorDefault, nil, attrs as CFDictionary, &pool)
         super.init()
         parser.initialize(to: hd60s_parser())
+        deinterlacer.initialize(to: deint())
         slate = makeSlate()
         stream = CMIOExtensionStream(localizedName: "Elgato HD60 S", streamID: UUID(), direction: .source,
                                      clockType: .hostTime, source: self)
     }
 
-    var formats: [CMIOExtensionStreamFormat] { [format] }
+    var formats: [CMIOExtensionStreamFormat] { formatList }
 
     var availableProperties: Set<CMIOExtensionProperty> { [.streamActiveFormatIndex, .streamFrameDuration] }
 
     func streamProperties(forProperties properties: Set<CMIOExtensionProperty>) throws -> CMIOExtensionStreamProperties {
         let p = CMIOExtensionStreamProperties(dictionary: [:])
         if properties.contains(.streamActiveFormatIndex) {
-            p.activeFormatIndex = 0
+            p.activeFormatIndex = rate.withLock { $0.index }
         }
         if properties.contains(.streamFrameDuration) {
-            p.frameDuration = frameDuration
+            p.frameDuration = rate.withLock { $0.duration }
         }
         return p
     }
 
-    func setStreamProperties(_ streamProperties: CMIOExtensionStreamProperties) throws {}
+    func setStreamProperties(_ streamProperties: CMIOExtensionStreamProperties) throws {
+        let picked = streamProperties.activeFormatIndex.flatMap { FrameRate(index: $0) }
+            ?? streamProperties.frameDuration.flatMap { FrameRate(duration: $0) }
+        guard let picked, rate.withLock({ let changed = $0 != picked; $0 = picked; return changed }) else { return }
+        log.info("rate set to \(picked.duration.seconds, format: .fixed(precision: 4)) s")
+        if timer != nil { restartTimer() }
+    }
 
     func authorizedToStartStream(for client: CMIOExtensionClient) -> Bool { true }
 
@@ -143,8 +154,14 @@ final class StreamSource: NSObject, CMIOExtensionStreamSource {
         worker = t
         t.start()
         lastFrameNs.withLock { $0 = 0 }
+        restartTimer()
+    }
+
+    private func restartTimer() {
+        timer?.cancel()
         let timer = DispatchSource.makeTimerSource(queue: DispatchQueue(label: "hd60s slate"))
-        timer.schedule(deadline: .now(), repeating: .nanoseconds(Int(frameDuration.seconds * 1e9)), leeway: .milliseconds(1))
+        let period = rate.withLock { $0.duration.seconds }
+        timer.schedule(deadline: .now(), repeating: .nanoseconds(Int(period * 1e9)), leeway: .milliseconds(1))
         timer.setEventHandler { [unowned self] in tick() }
         timer.resume()
         self.timer = timer
@@ -157,6 +174,8 @@ final class StreamSource: NSObject, CMIOExtensionStreamSource {
         stop.pointee = 1
         finished.wait()
         audio_feed_stop()
+        if let scaler { VTPixelTransferSessionInvalidate(scaler) }
+        scaler = nil
         worker = nil
     }
 
@@ -173,8 +192,8 @@ final class StreamSource: NSObject, CMIOExtensionStreamSource {
             var d = hd60s()
             if hd60s_open(&d) == 0 && hd60s_start(&d) == 0 {
                 log.info("capture started")
-                parser_init(parser, buf, cap, { ctx, frame, w, h, _ in
-                    Unmanaged<StreamSource>.fromOpaque(ctx!).takeUnretainedValue().send(frame!, Int(w), Int(h))
+                parser_init(parser, buf, cap, { ctx, frame, w, h, interlaced in
+                    Unmanaged<StreamSource>.fromOpaque(ctx!).takeUnretainedValue().send(UnsafeMutablePointer(mutating: frame!), Int(w), Int(h), interlaced != 0)
                 }, { _, pcm, len in audio_feed_push(pcm, len) }, ctx)
                 hd60s_stream(&d, parser, stop, 0)
             } else {
@@ -188,22 +207,52 @@ final class StreamSource: NSObject, CMIOExtensionStreamSource {
         }
     }
 
-    // ponytail: only 1920x1080 frames are forwarded; other modes need extra stream formats.
-    private func send(_ frame: UnsafePointer<UInt8>, _ w: Int, _ h: Int) {
-        guard w == Int(width), h == Int(height) else { return }
+    // Frames of any known mode are scaled into the 1080p output, aspect preserved; runts from a mode switch are dropped.
+    private func send(_ frame: UnsafeMutablePointer<UInt8>, _ w: Int, _ h: Int, _ interlaced: Bool) {
+        guard let r = fitRect(width: w, height: h) else { return }
+        if interlaced { deint_frame(deinterlacer, frame, Int32(w), Int32(h)) }
         var pb: CVPixelBuffer?
         guard CVPixelBufferPoolCreatePixelBuffer(kCFAllocatorDefault, pool, &pb) == kCVReturnSuccess, let pb else { return }
         CVPixelBufferLockBaseAddress(pb, [])
         let dst = CVPixelBufferGetBaseAddress(pb)!.assumingMemoryBound(to: UInt8.self)
         let dstStride = CVPixelBufferGetBytesPerRow(pb)
         let rowBytes = w * 2
-        for y in 0..<h {
-            (dst + y * dstStride).update(from: frame + y * rowBytes, count: rowBytes)
+        if r.w == w && r.h == h {
+            for y in 0..<h {
+                (dst + y * dstStride).update(from: frame + y * rowBytes, count: rowBytes)
+            }
+        } else if !scale(frame, w, h, into: dst + r.y * dstStride + r.x * 2, stride: dstStride, r, clear: dst) {
+            CVPixelBufferUnlockBaseAddress(pb, [])
+            return
         }
         CVPixelBufferUnlockBaseAddress(pb, [])
         tag709(pb)
         lastFrameNs.withLock { $0 = hostNs() }
         emit(pb)
+    }
+
+    // Wraps the parser buffer and the target rectangle as pixel buffers for VideoToolbox; bars are filled black.
+    // #10: tag the source buffer BT.601 for SD here and VideoToolbox converts to the 709 output.
+    private func scale(_ frame: UnsafePointer<UInt8>, _ w: Int, _ h: Int, into at: UnsafeMutablePointer<UInt8>,
+                       stride: Int, _ r: Rect, clear base: UnsafeMutablePointer<UInt8>) -> Bool {
+        if scaler == nil {
+            VTPixelTransferSessionCreate(allocator: kCFAllocatorDefault, pixelTransferSessionOut: &scaler)
+            if let scaler { VTSessionSetProperty(scaler, key: kVTPixelTransferPropertyKey_RealTime, value: kCFBooleanTrue) }
+        }
+        guard let scaler else { return false }
+        var black: [UInt8] = [0x10, 0x80, 0x10, 0x80]
+        memset_pattern4(base, &black, stride * outputHeight)
+        var src: CVPixelBuffer?
+        var out: CVPixelBuffer?
+        guard CVPixelBufferCreateWithBytes(kCFAllocatorDefault, w, h, kCVPixelFormatType_422YpCbCr8_yuvs,
+                                           UnsafeMutableRawPointer(mutating: frame), w * 2, nil, nil, nil, &src) == kCVReturnSuccess,
+              let src,
+              CVPixelBufferCreateWithBytes(kCFAllocatorDefault, r.w, r.h, kCVPixelFormatType_422YpCbCr8_yuvs,
+                                           at, stride, nil, nil, nil, &out) == kCVReturnSuccess,
+              let out else { return false }
+        tag709(src)
+        tag709(out)
+        return VTPixelTransferSessionTransferImage(scaler, from: src, to: out) == noErr
     }
 
     private func tick() {
@@ -263,7 +312,7 @@ final class StreamSource: NSObject, CMIOExtensionStreamSource {
 
     private func emit(_ pb: CVPixelBuffer) {
         let now = CMClockGetTime(CMClockGetHostTimeClock())
-        var timing = CMSampleTimingInfo(duration: frameDuration, presentationTimeStamp: now, decodeTimeStamp: .invalid)
+        var timing = CMSampleTimingInfo(duration: rate.withLock { $0.duration }, presentationTimeStamp: now, decodeTimeStamp: .invalid)
         var desc: CMFormatDescription?
         var sample: CMSampleBuffer?
         guard CMVideoFormatDescriptionCreateForImageBuffer(allocator: kCFAllocatorDefault, imageBuffer: pb,
