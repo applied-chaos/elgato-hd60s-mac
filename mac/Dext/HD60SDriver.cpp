@@ -23,6 +23,7 @@ static constexpr uint32_t kBytesPerFrame = kChannels * sizeof(float);
 static constexpr uint32_t kSafetyFrames = 192;
 static constexpr uint32_t kStageFrames = 8192;
 static constexpr uint64_t kAudioLogMs = 10000;
+static constexpr uint64_t kAudioLiveMs = 20;
 static constexpr uint32_t kFrameClientType = 'hd6f';
 static constexpr int kXfers = 16;
 static constexpr uint32_t kXferSize = 512 * 1024;
@@ -64,11 +65,12 @@ struct HD60SDriver_IVars {
     struct hd60s_policy policy;
     struct link link;
     uint8_t *frameBuf = nullptr;
-    // Clock, staging and stats belong to the USB queue; written, readEnd, lastArrival and pads are shared with the IO thread.
     struct aclock clock;
     int16_t stage[kStageFrames * kChannels];
     uint32_t staged = 0;
-    uint64_t written = 0, readEnd = 0, lastArrival = 0, pads = 0;
+    struct {
+        uint64_t written, readEnd, lastArrival, pads;
+    } ioShared = {};
     uint64_t lates = 0, overflow = 0, maxLate = 0, lastAudioLog = 0;
 
     OSSharedPtr<IOBufferMemoryDescriptor> frameMem;
@@ -137,6 +139,18 @@ static void zeroFrames(HD60SDriver_IVars *iv, uint64_t from, uint64_t n)
     if (first < n) memset(ioBase(iv), 0, (n - first) * kBytesPerFrame);
 }
 
+static void silenceUndelivered(HD60SDriver_IVars *iv, uint64_t sampleTime, uint64_t end, uint64_t hostTime)
+{
+    __atomic_store_n(&iv->ioShared.readEnd, end, __ATOMIC_RELEASE);
+    uint64_t w = __atomic_load_n(&iv->ioShared.written, __ATOMIC_ACQUIRE);
+    if (w >= end) return;
+    uint64_t from = w > sampleTime ? w : sampleTime;
+    zeroFrames(iv, from, end - from);
+    uint64_t last = __atomic_load_n(&iv->ioShared.lastArrival, __ATOMIC_RELAXED);
+    bool live = last && hostTime < last + kAudioLiveMs * iv->msTicks;
+    if (live) __atomic_fetch_add(&iv->ioShared.pads, end - from, __ATOMIC_RELAXED);
+}
+
 static kern_return_t addAudioDevice(HD60SDriver *self, HD60SDriver_IVars *iv)
 {
     auto name = OSSharedPtr(OSString::withCString(kDeviceName), OSNoRetain);
@@ -176,15 +190,7 @@ static kern_return_t addAudioDevice(HD60SDriver *self, HD60SDriver_IVars *iv)
     iv->device->SetIOOperationHandler(^kern_return_t(IOUserAudioObjectID, IOUserAudioIOOperation op,
                                                      uint32_t frames, uint64_t sampleTime, uint64_t hostTime) {
         if (op != IOUserAudioIOOperationBeginRead || !iv->ioMap) return kIOReturnSuccess;
-        // Samples are written as they arrive; only frames the source has not delivered yet are silenced.
-        uint64_t end = sampleTime + frames;
-        __atomic_store_n(&iv->readEnd, end, __ATOMIC_RELEASE);
-        uint64_t w = __atomic_load_n(&iv->written, __ATOMIC_ACQUIRE);
-        if (w >= end) return kIOReturnSuccess;
-        uint64_t from = w > sampleTime ? w : sampleTime;
-        zeroFrames(iv, from, end - from);
-        uint64_t last = __atomic_load_n(&iv->lastArrival, __ATOMIC_RELAXED);
-        if (last && hostTime < last + 20 * iv->msTicks) __atomic_fetch_add(&iv->pads, end - from, __ATOMIC_RELAXED);
+        silenceUndelivered(iv, sampleTime, sampleTime + frames, hostTime);
         return kIOReturnSuccess;
     });
     return self->AddObject(iv->device.get());
@@ -360,9 +366,9 @@ void HD60SDriver::Deliver(uint64_t host)
         f[0] = iv->stage[i * 2] / 32768.0f;
         f[1] = iv->stage[i * 2 + 1] / 32768.0f;
     }
-    __atomic_store_n(&iv->written, at + n, __ATOMIC_RELEASE);
-    __atomic_store_n(&iv->lastArrival, host, __ATOMIC_RELAXED);
-    uint64_t read = __atomic_load_n(&iv->readEnd, __ATOMIC_ACQUIRE);
+    __atomic_store_n(&iv->ioShared.written, at + n, __ATOMIC_RELEASE);
+    __atomic_store_n(&iv->ioShared.lastArrival, host, __ATOMIC_RELAXED);
+    uint64_t read = __atomic_load_n(&iv->ioShared.readEnd, __ATOMIC_ACQUIRE);
     if (read > at) iv->lates += read - at < n ? read - at : n;
     uint64_t first = aclock_host(&iv->clock, at);
     if (host > first && host - first > iv->maxLate) iv->maxLate = host - first;
@@ -451,7 +457,7 @@ void IMPL(HD60SDriver, PolicyOccurred)
         iv->lastAudioLog = static_cast<uint64_t>(now);
         os_log(OS_LOG_DEFAULT, "HD60S dext audio: %d ppm, %lu rephases, %llu pads, %llu late, %llu overflow, max lateness %llu us",
                static_cast<int>((iv->clock.nominal_ticks_per_sample / iv->clock.ticks_per_sample - 1) * 1e6), iv->clock.rephases,
-               __atomic_load_n(&iv->pads, __ATOMIC_RELAXED), iv->lates, iv->overflow, iv->maxLate * 1000 / iv->msTicks);
+               __atomic_load_n(&iv->ioShared.pads, __ATOMIC_RELAXED), iv->lates, iv->overflow, iv->maxLate * 1000 / iv->msTicks);
         iv->maxLate = 0;
     }
     fr_status(iv->frames, iv->link.state, iv->parser.frames, iv->parser.discarded, iv->parser.long_total, iv->link.failures);

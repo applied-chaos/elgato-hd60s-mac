@@ -11,13 +11,13 @@
 
 struct src {
     double true_ns_per_sample;
-    uint64_t made;
+    uint64_t produced;
 };
 
 static void src_init(struct src *s, double ppm)
 {
     s->true_ns_per_sample = P_NOM / (1 + ppm * 1e-6);
-    s->made = 0;
+    s->produced = 0;
 }
 
 static double src_time(const struct src *s, uint64_t k) { return T0 + (double)k * s->true_ns_per_sample; }
@@ -25,7 +25,7 @@ static double src_time(const struct src *s, uint64_t k) { return T0 + (double)k 
 static double jitter(double max_ms) { return max_ms * MS * rand() / (double)RAND_MAX; }
 
 struct run {
-    uint64_t first_src, placed;
+    uint64_t src_first_sample, clock_sample;
     uint64_t skipped;
 };
 
@@ -35,23 +35,23 @@ static struct run feed(struct aclock *c, struct src *s, double until, double lat
     uint64_t next = 0;
     int have = 0;
     for (;;) {
-        uint64_t end = s->made + 96;
+        uint64_t end = s->produced + 96;
         double done = src_time(s, end - 1) + jitter(late_ms);
         if (done > until) break;
-        r.first_src = s->made;
-        r.placed = aclock_arrive(c, (uint64_t)done, 96, &r.skipped);
-        if (contiguous && have && r.placed != next) *contiguous = 0;
-        next = r.placed + 96;
+        r.src_first_sample = s->produced;
+        r.clock_sample = aclock_arrive(c, (uint64_t)done, 96, &r.skipped);
+        if (contiguous && have && r.clock_sample != next) *contiguous = 0;
+        next = r.clock_sample + 96;
         have = 1;
-        s->made = end;
+        s->produced = end;
     }
     return r;
 }
 
 static double line_err_ms(const struct aclock *c, const struct src *s, const struct run *r)
 {
-    uint64_t k = r->first_src + 95;
-    return ((double)aclock_host(c, r->placed + 95) - src_time(s, k)) / MS;
+    uint64_t k = r->src_first_sample + 95;
+    return ((double)aclock_host(c, r->clock_sample + 95) - src_time(s, k)) / MS;
 }
 
 static void test_steady(void)
@@ -92,10 +92,10 @@ static void test_jitter(void)
     int contiguous = 1;
     feed(&c, &s, T0 + 5e9, 0.5, &contiguous);
     uint64_t next = c.next_sample;
-    double ref = src_time(&s, s.made + 679);
+    double ref = src_time(&s, s.produced + 679);
     uint64_t skipped, at = aclock_arrive(&c, (uint64_t)(ref + 0.3 * MS), 680, &skipped);
     assert(at == next && skipped == 0);
-    s.made += 680;
+    s.produced += 680;
     struct run r = feed(&c, &s, T0 + 30e9, 2.4, &contiguous);
     assert(contiguous);
     assert(c.rephases == 1);
@@ -116,11 +116,11 @@ static void test_gap(void)
     assert(contiguous);
     uint64_t before = c.next_sample, probe = c.next_sample + 48000;
     uint64_t h_probe = aclock_host(&c, probe);
-    s.made += 1440;
-    struct run r = feed(&c, &s, src_time(&s, s.made + 95) + 1, 0, NULL);
+    s.produced += 1440;
+    struct run r = feed(&c, &s, src_time(&s, s.produced + 95) + 1, 0, NULL);
     assert(c.rephases == 2);
-    assert(r.placed >= before + 1440 - 10 && r.placed <= before + 1440 + 10);
-    assert(r.skipped == r.placed - before);
+    assert(r.clock_sample >= before + 1440 - 10 && r.clock_sample <= before + 1440 + 10);
+    assert(r.skipped == r.clock_sample - before);
     assert(llabs((long long)aclock_host(&c, probe) - (long long)h_probe) < 20000);
     contiguous = 1;
     r = feed(&c, &s, T0 + 20e9, 0.2, &contiguous);
@@ -137,11 +137,11 @@ static void test_signal_loss(void)
     feed(&c, &s, T0 + 20e9, 0.2, NULL);
     double p = c.ticks_per_sample;
     uint64_t before = c.next_sample;
-    s.made += 8 * 48000;
+    s.produced += 8 * 48000;
     int contiguous = 1;
-    struct run r = feed(&c, &s, src_time(&s, s.made + 95) + 1, 0, NULL);
+    struct run r = feed(&c, &s, src_time(&s, s.produced + 95) + 1, 0, NULL);
     assert(c.rephases == 2);
-    assert(r.skipped == r.placed - before);
+    assert(r.skipped == r.clock_sample - before);
     assert(r.skipped > 8 * 48000 - 20 && r.skipped < 8 * 48000 + 20);
     assert(c.ticks_per_sample == p);
     r = feed(&c, &s, T0 + 40e9, 0.2, &contiguous);
