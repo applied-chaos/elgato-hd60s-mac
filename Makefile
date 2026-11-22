@@ -32,22 +32,31 @@ app: build/ub530_tables.h
 	$(XCODEBUILD) -scheme HD60S -derivedDataPath build/xcode -allowProvisioningUpdates -quiet build
 	rm -rf build/HD60S.app && cp -R build/xcode/Build/Products/Release/HD60S.app build/
 
-# Development-signed build with the AudioDriverKit extension (needs the DriverKit dev profile; not for release).
+# Development-signed build with the AudioDriverKit extension (needs the DriverKit dev profile; not notarisable).
+DEXT_CONFIG ?= Debug
 dext-dev: build/ub530_tables.h
 	cd mac && xcodegen generate --quiet --spec project-dext.yml
-	xcodebuild -project mac/HD60SDev.xcodeproj -configuration Debug MARKETING_VERSION=$(VERSION) CURRENT_PROJECT_VERSION=$(BUILD) \
+	xcodebuild -project mac/HD60SDev.xcodeproj -configuration $(DEXT_CONFIG) MARKETING_VERSION=$(VERSION) CURRENT_PROJECT_VERSION=$(BUILD) $(XCODEFLAGS) \
 		-scheme HD60S -derivedDataPath build/xcode-dext -allowProvisioningUpdates -quiet build
-	rm -rf build/HD60S-dext.app && cp -R build/xcode-dext/Build/Products/Debug/HD60S.app build/HD60S-dext.app
+	rm -rf build/HD60S-dext.app && cp -R build/xcode-dext/Build/Products/$(DEXT_CONFIG)/HD60S.app build/HD60S-dext.app
 
 install-app: app
 	-killall HD60S 2>/dev/null
 	rm -rf /Applications/HD60S.app && cp -R build/HD60S.app /Applications/
 	open /Applications/HD60S.app --args --install
 
+# dmg APP OUTPUT: packs APP as HD60S.app into a DMG.
+dmg = rm -rf build/dist && mkdir -p build/dist && cp -R $(1) build/dist/HD60S.app && \
+	hdiutil create -quiet -volname "HD60S $(VERSION)" -srcfolder build/dist -ov -format UDZO $(2)
+
+# Userspace flavour (Developer ID, notarised in CI).
 dist: app
-	rm -rf build/dist && mkdir -p build/dist
-	cp -R build/HD60S.app build/dist/
-	hdiutil create -quiet -volname "HD60S $(VERSION)" -srcfolder build/dist -ov -format UDZO build/HD60S-$(VERSION).dmg
+	$(call dmg,build/HD60S.app,build/HD60S-$(VERSION).dmg)
+
+# DriverKit flavour (Apple Development, never notarised).
+dist-dext: DEXT_CONFIG = Release
+dist-dext: dext-dev
+	$(call dmg,build/HD60S-dext.app,build/HD60S-DriverKit-$(VERSION).dmg)
 
 build/test_ring: tests/test_ring.c src/ring.c src/ring.h
 	@mkdir -p build
@@ -75,4 +84,4 @@ test: build/test_parser build/test_ring build/test_plugin build/test_audio_plugi
 clean:
 	rm -rf build
 
-.PHONY: all app dext-dev dist install-app test clean
+.PHONY: all app dext-dev dist dist-dext install-app test clean
