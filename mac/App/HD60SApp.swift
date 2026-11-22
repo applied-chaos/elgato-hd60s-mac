@@ -50,7 +50,7 @@ enum Status: Equatable {
         }
     }
 
-    var offersUninstall: Bool { self == .installed || self == .needsApproval }
+    var cameraInstalled: Bool { self == .installed || self == .needsApproval }
 
     static func preview(_ name: String) -> Status? {
         switch name {
@@ -336,9 +336,11 @@ struct InstallTab: View {
         return VStack(alignment: .leading, spacing: 0) {
             StateBlock(dot: status.colour, title: status.title, detail: status.detail, extra: extra)
             Group {
-                if status.offersUninstall {
+                switch InstallAction.offered(camera: status.cameraInstalled, audio: installer.audio, dext: dext.status) {
+                case .uninstall:
                     Button("Uninstall", action: installer.uninstall).buttonStyle(BrandButton(primary: false))
-                } else {
+                        .disabled(status == .working)
+                case .install:
                     Button("Install", action: installer.install).buttonStyle(BrandButton(primary: true))
                         .keyboardShortcut(.defaultAction).disabled(!status.canInstall)
                 }

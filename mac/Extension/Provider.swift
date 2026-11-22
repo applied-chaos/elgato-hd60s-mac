@@ -222,6 +222,7 @@ final class StreamSource: NSObject, CMIOExtensionStreamSource {
         let ctx = Unmanaged.passUnretained(self).toOpaque()
         while stop.pointee == 0 {
             var d = hd60s()
+            hd60s_open_wait_ms = 4000
             if hd60s_open(&d) == 0 && hd60s_start(&d) == 0 {
                 log.info("capture started")
                 statusOut.setFirmware(d.mcu_version)

@@ -13,7 +13,8 @@ final class StatusPoller: ObservableObject {
     private var timer: DispatchSourceTimer?
     private var sampledFrames: UInt = 0, sampledDiscarded: UInt = 0
     private var ringMark: (frames: UInt64, at: Date)?
-    private static let sampleSeconds = 1.2
+    private static let sampleSeconds = 0.8
+    private static let restSeconds = 1.0
 
     func start() {
         guard timer == nil, pinnedPreview == nil else { return }
@@ -67,6 +68,8 @@ final class StatusPoller: ObservableObject {
             var sampled = hd60s_status()
             var stop: sig_atomic_t = 0
             hd60s_sample(&sampled, Self.sampleSeconds, &stop)
+            // Leaves the device free between samples so a camera client's open gets in.
+            Thread.sleep(forTimeInterval: Self.restSeconds)
             sampledFrames += sampled.frames
             sampledDiscarded += sampled.discarded
             sampled.frames = sampledFrames

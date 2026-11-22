@@ -23,9 +23,19 @@ static void lsleep(void *ctx, int ms)
     nanosleep(&ts, NULL);
 }
 
-int hd60s_quiet;
+#define OPEN_RETRY_MS 50
 
-int hd60s_open(struct hd60s *d)
+static long now_ms(void)
+{
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return ts.tv_sec * 1000L + ts.tv_nsec / 1000000L;
+}
+
+int hd60s_quiet;
+int hd60s_open_wait_ms;
+
+static int open_once(struct hd60s *d)
 {
     memset(d, 0, sizeof *d);
     if (libusb_init(&d->lusb) < 0)
@@ -63,6 +73,26 @@ int hd60s_open(struct hd60s *d)
     return 0;
 }
 
+static int held_by_another(const struct hd60s *d)
+{
+    return d->open_err == LIBUSB_ERROR_BUSY || d->open_err == LIBUSB_ERROR_ACCESS;
+}
+
+int hd60s_open(struct hd60s *d)
+{
+    long deadline = now_ms() + hd60s_open_wait_ms;
+    int quiet = hd60s_quiet, r;
+    for (;;) {
+        hd60s_quiet = quiet || now_ms() + OPEN_RETRY_MS < deadline;
+        r = open_once(d);
+        hd60s_quiet = quiet;
+        if (r == 0 || !held_by_another(d) || now_ms() >= deadline)
+            return r;
+        hd60s_close(d);
+        lsleep(NULL, OPEN_RETRY_MS);
+    }
+}
+
 void hd60s_close(struct hd60s *d)
 {
     if (d->h) {
@@ -91,13 +121,6 @@ static void on_frame_probe(void *ctx, const uint8_t *f, int w, int h, int interl
     struct stream_ctx *s = ctx;
     hd60s_policy_frame(&s->policy, w, h, interlaced);
     s->frame_cb(s->frame_ctx, f, w, h, interlaced);
-}
-
-static long now_ms(void)
-{
-    struct timespec ts;
-    clock_gettime(CLOCK_MONOTONIC, &ts);
-    return ts.tv_sec * 1000L + ts.tv_nsec / 1000000L;
 }
 
 static void LIBUSB_CALL on_xfer(struct libusb_transfer *t)
