@@ -221,7 +221,8 @@ final class StreamSource: NSObject, CMIOExtensionStreamSource {
                 log.info("capture started")
                 parser_init(parser, buf, cap, { ctx, frame, w, h, interlaced in
                     let me = Unmanaged<StreamSource>.fromOpaque(ctx!).takeUnretainedValue()
-                    me.send(UnsafeMutablePointer(mutating: frame!), Int(w), Int(h), interlaced != 0, wide: me.parser.pointee.wide != 0)
+                    me.send(UnsafeMutablePointer(mutating: frame!), Int(w), Int(h), interlaced != 0, wide: me.parser.pointee.wide != 0,
+                            bt601: me.parser.pointee.colour == COLOUR_BT601)
                 }, { _, pcm, len in audio_feed_push(pcm, len) }, ctx)
                 hd60s_stream(&d, parser, stop, 0)
             } else {
@@ -236,7 +237,7 @@ final class StreamSource: NSObject, CMIOExtensionStreamSource {
     }
 
     // Frames of any known mode are scaled into the 1080p output, aspect preserved; runts from a mode switch are dropped.
-    private func send(_ frame: UnsafeMutablePointer<UInt8>, _ w: Int, _ h: Int, _ interlaced: Bool, wide: Bool) {
+    private func send(_ frame: UnsafeMutablePointer<UInt8>, _ w: Int, _ h: Int, _ interlaced: Bool, wide: Bool, bt601: Bool) {
         let fit = fitRect(width: w, height: h, wide: wide)
         if unsupported.note(width: w, height: h, known: fit != nil) { unsupportedNs.withLock { $0 = hostNs() } }
         guard let r = fit else { return }
@@ -247,11 +248,11 @@ final class StreamSource: NSObject, CMIOExtensionStreamSource {
         let dst = CVPixelBufferGetBaseAddress(pb)!.assumingMemoryBound(to: UInt8.self)
         let dstStride = CVPixelBufferGetBytesPerRow(pb)
         let rowBytes = w * 2
-        if r.w == w && r.h == h {
+        if r.w == w && r.h == h && !bt601 {
             for y in 0..<h {
                 (dst + y * dstStride).update(from: frame + y * rowBytes, count: rowBytes)
             }
-        } else if !scale(frame, w, h, into: dst + r.y * dstStride + r.x * 2, stride: dstStride, r, clear: dst) {
+        } else if !scale(frame, w, h, into: dst + r.y * dstStride + r.x * 2, stride: dstStride, r, clear: dst, bt601: bt601) {
             CVPixelBufferUnlockBaseAddress(pb, [])
             return
         }
@@ -262,9 +263,9 @@ final class StreamSource: NSObject, CMIOExtensionStreamSource {
     }
 
     // Wraps the parser buffer and the target rectangle as pixel buffers for VideoToolbox; bars are filled black.
-    // SD frames come off the device BT.601 encoded; tagging the source so VideoToolbox converts to the 709 output.
+    // 601 frames (SD RGB sources, or YCbCr sources flagged 601) are tagged so VideoToolbox converts to the 709 output.
     private func scale(_ frame: UnsafePointer<UInt8>, _ w: Int, _ h: Int, into at: UnsafeMutablePointer<UInt8>,
-                       stride: Int, _ r: Rect, clear base: UnsafeMutablePointer<UInt8>) -> Bool {
+                       stride: Int, _ r: Rect, clear base: UnsafeMutablePointer<UInt8>, bt601: Bool) -> Bool {
         if scaler == nil {
             VTPixelTransferSessionCreate(allocator: kCFAllocatorDefault, pixelTransferSessionOut: &scaler)
             if let scaler { VTSessionSetProperty(scaler, key: kVTPixelTransferPropertyKey_RealTime, value: kCFBooleanTrue) }
@@ -281,7 +282,7 @@ final class StreamSource: NSObject, CMIOExtensionStreamSource {
                                            at, stride, nil, nil, nil, &out) == kCVReturnSuccess,
               let out else { return false }
         tag709(src)
-        if h <= 576 {
+        if bt601 {
             // Matrix only: primaries and transfer stay 709 so SD and HD bars keep the same RGB.
             CVBufferSetAttachment(src, kCVImageBufferYCbCrMatrixKey, kCVImageBufferYCbCrMatrix_ITU_R_601_4, .shouldPropagate)
         }
@@ -293,7 +294,8 @@ final class StreamSource: NSObject, CMIOExtensionStreamSource {
         #if DEXT
         var info = fr_frame()
         if dext_feed_poll(dextFrame, Int(DEXT_FRAME_BYTES), &info) != 0 {
-            send(dextFrame, Int(info.width), Int(info.height), info.interlaced != 0, wide: info.wide != 0)
+            send(dextFrame, Int(info.width), Int(info.height), info.interlaced != 0, wide: info.wide != 0,
+                 bt601: info.colour == Int32(COLOUR_BT601.rawValue))
         }
         #endif
         if hostNs() &- lastFrameNs.withLock({ $0 }) > noFramesTimeoutNs {

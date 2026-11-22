@@ -18,12 +18,12 @@ static void publish_then_take_newest_only(struct fr_header *h)
     struct fr_frame info;
     assert(fr_take(h, 0, out, sizeof out, &info) == 0);
     fill(1);
-    fr_publish(h, frame, 64, 4, 0, 1);
+    fr_publish(h, frame, 64, 4, 0, 1, 2);
     fill(2);
-    fr_publish(h, frame, 64, 4, 1, 0);
+    fr_publish(h, frame, 64, 4, 1, 0, 1);
     uint32_t seq = fr_take(h, 0, out, sizeof out, &info);
     assert(seq == 2 && out[0] == 2 && out[sizeof frame - 1] == 2);
-    assert(info.width == 64 && info.height == 4 && info.interlaced == 1 && info.wide == 0 && info.len == sizeof frame);
+    assert(info.width == 64 && info.height == 4 && info.interlaced == 1 && info.wide == 0 && info.colour == 1 && info.len == sizeof frame);
     assert(fr_take(h, seq, out, sizeof out, &info) == 0);
 }
 
@@ -31,14 +31,14 @@ static void rejects_torn_and_oversized(struct fr_header *h)
 {
     struct fr_frame info;
     fill(3);
-    fr_publish(h, frame, 64, 4, 0, 0);
+    fr_publish(h, frame, 64, 4, 0, 0, 0);
     uint32_t seq = atomic_load(&h->latest);
     atomic_store(&h->slot[seq % FR_SLOTS].seq, 0);
     assert(fr_take(h, 0, out, sizeof out, &info) == 0);
-    fr_publish(h, frame, 64, 4, 0, 0);
+    fr_publish(h, frame, 64, 4, 0, 0, 0);
     assert(fr_take(h, 0, out, 100, &info) == 0);
     uint32_t before = atomic_load(&h->latest);
-    fr_publish(h, frame, 4000, 4000, 0, 0);
+    fr_publish(h, frame, 4000, 4000, 0, 0, 0);
     assert(atomic_load(&h->latest) == before);
 }
 
@@ -70,7 +70,7 @@ static void *writer(void *arg)
     uint8_t f[64 * 4 * 2];
     for (int n = 1; n <= 20000; n++) {
         memset(f, n & 0xff, sizeof f);
-        fr_publish(s->h, f, 64, 4, 0, 0);
+        fr_publish(s->h, f, 64, 4, 0, 0, 0);
     }
     atomic_store(&s->done, 1);
     return NULL;

@@ -2,7 +2,7 @@
 
 #include <string.h>
 
-enum { INIT_MARK = 0xb2, EDID_RETRY_POLLS = 8 };
+enum { INIT_MARK = 0xb2, EDID_RETRY_POLLS = 8, HD_MIN_PCLK_KHZ = 74250, AVI_C1C0_BT601 = 0x48, AVI_C1C0_BT709 = 0x88 };
 
 static const struct {
     int w, h, interlaced, fps;
@@ -87,9 +87,9 @@ int tx_audio_rate(uint32_t pclk_khz, uint32_t n, uint32_t cts)
 
 void tx_avi(uint8_t out[6], enum tx_colour c, const struct tx_mode *m)
 {
-    /* Always BT.709: the capture matrix is never switched to BT.601 for SD. */
+    int bt601 = m->pclk_khz < HD_MIN_PCLK_KHZ;
     out[0] = (uint8_t)(0x10 | c << 5);
-    out[1] = (uint8_t)(0x88 | (m->wide ? 0x20 : 0x10));
+    out[1] = (uint8_t)((bt601 ? AVI_C1C0_BT601 : AVI_C1C0_BT709) | (m->wide ? 0x20 : 0x10));
     out[2] = 0;
     out[3] = m->vic;
     out[4] = m->rep;
