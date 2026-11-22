@@ -81,6 +81,8 @@ static void end_active(struct hd60s_parser *p)
     if (p->capturing && complete) {
         if (!p->frame_bad && p->lines > 0) {
             p->frames++;
+            p->last_w = (int)(p->stride / 2);
+            p->last_h = p->lines;
             p->on_frame(p->ctx, p->buf, (int)(p->stride / 2), p->lines, p->interlaced);
         } else if (p->stride) {
             p->discarded++;
@@ -171,4 +173,11 @@ void parser_feed(struct hd60s_parser *p, const uint8_t *d, size_t len)
             len -= n;
         }
     }
+}
+
+int parser_is_sd(int width, int height)
+{
+    if ((width == 720 || width == 1440) && (height == 480 || height == 576))
+        return 1;
+    return (width == 1280 && height == 720) || (width == 1920 && height == 1080) ? 0 : -1;
 }

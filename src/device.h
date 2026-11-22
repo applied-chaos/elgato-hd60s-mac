@@ -18,6 +18,7 @@ struct hd60s {
     uint32_t mcu_version;  /* b0<<16 | b1<<8 | b2 from MCU command 0x58 */
     uint8_t mst_saved[5];  /* MST3367 bank 1 reg 0x27 snapshot, restored on stop */
     int started;
+    int sd;                /* colour matrix applied: 1 = BT.601, 0 = BT.709 */
 };
 
 int hd60s_open(struct hd60s *d);

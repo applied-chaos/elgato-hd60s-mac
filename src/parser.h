@@ -26,7 +26,12 @@ struct hd60s_parser {
     size_t line_off, stride, line_max;
     int frame_bad;
     unsigned long frames, discarded, long_total;
+    int last_w, last_h; /* size of the last frame emitted */
+    int wide;           /* source AVI InfoFrame flags 16:9; set by hd60s_stream, about once a second */
 };
+
+/* 1 for a standard SD frame size, 0 for 720p/1080p, -1 otherwise (runts while the source switches mode). */
+int parser_is_sd(int width, int height);
 
 void parser_init(struct hd60s_parser *p, uint8_t *buf, size_t cap, frame_cb on_frame,
                  audio_cb on_audio, void *ctx);

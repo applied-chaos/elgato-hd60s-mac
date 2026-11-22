@@ -296,8 +296,8 @@ static uint16_t coeff_clamp(uint16_t c)
     return v < 0x3fff ? v : 0x3fff;
 }
 
-/* FUN_10b6b + FUN_103ea: RGB to YCbCr matrix; BT.601 for SD widths, BT.709 otherwise. */
-static void colour_convert(struct hd60s *d, int width, int input_is_yuv)
+/* FUN_10b6b + FUN_103ea: RGB to YCbCr matrix; BT.601 for SD, BT.709 otherwise. */
+static void colour_convert(struct hd60s *d, int sd, int input_is_yuv)
 {
     uint8_t raw[24];
     uint8_t mode = 0x62;
@@ -305,7 +305,6 @@ static void colour_convert(struct hd60s *d, int width, int input_is_yuv)
         memcpy(raw, ub530_csc_rgb, 16);
         memcpy(raw + 16, ub530_csc_rgb_tail, 8);
     } else {
-        int sd = width == 640 || width == 768 || width == 720;
         memcpy(raw, sd ? ub530_csc_601 : ub530_csc_709, 16);
         memcpy(raw + 16, sd ? ub530_csc_601_tail : ub530_csc_709_tail, 2);
         memcpy(raw + 18, ub530_csc_rgb_tail + 2, 6);
@@ -405,6 +404,7 @@ int hd60s_start(struct hd60s *d)
         msleep(5);
     }
     colour_convert(d, 0, 0);
+    d->sd = 0;
     d->started = !d->err;
     return d->err ? -1 : 0;
 }
@@ -455,6 +455,12 @@ static void LIBUSB_CALL on_xfer(struct libusb_transfer *t)
     s->active--;
 }
 
+/* Source AVI InfoFrame (same MST3367 bank 2 block the driver reads the VIC from): DB2 bits 5:4 = 2 is 16:9. */
+static int source_is_16x9(struct hd60s *d)
+{
+    return (mst_read(d, 2, 0x0b) & 0x08) && ((mst_read(d, 2, 0x49) >> 4) & 3) == 2;
+}
+
 int hd60s_stream(struct hd60s *d, struct hd60s_parser *p, volatile sig_atomic_t *stop, double seconds)
 {
     struct stream_ctx s = {p, stop, 0};
@@ -473,8 +479,13 @@ int hd60s_stream(struct hd60s *d, struct hd60s_parser *p, volatile sig_atomic_t 
     struct timespec ts;
     clock_gettime(CLOCK_MONOTONIC, &ts);
     time_t end = ts.tv_sec + (time_t)seconds;
+    time_t aspect_at = 0;
     while (s.active) {
         clock_gettime(CLOCK_MONOTONIC, &ts);
+        if (ts.tv_sec != aspect_at) {
+            aspect_at = ts.tv_sec;
+            p->wide = source_is_16x9(d);
+        }
         if (*stop || (seconds > 0 && ts.tv_sec >= end)) {
             *stop = 1;
             for (int i = 0; i < NUM_XFERS; i++)
@@ -482,6 +493,12 @@ int hd60s_stream(struct hd60s *d, struct hd60s_parser *p, volatile sig_atomic_t 
         }
         struct timeval tv = {0, 100000};
         libusb_handle_events_timeout_completed(d->usb, &tv, NULL);
+        /* Not from the transfer callback: the sync control transfers need the event loop. */
+        int sd = parser_is_sd(p->last_w, p->last_h);
+        if (sd >= 0 && sd != d->sd) {
+            colour_convert(d, sd, 0);
+            d->sd = sd;
+        }
     }
     for (int i = 0; i < NUM_XFERS; i++) {
         free(xfers[i]->buffer);
