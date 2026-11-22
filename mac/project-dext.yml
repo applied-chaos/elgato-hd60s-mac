@@ -24,7 +24,7 @@ targets:
       - path: ../src/device.c
       - path: ../src/parser.c
       - path: ../src/tx.c
-      - path: ../src/ring.c
+      - path: ../src/aclock.c
       - path: ../src/framering.c
       - path: ../src/link.c
     info:
