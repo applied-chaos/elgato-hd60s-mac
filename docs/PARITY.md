@@ -147,14 +147,12 @@ App status messages: "No Signal", "Protected with HDCP", "USB 3 is required for 
 
 | # | Item | Status | Notes |
 |---|---|---|---|
-| F1 | Detect an HDCP-encrypted source and tell the user | missing | See detail below. **Console** (PS5 with HDCP on); the Pi can't send HDCP |
+| F1 | Detect an HDCP-encrypted source and tell the user | done (console check pending) | #19. `status` state `hdcp`, "HDCP protected" camera slate and Status tab. The Pi can't send HDCP, so detection is unit-tested only; **Console** (PS5 with HDCP on) still to run |
 
 **F1, HDCP detection.**
 - What Elgato does: shows "Protected with HDCP" instead of a picture, and plays LED animation 5 or 6 (`PlayAnimation(6 − hdcp)`, app:0x1003451d7).
 - How: `GetHDCPEnabled` → `dev+0x20`, set in `FUN_12a2f` from `FUN_125f7` bit1: MST b1:0x34 bit7 set, or b1:0x01 bit0 (when not overridden by the `FUN_17a0c`/`dev+0x28` checks). Bit 0 of `FUN_125f7` is b1:0x01 bit2, HDMI vs DVI.
-- Ours: the camera shows "No signal" and `status` says "none" or "active" with zero frames. README tells users to turn HDCP off.
-- Needed: an HDCP field in `status`/JSON, a camera slate "HDCP protected" instead of "No signal", and app UI.
-- Ticket: **Detect HDCP sources and show "HDCP protected" in status and the camera**
+- Ours (#19): `status` reports state `hdcp` whenever the flag is set, the camera shows the "HDCP protected" slate instead of the picture (as Elgato does), and the Status tab says "HDCP protected". Flag read once a second in `hd60s_policy_tick` (`hd60s_read_link`), also through the dext frame ring (v3). The app lists the source row only for DVI.
 
 ## G. Device-side status
 
@@ -164,7 +162,7 @@ App status messages: "No Signal", "Protected with HDCP", "USB 3 is required for 
 | G2 | Firmware version | done | Firmware updates (`UpdateMCUFirmware` +0xa0 → `FUN_177c8`) are n/a, permanently out of scope |
 | G3 | Signal / no signal / mode | done | Slate, `status`, and an "Unsupported mode" slate and status (#21) |
 | G4 | Status LED animations | missing (blocked on safety) | See detail below. Ticket: **Investigate the HD60 S LED controller at I2C 0xA4 (read-only)** |
-| G5 | HDMI vs DVI source type in status | missing | MST b1:0x01 bit2, already read in `select_hdmi_audio`. Pi (DVI mode via a DVI-only EDID override). Cheap: fold into the F1 ticket |
+| G5 | HDMI vs DVI source type in status | done | #19. `status` shows `source` hdmi or dvi from MST b1:0x01 bit2 (set = HDMI). Checked on the Pi with and without an HDMI VSDB in the EDID (debugfs `edid_override`) |
 | G6 | ResetDevice (vtable +0x28 → `FUN_e56e` → `FUN_179b6`) | n/a for now | It goes through the MCU helper. The app doesn't call it in the paths traced. Not worth porting without a reason |
 
 **G4, status LED animations.**
@@ -203,8 +201,8 @@ App status messages: "No Signal", "Protected with HDCP", "USB 3 is required for 
 
 ## Count
 
-- **Missing (13):** A7, B1, B2, B3, B5, C1, E2, E3, E4, E5, F1, G4, G5.
-  - E2 is existing ticket #16. G5 folds into F1. E5 is conditional on E1.
+- **Missing (11):** A7, B1, B2, B3, B5, C1, E2, E3, E4, E5, G4.
+  - E2 is existing ticket #16. E5 is conditional on E1.
 - **Partial (6):** B6, D7, E1, E6, G1, H2.
   - D7 maps to existing #5/#6. G1 is the app side of #14. E1 is the TV run of #13.
 

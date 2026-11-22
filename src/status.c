@@ -182,6 +182,16 @@ static void untested_message(const struct hd60s_status *s, char *buf, size_t n)
              s->mcu_version & 0xff);
 }
 
+enum hd60s_link_type hd60s_link_type_from_link(struct hd60s_link l, enum hd60s_signal signal)
+{
+    return signal == SIGNAL_ACTIVE || signal == SIGNAL_HDCP ? (l.dvi ? SOURCE_DVI : SOURCE_HDMI) : SOURCE_UNKNOWN;
+}
+
+static const char *source_name(enum hd60s_link_type s)
+{
+    return s == SOURCE_DVI ? "DVI" : "HDMI";
+}
+
 static const char *colour_name(enum hd60s_colour c)
 {
     return c == COLOUR_BT709 ? "BT.709" : c == COLOUR_BT601 ? "BT.601" : "unknown";
@@ -225,6 +235,9 @@ void hd60s_print_text(const struct hd60s_status *s, FILE *out)
     case SIGNAL_UNSUPPORTED:
         fprintf(out, "Signal:   %dx%d%s, unsupported mode\n", s->width, s->height, s->interlaced ? "i" : "p");
         break;
+    case SIGNAL_HDCP:
+        fprintf(out, "Signal:   HDCP protected\n");
+        break;
     case SIGNAL_ACTIVE:
         mode_text(s, mode, sizeof mode);
         fprintf(out, "Signal:   %s%s\n", mode, s->field_order == FIELD_TOP_FIRST ? ", top field first" : "");
@@ -233,6 +246,8 @@ void hd60s_print_text(const struct hd60s_status *s, FILE *out)
         fprintf(out, "Range:    %s\n", hd60s_range_names[s->range]);
         break;
     }
+    if (s->source != SOURCE_UNKNOWN)
+        fprintf(out, "Source:   %s\n", source_name(s->source));
     if (s->audio_rate) {
         fprintf(out, "Audio:    %d Hz, %d channels", s->audio_rate, s->audio_channels);
         if (s->audio_source_rate)
@@ -270,7 +285,7 @@ static void json_str(FILE *out, const char *s)
 
 void hd60s_print_json(const struct hd60s_status *s, FILE *out)
 {
-    static const char *const state[] = {"unknown", "none", "active", "unsupported"};
+    static const char *const state[] = {"unknown", "none", "active", "unsupported", "hdcp"};
     char msg[256];
     fprintf(out, "{\"device\":{\"present\":%s,\"port\":", s->present ? "true" : "false");
     if (s->port_path[0])
@@ -302,6 +317,8 @@ void hd60s_print_json(const struct hd60s_status *s, FILE *out)
                 s->field_order == FIELD_TOP_FIRST ? "top_first" : "none", s->fps, input_code(s->input_format),
                 s->colour == COLOUR_BT709 ? "bt709" : s->colour == COLOUR_BT601 ? "bt601" : "unknown",
                 hd60s_range_names[s->range]);
+    if (s->source != SOURCE_UNKNOWN)
+        fprintf(out, ",\"source\":\"%s\"", s->source == SOURCE_DVI ? "dvi" : "hdmi");
     if (s->signal == SIGNAL_UNSUPPORTED)
         fprintf(out, ",\"width\":%d,\"height\":%d", s->width, s->height);
     fputs("},\"audio\":", out);

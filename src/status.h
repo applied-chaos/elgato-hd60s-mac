@@ -11,7 +11,8 @@
 enum hd60s_speed { SPEED_UNKNOWN, SPEED_LOW, SPEED_FULL, SPEED_HIGH, SPEED_SUPER, SPEED_SUPER_PLUS };
 enum hd60s_access { ACCESS_NOT_TRIED, ACCESS_OK, ACCESS_BUSY, ACCESS_FAILED };
 enum hd60s_owner { OWNER_NONE, OWNER_CLI, OWNER_CAMERA, OWNER_DRIVER, OWNER_OTHER, OWNER_UNKNOWN };
-enum hd60s_signal { SIGNAL_UNKNOWN, SIGNAL_NONE, SIGNAL_ACTIVE, SIGNAL_UNSUPPORTED };
+enum hd60s_signal { SIGNAL_UNKNOWN, SIGNAL_NONE, SIGNAL_ACTIVE, SIGNAL_UNSUPPORTED, SIGNAL_HDCP };
+enum hd60s_link_type { SOURCE_UNKNOWN, SOURCE_HDMI, SOURCE_DVI };
 enum hd60s_field_order { FIELD_NONE, FIELD_TOP_FIRST };
 enum hd60s_warning { WARN_NO_DEVICE, WARN_NOT_SUPERSPEED, WARN_BUSY, WARN_OPEN_FAILED };
 
@@ -32,6 +33,7 @@ struct hd60s_status {
     uint32_t mcu_version;
 
     enum hd60s_signal signal;
+    enum hd60s_link_type source; /* known while SIGNAL_ACTIVE or SIGNAL_HDCP */
     int width, height, interlaced;
     enum hd60s_field_order field_order;
     double fps; /* frame rate; interlaced counts frames, not fields */
@@ -49,6 +51,9 @@ enum hd60s_access hd60s_access_from_error(int libusb_error);
 enum hd60s_owner hd60s_owner_from_path(const char *exe_path);
 int hd60s_parse_owner_pid(const char *usb_exclusive_owner, int *pid);
 int hd60s_size_standard(int width, int height);
+
+/* Source type from the link flags; unknown if there is no signal to describe. */
+enum hd60s_link_type hd60s_link_type_from_link(struct hd60s_link l, enum hd60s_signal signal);
 
 /* Firmware read but not in the known list: informational, not a warning. */
 int hd60s_firmware_untested(const struct hd60s_status *s);

@@ -10,7 +10,7 @@
 /* Video frames from the driver extension to the camera extension, in memory the camera maps read-only.
  * One writer; per-slot seqlock so a reader detects a slot rewritten under it. */
 #define FR_MAGIC 0x48443646u /* "HD6F" */
-#define FR_VERSION 2u
+#define FR_VERSION 3u
 #define FR_SLOTS 3
 #define FR_SLOT_BYTES (1920u * 1440u * 2u)
 
@@ -25,7 +25,7 @@ struct fr_header {
     _Atomic uint32_t latest; /* newest complete frame number, 0 = none */
     _Atomic uint32_t link;   /* enum link_state of the USB session */
     _Atomic uint64_t frames, discarded, long_lines, errors;
-    _Atomic uint32_t mcu_version, top_first;
+    _Atomic uint32_t mcu_version, top_first, hdcp, dvi;
     struct fr_slot slot[FR_SLOTS];
 };
 
@@ -37,7 +37,7 @@ struct fr_frame {
 struct fr_counters {
     enum link_state link;
     uint64_t frames, discarded, long_lines, errors;
-    uint32_t mcu_version, top_first;
+    uint32_t mcu_version, top_first, hdcp, dvi;
 };
 
 size_t fr_bytes(void);
@@ -53,8 +53,8 @@ uint32_t fr_latest(const struct fr_header *h, struct fr_frame *info);
 
 void fr_status(struct fr_header *h, enum link_state link, uint64_t frames, uint64_t discarded, uint64_t long_lines,
                uint64_t errors);
-/* top_first: last interlaced frame arrived even field first. */
-void fr_device(struct fr_header *h, uint32_t mcu_version, int top_first);
+/* top_first: last interlaced frame arrived even field first. hdcp, dvi: the source link flags. */
+void fr_device(struct fr_header *h, uint32_t mcu_version, int top_first, int hdcp, int dvi);
 struct fr_counters fr_counters(const struct fr_header *h);
 
 #endif

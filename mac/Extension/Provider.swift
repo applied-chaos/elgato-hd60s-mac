@@ -100,6 +100,8 @@ final class StreamSource: NSObject, CMIOExtensionStreamSource {
     private let lastFrameNs = OSAllocatedUnfairLock(initialState: UInt64(0))
     private var slate: CVPixelBuffer?
     private var unsupportedSlate: CVPixelBuffer?
+    private var hdcpSlate: CVPixelBuffer?
+    private let hdcp = OSAllocatedUnfairLock(initialState: false)
     private var unsupported = UnsupportedWatch()
     private let unsupportedNs = OSAllocatedUnfairLock(initialState: UInt64(0))
     private var timer: DispatchSourceTimer?
@@ -131,6 +133,7 @@ final class StreamSource: NSObject, CMIOExtensionStreamSource {
         deinterlacer.initialize(to: deint())
         slate = makeSlate("Slate")
         unsupportedSlate = makeSlate("Unsupported")
+        hdcpSlate = makeSlate("HDCP")
         stream = CMIOExtensionStream(localizedName: "Elgato HD60 S", streamID: UUID(), direction: .source,
                                      clockType: .hostTime, source: self)
     }
@@ -249,6 +252,7 @@ final class StreamSource: NSObject, CMIOExtensionStreamSource {
             }
             hd60s_stop(dev)
             hd60s_close(dev)
+            dev.pointee.link = hd60s_link()
             for _ in 0..<10 where stop.pointee == 0 {
                 usleep(100_000)
             }
@@ -258,6 +262,7 @@ final class StreamSource: NSObject, CMIOExtensionStreamSource {
 
     // Frames of any known mode are scaled into the 1080p output, aspect preserved; runts from a mode switch are dropped.
     private func send(_ frame: UnsafeMutablePointer<UInt8>, _ w: Int, _ h: Int, _ interlaced: Bool, wide: Bool, bt601: Bool) {
+        if hdcp.withLock({ $0 }) { return }
         let fit = fitRect(width: w, height: h, wide: wide)
         if unsupported.note(width: w, height: h, known: fit != nil) { unsupportedNs.withLock { $0 = hostNs() } }
         guard let r = fit else { return }
@@ -310,7 +315,22 @@ final class StreamSource: NSObject, CMIOExtensionStreamSource {
         return VTPixelTransferSessionTransferImage(scaler, from: src, to: out) == noErr
     }
 
+    // Elgato shows the HDCP message instead of the picture, so a protected source never reaches the camera.
+    private func refreshLink() {
+        #if DEXT
+        let c = dext_feed_counters()
+        let (protected, dvi) = (c.hdcp != 0, c.dvi != 0)
+        #else
+        // ponytail: unsynchronised read of flags the capture thread writes; a stale tick is harmless.
+        let l = dev.pointee.link
+        let (protected, dvi) = (l.hdcp != 0, l.dvi != 0)
+        #endif
+        hdcp.withLock { $0 = protected }
+        statusOut.setLink(hdcp: protected, dvi: dvi)
+    }
+
     private func tick() {
+        refreshLink()
         #if DEXT
         var info = fr_frame()
         if dext_feed_poll(dextFrame, Int(DEXT_FRAME_BYTES), &info) != 0 {
@@ -322,9 +342,10 @@ final class StreamSource: NSObject, CMIOExtensionStreamSource {
                  bt601: info.colour == Int32(COLOUR_BT601.rawValue))
         }
         #endif
-        if hostNs() &- lastFrameNs.withLock({ $0 }) > noFramesTimeoutNs {
+        let protected = hdcp.withLock { $0 }
+        if protected || hostNs() &- lastFrameNs.withLock({ $0 }) > noFramesTimeoutNs {
             let odd = hostNs() &- unsupportedNs.withLock({ $0 }) < 1_000_000_000
-            if let s = odd ? unsupportedSlate : slate { emit(s) }
+            if let s = protected ? hdcpSlate : odd ? unsupportedSlate : slate { emit(s) }
         }
         ticks += 1
         publishStatus()

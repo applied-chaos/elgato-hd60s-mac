@@ -45,6 +45,7 @@
 		C8639514FFD7EF1DA6994A59 /* status.c in Sources */ = {isa = PBXBuildFile; fileRef = F7E9D0509776EADA4824B1C7 /* status.c */; };
 		CAF7FD7C368B2E54CDD46BD4 /* StatusPoller.swift in Sources */ = {isa = PBXBuildFile; fileRef = 25966C046E8F2FA284DB0F6E /* StatusPoller.swift */; };
 		CB1B48B6A5A96319F7FC9477 /* OFL.txt in Resources */ = {isa = PBXBuildFile; fileRef = C7F46965F4F9398B418F05A8 /* OFL.txt */; };
+		DAD7E0861B71621C5880CEC2 /* HDCP.png in Resources */ = {isa = PBXBuildFile; fileRef = 2EC404EFF4FD16E652A0DE55 /* HDCP.png */; };
 		E2A40B2FADCE6E73189BED86 /* parser.c in Sources */ = {isa = PBXBuildFile; fileRef = 58FCE89662E2C2249C89C7B2 /* parser.c */; };
 		E6161C4A5DAFF37A3B872C3C /* HD60SAudio.bundle in Embed Dependencies */ = {isa = PBXBuildFile; fileRef = 9F047EFF5D3A895B3B3B2B7D /* HD60SAudio.bundle */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		F10D372D0D5D5CD2655C2B57 /* status_sample.c in Sources */ = {isa = PBXBuildFile; fileRef = 8FDD3006DFE80D06FF09D1FE /* status_sample.c */; };
@@ -99,6 +100,7 @@
 		1A1F118E4B438C42FC692C4A /* Settings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Settings.swift; sourceTree = "<group>"; };
 		25966C046E8F2FA284DB0F6E /* StatusPoller.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatusPoller.swift; sourceTree = "<group>"; };
 		2802D08CC9D0EF039BE94247 /* HD60SCamera.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = HD60SCamera.entitlements; sourceTree = "<group>"; };
+		2EC404EFF4FD16E652A0DE55 /* HDCP.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = HDCP.png; sourceTree = "<group>"; };
 		38DF55540E5C678012FE392F /* deinterlace.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = deinterlace.c; sourceTree = "<group>"; };
 		3D657EA2382F0CC167FE569B /* device.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = device.c; sourceTree = "<group>"; };
 		447A0964D026A28D46C588E0 /* Unsupported.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = Unsupported.png; sourceTree = "<group>"; };
@@ -217,6 +219,7 @@
 				D41EB16A58150036BD7A0F04 /* FrameRate.swift */,
 				2802D08CC9D0EF039BE94247 /* HD60SCamera.entitlements */,
 				DC2C4F95E7190211F481155B /* HD60SCameraDext.entitlements */,
+				2EC404EFF4FD16E652A0DE55 /* HDCP.png */,
 				87A0EC014D058589E38854EE /* Info.plist */,
 				8400EEE9F8976B5123BAA715 /* main.swift */,
 				FEB304182F383B96E72A3DA6 /* Provider.swift */,
@@ -356,6 +359,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				DAD7E0861B71621C5880CEC2 /* HDCP.png in Resources */,
 				3BE7F6CBBF0A32B2E1AADBB1 /* Slate.png in Resources */,
 				8F437AEB48B3292161806AAC /* Unsupported.png in Resources */,
 			);
