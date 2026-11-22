@@ -11,15 +11,19 @@ extern "C" {
 #include "framering.h"
 #include "link.h"
 #include "parser.h"
-#include "ring.h"
+#include "aclock.h"
 }
 
 static constexpr double kSampleRate = 48000.0;
 static constexpr uint32_t kChannels = 2;
 static constexpr uint32_t kIOFrames = 16384;
 static constexpr uint32_t kBytesPerFrame = kChannels * sizeof(float);
-static constexpr size_t kAudioRingFrames = 48000;
-static constexpr size_t kAudioTarget = 1440;
+// Calibration knob: a sample waits ~2 ms in the device for its 512 KiB chunk, plus completion jitter
+// (measured p99.9 2.75 ms). Raise it if the audio log reports pads.
+static constexpr uint32_t kSafetyFrames = 192;
+static constexpr uint32_t kStageFrames = 8192;
+static constexpr uint64_t kAudioLogMs = 10000;
+static constexpr uint64_t kAudioLiveMs = 20;
 static constexpr uint32_t kFrameClientType = 'hd6f';
 static constexpr int kXfers = 16;
 static constexpr uint32_t kXferSize = 512 * 1024;
@@ -38,14 +42,14 @@ struct XferRef {
 };
 
 struct HD60SDriver_IVars {
-    OSSharedPtr<IODispatchQueue> queue, usbQueue;
+    OSSharedPtr<IODispatchQueue> usbQueue;
     OSSharedPtr<IOUserAudioDevice> device;
     OSSharedPtr<IOUserAudioStream> stream;
     OSSharedPtr<IOBufferMemoryDescriptor> ioRing;
     IOMemoryMap *ioMap = nullptr;
     OSSharedPtr<IOTimerDispatchSource> zeroTimer, policyTimer;
     OSSharedPtr<OSAction> zeroAction, policyAction;
-    uint64_t periodTicks = 0, msTicks = 0, zeroHostTime = 0, zeroSample = 0;
+    uint64_t msTicks = 0, zeroSample = 0;
 
     OSSharedPtr<IOUSBHostDevice> usb;
     OSSharedPtr<IOUSBHostInterface> intf;
@@ -61,7 +65,13 @@ struct HD60SDriver_IVars {
     struct hd60s_policy policy;
     struct link link;
     uint8_t *frameBuf = nullptr;
-    struct ring *audio = nullptr;
+    struct aclock clock;
+    int16_t stage[kStageFrames * kChannels];
+    uint32_t staged = 0;
+    struct {
+        uint64_t written, readEnd, lastArrival, pads;
+    } ioShared = {};
+    uint64_t lates = 0, overflow = 0, maxLate = 0, lastAudioLog = 0;
 
     OSSharedPtr<IOBufferMemoryDescriptor> frameMem;
     IOMemoryMap *frameMap = nullptr;
@@ -102,10 +112,43 @@ void HD60SDriver::free()
 {
     if (ivars) {
         if (ivars->frameBuf) IOFree(ivars->frameBuf, FR_SLOT_BYTES);
-        if (ivars->audio) IOFree(ivars->audio, ring_bytes(kAudioRingFrames));
     }
     IOSafeDeleteNULL(ivars, HD60SDriver_IVars, 1);
     super::free();
+}
+
+// Wake after the predicted time, so the published timestamp is never in the future as the line moves.
+static constexpr uint64_t kZeroWakeSlackMs = 1;
+
+static uint64_t nextZeroWake(const HD60SDriver_IVars *iv)
+{
+    return aclock_host(&iv->clock, iv->zeroSample + kIOFrames) + kZeroWakeSlackMs * iv->msTicks;
+}
+
+static float *ioBase(HD60SDriver_IVars *iv) { return reinterpret_cast<float *>(iv->ioMap->GetAddress()); }
+
+static void zeroFrames(HD60SDriver_IVars *iv, uint64_t from, uint64_t n)
+{
+    if (n > kIOFrames) {
+        from += n - kIOFrames;
+        n = kIOFrames;
+    }
+    uint32_t at = from % kIOFrames;
+    uint32_t first = n < kIOFrames - at ? static_cast<uint32_t>(n) : kIOFrames - at;
+    memset(ioBase(iv) + at * kChannels, 0, first * kBytesPerFrame);
+    if (first < n) memset(ioBase(iv), 0, (n - first) * kBytesPerFrame);
+}
+
+static void silenceUndelivered(HD60SDriver_IVars *iv, uint64_t sampleTime, uint64_t end, uint64_t hostTime)
+{
+    __atomic_store_n(&iv->ioShared.readEnd, end, __ATOMIC_RELEASE);
+    uint64_t w = __atomic_load_n(&iv->ioShared.written, __ATOMIC_ACQUIRE);
+    if (w >= end) return;
+    uint64_t from = w > sampleTime ? w : sampleTime;
+    zeroFrames(iv, from, end - from);
+    uint64_t last = __atomic_load_n(&iv->ioShared.lastArrival, __ATOMIC_RELAXED);
+    bool live = last && hostTime < last + kAudioLiveMs * iv->msTicks;
+    if (live) __atomic_fetch_add(&iv->ioShared.pads, end - from, __ATOMIC_RELAXED);
 }
 
 static kern_return_t addAudioDevice(HD60SDriver *self, HD60SDriver_IVars *iv)
@@ -120,6 +163,7 @@ static kern_return_t addAudioDevice(HD60SDriver *self, HD60SDriver_IVars *iv)
     iv->device->SetSampleRate(kSampleRate);
     iv->device->SetTransportType(IOUserAudioTransportType::USB);
     iv->device->SetCanBeDefaultInputDevice(false);
+    iv->device->SetInputSafetyOffset(kSafetyFrames);
 
     kern_return_t ret = IOBufferMemoryDescriptor::Create(kIOMemoryDirectionInOut, kIOFrames * kBytesPerFrame, 0, iv->ioRing.attach());
     if (ret != kIOReturnSuccess) return ret;
@@ -144,13 +188,9 @@ static kern_return_t addAudioDevice(HD60SDriver *self, HD60SDriver_IVars *iv)
     if (ret != kIOReturnSuccess) return ret;
 
     iv->device->SetIOOperationHandler(^kern_return_t(IOUserAudioObjectID, IOUserAudioIOOperation op,
-                                                     uint32_t frames, uint64_t sampleTime, uint64_t) {
+                                                     uint32_t frames, uint64_t sampleTime, uint64_t hostTime) {
         if (op != IOUserAudioIOOperationBeginRead || !iv->ioMap) return kIOReturnSuccess;
-        auto *base = reinterpret_cast<float *>(iv->ioMap->GetAddress());
-        uint32_t at = sampleTime % kIOFrames;
-        uint32_t first = frames < kIOFrames - at ? frames : kIOFrames - at;
-        ring_pull(iv->audio, base + at * kChannels, first, kAudioTarget);
-        if (first < frames) ring_pull(iv->audio, base, frames - first, kAudioTarget);
+        silenceUndelivered(iv, sampleTime, sampleTime + frames, hostTime);
         return kIOReturnSuccess;
     });
     return self->AddObject(iv->device.get());
@@ -196,18 +236,15 @@ kern_return_t IMPL(HD60SDriver, Start)
     mach_timebase_info_data_t tb;
     mach_timebase_info(&tb);
     iv->msTicks = 1000000ull * tb.denom / tb.numer;
-    iv->periodTicks = static_cast<uint64_t>(1e9 * kIOFrames / kSampleRate * tb.denom / tb.numer);
+    aclock_init(&iv->clock, 1e9 / kSampleRate * tb.denom / tb.numer, mach_absolute_time());
 
-    iv->queue = GetWorkQueue();
     ret = IODispatchQueue::Create("USB", 0, 0, iv->usbQueue.attach());
     if (ret != kIOReturnSuccess) return ret;
     ret = SetDispatchQueue("USB", iv->usbQueue.get());
     if (ret != kIOReturnSuccess) return ret;
 
     iv->frameBuf = static_cast<uint8_t *>(IOMallocZero(FR_SLOT_BYTES));
-    void *audioMem = IOMallocZero(ring_bytes(kAudioRingFrames));
-    if (!iv->frameBuf || !audioMem) return kIOReturnNoMemory;
-    iv->audio = ring_init(audioMem, kAudioRingFrames);
+    if (!iv->frameBuf) return kIOReturnNoMemory;
     ret = IOBufferMemoryDescriptor::Create(kIOMemoryDirectionInOut, fr_bytes(), 4096, iv->frameMem.attach());
     if (ret != kIOReturnSuccess) return ret;
     iv->frameMem->SetLength(fr_bytes());
@@ -225,7 +262,7 @@ kern_return_t IMPL(HD60SDriver, Start)
         return ret;
     }
 
-    ret = IOTimerDispatchSource::Create(iv->queue.get(), iv->zeroTimer.attach());
+    ret = IOTimerDispatchSource::Create(iv->usbQueue.get(), iv->zeroTimer.attach());
     if (ret != kIOReturnSuccess) return ret;
     ret = CreateActionZeroTimestampOccurred(0, iv->zeroAction.attach());
     if (ret != kIOReturnSuccess) return ret;
@@ -247,9 +284,9 @@ kern_return_t IMPL(HD60SDriver, Start)
 kern_return_t IMPL(HD60SDriver, Stop)
 {
     auto *iv = ivars;
-    if (iv->zeroTimer) iv->zeroTimer->Cancel(^{});
     if (iv->usbQueue) iv->usbQueue->DispatchSync(^{
         iv->stopping = true;
+        if (iv->zeroTimer) iv->zeroTimer->Cancel(^{});
         if (iv->policyTimer) iv->policyTimer->Cancel(^{});
         if (iv->link.state == LINK_UP) TearDown(true);
     });
@@ -299,13 +336,42 @@ int HD60SDriver::Control(int in, uint8_t req, uint16_t val, uint16_t idx, uint8_
 void HD60SDriver::Frame(const uint8_t *frame, int width, int height, int interlaced)
 {
     hd60s_policy_frame(&ivars->policy, width, height, interlaced);
-    fr_publish(ivars->frames, frame, width, height, interlaced, ivars->parser.wide);
+    fr_publish(ivars->frames, frame, width, height, interlaced, ivars->parser.wide, ivars->parser.colour);
 }
 
 void HD60SDriver::Audio(const uint8_t *pcm, size_t len)
 {
-    // ponytail: HDMI vs host clock drift absorbed by ring_pull padding/skipping, as in the userspace feed.
-    ring_push(ivars->audio, reinterpret_cast<const int16_t *>(pcm), len / 4);
+    auto *iv = ivars;
+    size_t n = len / (kChannels * sizeof(int16_t));
+    if (n > kStageFrames - iv->staged) {
+        iv->overflow += n - (kStageFrames - iv->staged);
+        n = kStageFrames - iv->staged;
+    }
+    memcpy(iv->stage + iv->staged * kChannels, pcm, n * kChannels * sizeof(int16_t));
+    iv->staged += static_cast<uint32_t>(n);
+}
+
+void HD60SDriver::Deliver(uint64_t host)
+{
+    auto *iv = ivars;
+    uint32_t n = iv->staged;
+    iv->staged = 0;
+    if (!n || !iv->ioMap) return;
+    uint64_t skipped = 0;
+    uint64_t at = aclock_arrive(&iv->clock, host, n, &skipped);
+    if (skipped) zeroFrames(iv, at - skipped, skipped);
+    float *base = ioBase(iv);
+    for (uint32_t i = 0; i < n; i++) {
+        float *f = base + (at + i) % kIOFrames * kChannels;
+        f[0] = iv->stage[i * 2] / 32768.0f;
+        f[1] = iv->stage[i * 2 + 1] / 32768.0f;
+    }
+    __atomic_store_n(&iv->ioShared.written, at + n, __ATOMIC_RELEASE);
+    __atomic_store_n(&iv->ioShared.lastArrival, host, __ATOMIC_RELAXED);
+    uint64_t read = __atomic_load_n(&iv->ioShared.readEnd, __ATOMIC_ACQUIRE);
+    if (read > at) iv->lates += read - at < n ? read - at : n;
+    uint64_t first = aclock_host(&iv->clock, at);
+    if (host > first && host - first > iv->maxLate) iv->maxLate = host - first;
 }
 
 static bool submit(HD60SDriver_IVars *iv, uint32_t i)
@@ -364,9 +430,11 @@ void IMPL(HD60SDriver, BulkDone)
     auto *ref = static_cast<XferRef *>(action->GetReference());
     // ponytail: a stale completion is told apart by generation only; fine while retries are 1 s apart.
     if (ref->generation != iv->generation || iv->stopping) return;
-    if (status == kIOReturnSuccess || status == kIOReturnTimeout)
+    if (status == kIOReturnSuccess || status == kIOReturnTimeout) {
         parser_feed(&iv->parser, iv->xfers[ref->index].data, actualByteCount);
-    else {
+        // Hardware completion time, so a busy queue does not bend the clock.
+        Deliver(completionTimestamp ? completionTimestamp : mach_absolute_time());
+    } else {
         os_log(OS_LOG_DEFAULT, "HD60S dext: transfer status 0x%x", status);
         iv->streamFailed = true;
         return;
@@ -385,6 +453,13 @@ void IMPL(HD60SDriver, PolicyOccurred)
     case LINK_NONE: break;
     }
     if (iv->link.state == LINK_UP) hd60s_policy_tick(&iv->dev, &iv->parser, &iv->policy, static_cast<long>(nowMs(iv)));
+    if (static_cast<uint64_t>(now) - iv->lastAudioLog >= kAudioLogMs) {
+        iv->lastAudioLog = static_cast<uint64_t>(now);
+        os_log(OS_LOG_DEFAULT, "HD60S dext audio: %d ppm, %lu rephases, %llu pads, %llu late, %llu overflow, max lateness %llu us",
+               static_cast<int>((iv->clock.nominal_ticks_per_sample / iv->clock.ticks_per_sample - 1) * 1e6), iv->clock.rephases,
+               __atomic_load_n(&iv->ioShared.pads, __ATOMIC_RELAXED), iv->lates, iv->overflow, iv->maxLate * 1000 / iv->msTicks);
+        iv->maxLate = 0;
+    }
     fr_status(iv->frames, iv->link.state, iv->parser.frames, iv->parser.discarded, iv->parser.long_total, iv->link.failures);
     iv->policyTimer->WakeAtTime(kIOTimerClockMachAbsoluteTime, mach_absolute_time() + kPolicyMs * iv->msTicks, 0);
 }
@@ -393,11 +468,13 @@ kern_return_t HD60SDriver::StartDevice(IOUserAudioObjectID id, IOUserAudioStartS
 {
     kern_return_t ret = super::StartDevice(id, flags);
     if (ret != kIOReturnSuccess) return ret;
-    ivars->zeroSample = 0;
-    ivars->zeroHostTime = mach_absolute_time();
-    ivars->device->UpdateCurrentZeroTimestamp(0, ivars->zeroHostTime);
-    ivars->zeroTimer->WakeAtTime(kIOTimerClockMachAbsoluteTime, ivars->zeroHostTime + ivars->periodTicks, 0);
-    ivars->zeroTimer->SetEnable(true);
+    auto *iv = ivars;
+    iv->usbQueue->DispatchSync(^{
+        iv->zeroSample = aclock_sample(&iv->clock, mach_absolute_time()) / kIOFrames * kIOFrames;
+        iv->device->UpdateCurrentZeroTimestamp(iv->zeroSample, aclock_host(&iv->clock, iv->zeroSample));
+        iv->zeroTimer->WakeAtTime(kIOTimerClockMachAbsoluteTime, nextZeroWake(iv), 0);
+        iv->zeroTimer->SetEnable(true);
+    });
     return kIOReturnSuccess;
 }
 
@@ -409,8 +486,8 @@ kern_return_t HD60SDriver::StopDevice(IOUserAudioObjectID id, IOUserAudioStartSt
 
 void IMPL(HD60SDriver, ZeroTimestampOccurred)
 {
-    ivars->zeroSample += kIOFrames;
-    ivars->zeroHostTime += ivars->periodTicks;
-    ivars->device->UpdateCurrentZeroTimestamp(ivars->zeroSample, ivars->zeroHostTime);
-    ivars->zeroTimer->WakeAtTime(kIOTimerClockMachAbsoluteTime, ivars->zeroHostTime + ivars->periodTicks, 0);
+    auto *iv = ivars;
+    iv->zeroSample += kIOFrames;
+    iv->device->UpdateCurrentZeroTimestamp(iv->zeroSample, aclock_host(&iv->clock, iv->zeroSample));
+    iv->zeroTimer->WakeAtTime(kIOTimerClockMachAbsoluteTime, nextZeroWake(iv), 0);
 }

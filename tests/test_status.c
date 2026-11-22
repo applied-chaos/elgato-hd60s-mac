@@ -1,6 +1,7 @@
 #include "../src/status.h"
 
 #include <assert.h>
+#include <math.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -82,10 +83,10 @@ int main(void)
     assert(hd60s_parse_owner_pid("pid 26442, net.mintopia.hd6", &pid) && pid == 26442);
     assert(!hd60s_parse_owner_pid("garbage", &pid));
 
-    /* Runts: only the five standard frame sizes count as real frames. */
     assert(hd60s_size_standard(1920, 1080) && hd60s_size_standard(1280, 720));
     assert(hd60s_size_standard(720, 576) && hd60s_size_standard(720, 480));
     assert(hd60s_size_standard(1440, 480));
+    assert(hd60s_size_standard(640, 480) && hd60s_size_standard(800, 600) && hd60s_size_standard(1440, 900));
     assert(!hd60s_size_standard(1280, 12) && !hd60s_size_standard(1920, 1045));
 
     /* Text report: no signal, then a signal. */
@@ -98,16 +99,28 @@ int main(void)
     s.height = 1080;
     s.fps = 59.95;
     s.colour = COLOUR_BT709;
+    s.input_format = INPUT_YCBCR422;
     s.audio_rate = 48000;
     s.audio_channels = 2;
     s.frames = 120;
     t = render(hd60s_print_text, &s);
-    assert(strstr(t, "1920x1080p 59.95 fps") && strstr(t, "BT.709") && strstr(t, "48000 Hz, 2 channels"));
+    assert(strstr(t, "1920x1080p 59.95 fps") && strstr(t, "BT.709") && strstr(t, "Input:    YCbCr 4:2:2") && strstr(t, "48000 Hz, 2 channels"));
+
+    s.signal = SIGNAL_UNSUPPORTED;
+    s.width = 1366;
+    s.height = 700;
+    t = render(hd60s_print_text, &s);
+    assert(strstr(t, "1366x700") && strstr(t, "unsupported mode"));
+    char *u = render(hd60s_print_json, &s);
+    assert(strstr(u, "\"signal\":{\"state\":\"unsupported\",\"width\":1366,\"height\":700}"));
+    s.signal = SIGNAL_ACTIVE;
+    s.width = 1920;
+    s.height = 1080;
 
     /* JSON contract. */
     char *j = render(hd60s_print_json, &s);
     assert(strstr(j, "\"signal\":{\"state\":\"active\",\"width\":1920,\"height\":1080,\"interlaced\":false"));
-    assert(strstr(j, "\"warnings\":[]"));
+    assert(strstr(j, "\"warnings\":[]") && strstr(j, "\"input\":\"ycbcr422\",\"colour\":\"bt709\""));
     s.interlaced = 1;
     s.field_order = FIELD_TOP_FIRST;
     s.speed = SPEED_HIGH;
@@ -118,5 +131,22 @@ int main(void)
     assert(strstr(j, "\"present\":false") && strstr(j, "\"code\":\"no_device\"") && strstr(j, "\"state\":\"unknown\""));
 
     puts("status ok");
+    struct { unsigned c; int tenths, ntsc; } rates[] = {
+        {0, 0, 0},         {2084, 600, 0},  {2088, 600, 1},  {2500, 500, 0},   {4167, 300, 0},  {4180, 300, 1},
+        {5208, 240, 0},    {5230, 240, 1},  {5000, 250, 0},  {1042, 1200, 0},  {1045, 1200, 1}, {1250, 1000, 0},
+    };
+    for (size_t i = 0; i < sizeof rates / sizeof *rates; i++) {
+        struct hd60s_rate r = hd60s_rate_from_vsync(rates[i].c);
+        assert(r.tenths == rates[i].tenths && r.ntsc == rates[i].ntsc);
+    }
+    assert(hd60s_rate_hz((struct hd60s_rate){600, 0}) == 60.0);
+    assert(fabs(hd60s_rate_hz((struct hd60s_rate){600, 1}) - 59.94006) < 1e-4);
+    assert(fabs(hd60s_exact_fps(59.85, (struct hd60s_rate){600, 0}, 0) - 60.0) < 1e-9);
+    assert(fabs(hd60s_exact_fps(60.12, (struct hd60s_rate){600, 1}, 0) - 59.94006) < 1e-4);
+    assert(fabs(hd60s_exact_fps(30.04, (struct hd60s_rate){600, 1}, 1) - 29.97003) < 1e-4);
+    assert(hd60s_exact_fps(50.2, (struct hd60s_rate){600, 0}, 0) == 50.2);
+    assert(hd60s_exact_fps(50.2, (struct hd60s_rate){0, 0}, 0) == 50.2);
+    assert(fabs(hd60s_rate_hz((struct hd60s_rate){240, 1}) - 23.97602) < 1e-4);
+
     return 0;
 }

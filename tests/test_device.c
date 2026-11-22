@@ -86,7 +86,7 @@ static void init_runs_vendor_sequence_and_reads_mcu_version(void)
     assert(fk.first_req[0] == 0xec && fk.first_req[1] == 0xc2 && fk.first_req[2] == 0xc7);
     assert(d.mcu_version == 0x010203);
     assert(hd60s_start(&d) == 0);
-    assert(d.started && d.sd == 0);
+    assert(d.started && d.colour.sd == 0 && d.colour.input == INPUT_RGB);
     hd60s_stop(&d);
     assert(!d.started);
 }
@@ -119,13 +119,93 @@ static void policy_switches_colour_matrix_once_per_change(void)
     hd60s_policy_begin(&pol, 0);
     p.last_w = 720, p.last_h = 576;
     hd60s_policy_tick(&d, &p, &pol, 1000);
-    assert(d.sd == 1);
+    assert(d.colour.sd == 1);
     int before = fk.requests;
     hd60s_policy_tick(&d, &p, &pol, 1100);
     assert(fk.requests == before);
     p.last_w = 1920, p.last_h = 1080;
     hd60s_policy_tick(&d, &p, &pol, 1150);
-    assert(d.sd == 0 && fk.requests > before);
+    assert(d.colour.sd == 0 && fk.requests > before);
+}
+
+static void avi_parse_covers_each_format_and_colorimetry(void)
+{
+    struct hd60s_source s = hd60s_parse_avi(1, 0x00, 0x00);
+    assert(s.format == INPUT_RGB && s.colorimetry == COLOUR_UNKNOWN);
+    s = hd60s_parse_avi(1, 0x20, 0x40);
+    assert(s.format == INPUT_YCBCR422 && s.colorimetry == COLOUR_BT601);
+    s = hd60s_parse_avi(1, 0x40, 0x80);
+    assert(s.format == INPUT_YCBCR444 && s.colorimetry == COLOUR_BT709);
+    s = hd60s_parse_avi(1, 0x40, 0xc0);
+    assert(s.format == INPUT_YCBCR444 && s.colorimetry == COLOUR_UNKNOWN);
+    s = hd60s_parse_avi(1, 0x60, 0x80); /* reserved Y1Y0: Elgato treats it as RGB */
+    assert(s.format == INPUT_RGB);
+    s = hd60s_parse_avi(1, 0x1f, 0x3f); /* other bits ignored */
+    assert(s.format == INPUT_RGB && s.colorimetry == COLOUR_UNKNOWN);
+    s = hd60s_parse_avi(0, 0x40, 0x80); /* no InfoFrame (DVI): RGB, no colorimetry */
+    assert(s.format == INPUT_RGB && s.colorimetry == COLOUR_UNKNOWN);
+}
+
+static void csc_plan_is_data_driven(void)
+{
+    struct hd60s_csc hd, sd, yuv, yuv_sd;
+    hd60s_csc_plan(&(struct hd60s_colour_cfg){INPUT_RGB, 0}, &hd);
+    hd60s_csc_plan(&(struct hd60s_colour_cfg){INPUT_RGB, 1}, &sd);
+    hd60s_csc_plan(&(struct hd60s_colour_cfg){INPUT_YCBCR444, 0}, &yuv);
+    hd60s_csc_plan(&(struct hd60s_colour_cfg){INPUT_YCBCR422, 1}, &yuv_sd);
+    assert(hd.mode == 0x40 && sd.mode == 0x40 && yuv.mode == 0x62);
+    assert(memcmp(&hd, &sd, sizeof hd) != 0);
+    assert(yuv.m[0] == 0x1000 && yuv.m[4] == 0x1000 && yuv.m[8] == 0x1000 && yuv.m[1] == 0);
+    assert(memcmp(&yuv, &yuv_sd, sizeof yuv) == 0); /* pass-through ignores size and subsampling */
+}
+
+static void frame_colour_follows_source_for_ycbcr(void)
+{
+    struct hd60s_colour_cfg rgb_hd = {INPUT_RGB, 0}, rgb_sd = {INPUT_RGB, 1};
+    struct hd60s_colour_cfg y_hd = {INPUT_YCBCR444, 0}, y_sd = {INPUT_YCBCR422, 1};
+    assert(hd60s_frame_colour(&rgb_hd, COLOUR_BT601) == COLOUR_BT709); /* device encodes RGB itself */
+    assert(hd60s_frame_colour(&rgb_sd, COLOUR_BT709) == COLOUR_BT601);
+    assert(hd60s_frame_colour(&y_hd, COLOUR_BT601) == COLOUR_BT601);
+    assert(hd60s_frame_colour(&y_sd, COLOUR_BT709) == COLOUR_BT709);
+    assert(hd60s_frame_colour(&y_hd, COLOUR_UNKNOWN) == COLOUR_BT709);
+    assert(hd60s_frame_colour(&y_sd, COLOUR_UNKNOWN) == COLOUR_BT601);
+}
+
+static void policy_follows_source_colour_format(void)
+{
+    struct hd60s d;
+    struct hd60s_parser p = {0};
+    struct hd60s_policy pol;
+    boot(&d, 0);
+    assert(hd60s_init(&d) == 0 && hd60s_start(&d) == 0);
+    p.last_w = 1920, p.last_h = 1080;
+    hd60s_policy_begin(&pol, 0);
+    hd60s_policy_tick(&d, &p, &pol, 0);
+    assert(p.input_format == INPUT_RGB && p.colour == COLOUR_BT709 && fk.mst[0][0x92] == 0x40);
+
+    fk.mst[2][0x0b] = 0x08;
+    fk.mst[2][0x48] = 0x40;
+    fk.mst[2][0x49] = 0x40; /* 601 flagged on an HD frame */
+    hd60s_policy_tick(&d, &p, &pol, 1000);
+    assert(d.colour.input == INPUT_YCBCR444 && fk.mst[0][0x92] == 0x62);
+    assert(p.input_format == INPUT_YCBCR444 && p.colour == COLOUR_BT601);
+    int before = fk.requests;
+    hd60s_policy_tick(&d, &p, &pol, 1100);
+    assert(fk.requests == before);
+
+    fk.mst[2][0x48] = 0x20;
+    fk.mst[2][0x49] = 0x00; /* 4:2:2, unspecified: HD falls back to 709 */
+    hd60s_policy_tick(&d, &p, &pol, 2000);
+    assert(p.input_format == INPUT_YCBCR422 && p.colour == COLOUR_BT709 && fk.mst[0][0x92] == 0x62);
+
+    fk.mst[2][0x48] = 0x00; /* back to RGB mid-stream */
+    hd60s_policy_tick(&d, &p, &pol, 3000);
+    assert(p.input_format == INPUT_RGB && p.colour == COLOUR_BT709 && fk.mst[0][0x92] == 0x40);
+
+    fk.mst[2][0x0b] = 0x00; /* InfoFrame lost while YCbCr: RGB again */
+    fk.mst[2][0x48] = 0x40;
+    hd60s_policy_tick(&d, &p, &pol, 4000);
+    assert(p.input_format == INPUT_RGB);
 }
 
 static void policy_reads_aspect_once_a_second(void)
@@ -218,6 +298,10 @@ int main(void)
     init_ignores_vendor_init_failures();
     first_transport_error_fails_start();
     policy_switches_colour_matrix_once_per_change();
+    avi_parse_covers_each_format_and_colorimetry();
+    csc_plan_is_data_driven();
+    frame_colour_follows_source_for_ycbcr();
+    policy_follows_source_colour_format();
     policy_reads_aspect_once_a_second();
     policy_finds_mode_from_a_stable_window();
     start_routes_hdmi_audio_by_default();

@@ -38,10 +38,10 @@ App status messages: "No Signal", "Protected with HDCP", "USB 3 is required for 
 | # | Item | Status | Notes |
 |---|---|---|---|
 | A1 | CEA modes 480i–1080p60 (all 20 Pi timings) captured and shown in the camera | done | #7 survey, #8, #9 (deinterlace), #11 (50 fps) |
-| A2 | 640x480p60 (VIC 1, code 0x12) | missing | Elgato maps it (`FUN_1d3d4`) and treats 640 wide as SD/601 (`FUN_10b6b`). Ours: `parser_is_sd` and `fitRect` reject 640x480, so the camera drops every frame |
-| A3 | PC/DMT timings (codes 0x13–0x3A, 800x600 … 1440x900) and 'B' (0x42, unknown timing) | missing | Elgato detects and captures them (PC modes get VIC 32 on passthrough). Ours: the parser probably delivers them, but `fitRect` drops non-whitelisted sizes, and `status` counts them as runts |
-| A4 | Exact 1001 flag (59.94 vs 60, 29.97 vs 30) | partial | Elgato: `FUN_12a2f` → `FUN_11f22` gives `fmt+0x3c`, and fps = rate×(1001−flag)/1001. Ours measures from the stream, ±0.1 fps, and can't tell them apart |
-| A5 | 24/25/30p sources: nominal camera rate | partial | The camera advertises only 59.94 and 50. Frames arrive at the source rate, but the format duration is wrong for 24/25/30p |
+| A2 | 640x480p60 (VIC 1, code 0x12) | done | #21. `parser_is_sd` and `fitRect` accept it; 640 wide is SD/601, 4:3 unless the AVI flag says 16:9 |
+| A3 | PC/DMT timings (codes 0x13–0x3A, 800x600 … 1440x900) and 'B' (0x42, unknown timing) | done | #21. Ten PC sizes (800x600 … 1440x900, HD matrix, own square-pixel aspect) are fitted; any other stable size gives the "Unsupported mode" slate and `status` state `unsupported`. PC modes do not get VIC 32 on passthrough (not changed) |
+| A4 | Exact 1001 flag (59.94 vs 60, 29.97 vs 30) | done | #22 reads MST3367 0x59:0x5a (`hd60s_rate_from_vsync`); `status` reports it. Was: Elgato: `FUN_12a2f` → `FUN_11f22` gives `fmt+0x3c`, and fps = rate×(1001−flag)/1001. Ours measures from the stream, ±0.1 fps, and can't tell them apart |
+| A5 | 24/25/30p sources: nominal camera rate | done | #22 adds 30, 25 and 24 fps formats (camera check pending reboot). Was: The camera advertises only 59.94 and 50. Frames arrive at the source rate, but the format duration is wrong for 24/25/30p |
 | A6 | EDID presets advertised to sources | n/a (write) | The EDID lives in SPI flash (`EDID_1080p_TDMS_200.bin` per GameCapture_CaptureDevices.xml). `WriteEDIDContent` (+0xa8) and `ReadEDIDContent` (+0xb0) both go through the `dev+0x41a8` MCU/flash helper, and the app calls neither. Permanently out of scope. What the device advertises can be read safely from the Pi side (`/sys/class/drm/card1-HDMI-A-1/edid`) |
 | A7 | Document the advertised EDID | missing | Decode the EDID the Pi reads (`edid-decode`) into PROTOCOL.md, so supported modes, audio SADs and the YCbCr/RGB capability bits are on record |
 
@@ -52,7 +52,7 @@ App status messages: "No Signal", "Protected with HDCP", "USB 3 is required for 
 | B1 | YCbCr input detection | missing | See detail below. **High impact**: PS4/PS5 "YUV422", Xbox, Switch and Apple TV commonly send YCbCr |
 | B2 | HDMI colour range Standard/Expanded | missing | See detail below. Ours is always Standard, so full-range sources look washed out (blacks above 16) |
 | B3 | Automatic colour range | missing (beyond Elgato) | libUB530 already supports per-quantisation nibbles: with `dev+0x7c = 0x80000100`, it compresses only when AVI Q=2. Libraries and Elgato Studio offer Auto; the mac app doesn't. Make Auto the default, with Standard/Expanded overrides |
-| B4 | BT.601 matrix for SD | done | #10 (650c25e) re-runs `colour_convert` on SD/HD changes. Differences from Elgato: 1440x480i gets 601 here (Elgato 709, width test 640/720/768 only); 640 isn't covered (A2) |
+| B4 | BT.601 matrix for SD | done | #10 (650c25e) re-runs `colour_convert` on SD/HD changes. Differences from Elgato: 1440x480i gets 601 here (Elgato 709, width test 640/720/768 only); 640 is covered (#21) |
 | B5 | Source colorimetry for YCbCr input (AVI C1C0, MST b2:0x49 >> 6) | missing | Elgato reads it into `fmt+0x54` but never uses it for the matrix. With B1, the device passes YCbCr through untouched, so the camera tag must follow the source's colorimetry, falling back to 601 for SD and 709 for HD |
 | B6 | `status` colour field | partial (bug) | `src/main.c:148` still hard-codes `COLOUR_BT709` with a stale comment. Since #10, SD is 601 |
 
@@ -162,7 +162,7 @@ App status messages: "No Signal", "Protected with HDCP", "USB 3 is required for 
 |---|---|---|---|
 | G1 | USB 3 check | partial | The CLI has it (#14: `not_superspeed` warning). Elgato shows "USB 3 is required for this device" in its UI; the app side of #14 is still open |
 | G2 | Firmware version | done | Firmware updates (`UpdateMCUFirmware` +0xa0 → `FUN_177c8`) are n/a, permanently out of scope |
-| G3 | Signal / no signal / mode | done | Slate and `status`. An "unsupported mode" message is missing (see A3) |
+| G3 | Signal / no signal / mode | done | Slate, `status`, and an "Unsupported mode" slate and status (#21) |
 | G4 | Status LED animations | missing (blocked on safety) | See detail below. Ticket: **Investigate the HD60 S LED controller at I2C 0xA4 (read-only)** |
 | G5 | HDMI vs DVI source type in status | missing | MST b1:0x01 bit2, already read in `select_hdmi_audio`. Pi (DVI mode via a DVI-only EDID override). Cheap: fold into the F1 ticket |
 | G6 | ResetDevice (vtable +0x28 → `FUN_e56e` → `FUN_179b6`) | n/a for now | It goes through the MCU helper. The app doesn't call it in the paths traced. Not worth porting without a reason |
@@ -203,9 +203,9 @@ App status messages: "No Signal", "Protected with HDCP", "USB 3 is required for 
 
 ## Count
 
-- **Missing (18):** A2, A3, A7, B1, B2, B3, B5, C1, D3, D4, E2, E3, E4, E5, F1, G4, G5, H1.
+- **Missing (16):** A7, B1, B2, B3, B5, C1, D3, D4, E2, E3, E4, E5, F1, G4, G5, H1.
   - E2 is existing ticket #16. G5 folds into F1. E5 is conditional on E1.
 - **Partial (10):** A4, A5, B6, D2, D5, D7, E1, E6, G1, H2.
   - D7 maps to existing #5/#6. G1 is the app side of #14. E1 is the TV run of #13.
 
-Highest value first: B1 (YCbCr sources likely mis-coloured today), B2/B3 (colour range), F1 (HDCP message), D3/D4 (line-in and gain), A2/A3 (640x480 and PC modes dropped), then the TV-dependent E items.
+Highest value first: B1 (YCbCr sources likely mis-coloured today), B2/B3 (colour range), F1 (HDCP message), D3/D4 (line-in and gain), then the TV-dependent E items.

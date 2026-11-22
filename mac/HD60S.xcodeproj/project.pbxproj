@@ -22,6 +22,7 @@
 		7628AFB946F041CEB503F1CB /* device_libusb.c in Sources */ = {isa = PBXBuildFile; fileRef = C294100439805B100F077570 /* device_libusb.c */; };
 		868DB0A334D8F095951F5C12 /* HD60SAudio.c in Sources */ = {isa = PBXBuildFile; fileRef = 5CAE976973A9661138B5E396 /* HD60SAudio.c */; };
 		8A5FB167BBB7D6BE364E769C /* deinterlace.c in Sources */ = {isa = PBXBuildFile; fileRef = 38DF55540E5C678012FE392F /* deinterlace.c */; };
+		8F437AEB48B3292161806AAC /* Unsupported.png in Resources */ = {isa = PBXBuildFile; fileRef = 447A0964D026A28D46C588E0 /* Unsupported.png */; };
 		8FC432765E9249BF3968EB02 /* RedHatText.ttf in Resources */ = {isa = PBXBuildFile; fileRef = E4BA9DEAA185A1CA9EF0C297 /* RedHatText.ttf */; };
 		91FA4C5D25BF43BF77944006 /* net.mintopia.hd60s.camera.systemextension in Embed System Extensions */ = {isa = PBXBuildFile; fileRef = 906664122934AE5F648909BB /* net.mintopia.hd60s.camera.systemextension */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		935F140DCE2EC4E8C40E4C5A /* HD60SApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5250AEE80161FAD7E2AB87AB /* HD60SApp.swift */; };
@@ -82,6 +83,7 @@
 		2802D08CC9D0EF039BE94247 /* HD60SCamera.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = HD60SCamera.entitlements; sourceTree = "<group>"; };
 		38DF55540E5C678012FE392F /* deinterlace.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = deinterlace.c; sourceTree = "<group>"; };
 		3D657EA2382F0CC167FE569B /* device.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = device.c; sourceTree = "<group>"; };
+		447A0964D026A28D46C588E0 /* Unsupported.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = Unsupported.png; sourceTree = "<group>"; };
 		5250AEE80161FAD7E2AB87AB /* HD60SApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HD60SApp.swift; sourceTree = "<group>"; };
 		58FCE89662E2C2249C89C7B2 /* parser.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = parser.c; sourceTree = "<group>"; };
 		5CAE976973A9661138B5E396 /* HD60SAudio.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = HD60SAudio.c; sourceTree = "<group>"; };
@@ -177,6 +179,7 @@
 				8400EEE9F8976B5123BAA715 /* main.swift */,
 				FEB304182F383B96E72A3DA6 /* Provider.swift */,
 				D9B4906F3518E9B1364D6B76 /* Slate.png */,
+				447A0964D026A28D46C588E0 /* Unsupported.png */,
 			);
 			path = Extension;
 			sourceTree = "<group>";
@@ -310,6 +313,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				3BE7F6CBBF0A32B2E1AADBB1 /* Slate.png in Resources */,
+				8F437AEB48B3292161806AAC /* Unsupported.png in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

@@ -114,6 +114,30 @@ The Nuvoton MCU owns the board I2C bus. The bridge uses the "0x66" proxy target,
 | 0xAA | MCU commands | see the bridge above |
 | 0xD4 | audio device with 16-bit register addresses, probably a sample-rate converter (§6.8) | write `[00 reg val]`; read `[00 reg]` → 2 bytes, value in the second |
 | 0x88 | analogue decoder | internal inputs 5/6 only; unused on HD60 S |
+| 0xA4 | status LED controller? (7-bit 0x52, in the EEPROM range) | Elgato only writes `[01]`, `[07]`, `[06 n]`. **Do not touch**; see the 0xA4 section below |
+
+### I2C 0xA4 (7-bit 0x52): status LED controller, read-only investigation (ticket G4)
+
+**Verdict: UNSAFE to probe through the bridge, and not proven to be an LED MCU. No bus traffic to 0xA4 was sent and the hardware was not touched.** Static analysis only.
+
+What a bridge read puts on the wire (`FUN_1c746`, read branch):
+- OUT `wValue=0x5066`, data `[addr|1, rlen, wdata…]` = `[A5, rlen, sub]`, then IN `rlen` bytes. The host never emits the I2C phases; the Nuvoton MCU firmware does, and that firmware is not in the dylib.
+- By analogy with 0x9C and 0xD4 (same request), the MCU does "write `[sub]`, repeated start, read". For 0xA4 that means the write phase `[A4 sub]` goes out before any read.
+- A read with no `wdata` cannot be expressed by the helper (`wlen == 0` skips the OUT). A bare `[A5 rlen]` OUT or an address-only ACK probe is not a request Elgato's driver sends.
+
+Why a register read is not provably non-mutating:
+- On a 24Cxx EEPROM, `[A4 sub]` with no data byte only sets the address pointer, and reads do not start a write cycle. Safe there.
+- The host code shows a command protocol, not a memory map. Writes to 0x52 (`FUN_21b3e` to `FUN_21e52`): cmd 0 (+1 byte), 1/2 (no args), 3 (+16), 4 (+2), 5 (+14), 6 (+1, PlayAnimation n), 7 (stop), 8 (+1, +32), 9, 0xA, 0xB, 0xC (no args), 0xD (no args, then a **10-byte read**). Payloads of 0x11/0xF/0x22 bytes at "registers" 3/5/8 do not look like EEPROM use.
+- On a command MCU the write phase of a read (`[A4 06]`, `[A4 01]`, …) is itself a command; Elgato sends `[A4 01]` as a bare command. Reading "reg 6" would send PlayAnimation with no argument. Any `sub` in 1..0xC risks a state change.
+- The only read form in the driver is cmd 0x0D (`FUN_21df2`, 10-byte response). It has **no callers** in the dylib, so Elgato never sends it. The 0xA4 requests it does send are writes only: `[A4 01]` (`FUN_21b70`, one call site), `[A4 07]`, `[A4 06 n]`.
+- Whether 0x0D is a pure query is a guess (a pointer set if EEPROM, unknown if MCU).
+
+Consequences:
+- No writes to 0xA4 were made. "Does it ACK, is reg 6 readable, does it change on events" is **not answered** and cannot be answered safely through the bridge.
+- The payload shapes favour "LED/status MCU with a command set" over "EEPROM", but that is inferred, not observed.
+- Do not implement PlayAnimation. Do not probe through the bridge.
+- Safe routes: capture Elgato's real traffic (Windows USB trace, as was done for `AB 03 12`) to see what the MCU emits and reads back at 0xA4, or obtain the MCU firmware image (not the FX3 firmware).
+- The plain HD60 S may have no controllable LED at all (unconfirmed).
 
 ## 3. Sequences (PID 0x74)
 
@@ -424,12 +448,82 @@ Every mode the Pi's EDID offers was driven with `kmstest` (SMPTE pattern) and ca
 | 1440x480i 59.94 | 1440x480i, 30 fps | 240 per field / 22 or 23 |
 
 - Size comes from the stream itself: width = bytes between timing codes / 2, height = lines in the active region. 720-wide SD stays 720 wide (the Pi's pixel-doubled 13.5 MHz modes arrive as 720); 1440x480i arrives 1440 wide.
-- Measured rates over 20 frames are only good to about +-1 fps for SD and 720p. The device cannot tell 60 from 59.94 (or 30 from 29.97) from the stream; both read as 60.0 +- 0.1. A consumer needing the 1001 flag has to port `FUN_12a2f` or guess.
+- Measured rates over 20 frames are only good to about +-1 fps for SD and 720p. The stream cannot tell 60 from 59.94 (or 30 from 29.97); both read as 60.0 +- 0.1. The 1001 flag comes from the MST3367 instead (below).
+- **1001 flag (`FUN_11f22`).** MST3367 bank 0 regs 0x59:0x5a (& 0x3fff) count 8 us ticks per vsync period (field period when interlaced). Rate = 1250000 / counter, in tenths of Hz, snapped to a band; a counter at or above a per-rate threshold means the 1000/1001 rate: 120 (1043), 60 (2086), 30 (4174), 24 (5217). Measured on the Pi: 60 = 2085, 59.94 = 2087 (progressive, interlaced, 720p and 480p alike); 50 = 2502; 30 = 4171, 29.97 = 4175; 25 = 5005; 24 = 5214, 23.976 = 5219. `hd60s status` uses it for the fps (`hd60s_exact_fps`). Custom 24p on the Pi: `kmstest -r 74250000,1920/638/44/148/+,1080/4/5/36/+` (pclk in Hz; 74175824 for 23.976).
 - **Interlaced layout.** Fields alternate in the stream: `V` goes high for the vertical blanking (22-25 lines), `F` flips 3 lines into the blanking, then a full field of lines follows. The parser reads F at the first active line. F=0 carries the even frame lines (0, 2, ...), F=1 the odd lines. With a moving source (`kmstest --flip`, bar moving 8 px per field) the F=1 field is 8 px further along than F=0, so **F=0 (even lines) is first in time and F=1 completes the frame**, for 1080i, 576i and 480i alike. Same at 50 and 60 Hz. Each frame the parser emits is a woven pair of fields, so 1080i50 delivers 25 frames per second, not 50 fields.
 - **Colour matrix.** `hd60s_start` applies BT.709, as the Elgato app does before the mode is known. `hd60s_stream` re-runs `colour_convert` with BT.601 once frames of 720x480, 720x576 or 1440x480 arrive and back to 709 for 720p/1080p (runt sizes during a switch are ignored). Measured SMPTE green bar Y/Cb/Cr: 146/146/46 in 1080p (709), 131/155/46 in 576p (601); the camera's output RGB matches across SD and HD.
 - **Aspect.** The source's AVI InfoFrame is readable from MST3367 bank 2: 0x0B bit3 = received, 0x49 (DB2) bits 5:4 = 1 for 4:3, 2 for 16:9, 0x4B = VIC. Measured on the Pi: 576p 0x49 = 0x28, VIC 18 (16:9); 480p 0x49 = 0x18, VIC 2 (4:3). `hd60s_stream` polls it once a second into `parser.wide`; the camera fills the frame for a 16:9 SD source and pillarboxes otherwise.
 - **Mode changes while streaming** are survived: the parser re-locks on the new size within a second (1080p60 -> 720p50 -> 576i50 -> 1080i60 -> 1080p60 tested). During the switch it emits a few runt frames of wrong height (e.g. 1280x12, 1280x703, 1920x1045) and one wrong-width frame, so consumers should gate on a size they have seen stable for a few frames. `hd60s` has no signal-loss indicator beyond "no frames arrive".
 - 50 Hz modes behave like 60 Hz apart from the frame period and longer horizontal blanking (1080p50 line is 2640 clocks, not 2200). No 50 Hz-specific handling is needed; audio stays 48 kHz and flows in every mode.
+
+### Advertised EDID
+The HD60 S presents this EDID to the source on its HDMI input. Read from the Pi's cached copy (`/sys/class/drm/card1-HDMI-A-1/edid`, `edid-decode` 1.3 base, CTA-861 rev 3). It is held in the device's flash and this driver never writes it.
+
+- Monitor name: `HD60 S`. Manufacturer `EGA`, product `0x0001`, week 17 of 2013.
+- Base block: preferred 1920x1080p60 (148.5 MHz, 708x398 mm). Standard timings 1280x720p60, 1920x1080p60.
+- Colour: YCbCr 4:4:4 and 4:2:2 advertised (RGB is the baseline). No quantisation range flags are advertised.
+- Underscan IT video by default. Basic audio supported. CEC physical address 1.0.0.0. HDMI VSDB: DC_36bit, max TMDS 200 MHz.
+
+Video modes (CTA VDB, `native` = flagged native):
+
+| VIC | Resolution | Rate (Hz) | Aspect | Pixel clock (MHz) | Notes |
+|---|---|---|---|---|---|
+| 5 | 1920x1080i | 60 | 16:9 | 74.25 | native |
+| 4 | 1280x720p | 60 | 16:9 | 74.25 | |
+| 3 | 720x480p | 59.94 | 16:9 | 27 | |
+| 2 | 720x480p | 59.94 | 4:3 | 27 | |
+| 18 | 720x576p | 50 | 16:9 | 27 | |
+| 19 | 1280x720p | 50 | 16:9 | 74.25 | |
+| 20 | 1920x1080i | 50 | 16:9 | 74.25 | native |
+| 22 | 1440x576i | 50 | 16:9 | 27 | |
+| 7 | 1440x480i | 59.94 | 16:9 | 27 | |
+| 6 | 1440x480i | 59.94 | 4:3 | 27 | |
+| 17 | 720x576p | 50 | 4:3 | 27 | |
+| 21 | 1440x576i | 50 | 4:3 | 27 | |
+| 33 | 1920x1080p | 25 | 16:9 | 74.25 | native |
+| 34 | 1920x1080p | 30 | 16:9 | 74.25 | native |
+| 39 | 1920x1080i | 50 | 16:9 | 72 | |
+| 31 | 1920x1080p | 50 | 16:9 | 148.5 | |
+| 16 | 1920x1080p | 60 | 16:9 | 148.5 | |
+
+Detailed timings (DTDs): 1440x480i59.94, 720x480p59.94 (3:2), 1280x720p60, 1920x1080i60.
+
+Audio SADs: LPCM, 2 channels, 16-bit, 32/44.1/48 kHz. Speaker allocation: FL/FR.
+
+Raw EDID (256 bytes, base block then CTA block):
+
+```
+00 ff ff ff ff ff ff 00 14 e1 01 00 00 00 00 00
+11 17 01 03 80 00 02 78 1a cf 74 a3 57 4c b0 23
+09 48 4c 00 00 00 81 c0 d1 c0 01 01 01 01 01 01
+01 01 01 01 01 01 02 3a 80 18 71 38 2d 40 58 2c
+45 00 c4 8e 21 00 00 1e 00 00 00 18 00 1c 16 20
+58 2c 25 00 c4 8e 21 00 00 9e 00 00 00 fc 00 48
+44 36 30 20 53 0a 20 20 20 20 20 20 0a 00 00 fd
+00 17 3d 19 46 0f 00 0a 20 20 20 20 20 20 01 d2
+02 03 26 f4 51 85 04 03 02 12 13 94 16 07 06 11
+15 a1 a2 27 1f 10 23 09 07 01 83 01 00 00 67 03
+0c 00 10 00 20 28 8c 0a a0 14 51 f0 16 00 26 7c
+43 00 c4 8e 21 00 00 98 8c 0a d0 8a 20 e0 2d 10
+10 3e 96 00 c4 8e 21 00 00 19 01 1d 00 72 51 d0
+1e 20 6e 28 55 00 c4 8e 21 00 00 1f 01 1d 80 18
+71 1c 16 20 58 2c 25 00 c4 8e 21 00 00 9e 00 00
+00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 14
+```
+
+## Audio arrival timing (Pi 4 at 1080p60, libusb CLI, 16 x 512 KiB bulk reads)
+- Audio packets carry 2 frames each. A 512 KiB completion holds about 96 frames, one every 2.018 ms (p99 2.15 ms).
+- Against the Mac host clock the stream runs at 47999.52 Hz (-10 ppm), with or without source audio. Chunk-end arrivals sit within -0.19 / +2.4 ms of a straight line (std 0.07 ms).
+- A sample waits in the device for the rest of its chunk: first-sample lateness is 2.0 ms p50, 2.3 ms p99, 2.75 ms p99.9. The tail to 14 ms is host-side callback stalls (data then arrives in one burst of up to 1358 frames).
+- A source mode change loses about 30 ms of samples, then audio resumes in real time with no backlog. With no signal, audio stops completely and resumes with the signal.
+- The DriverKit flavour clocks its audio device from this (`src/aclock.c`): zero timestamps follow a line fitted to completion times (second-order loop, ~4 s, clamped to +-1000 ppm), and samples are written into the IO buffer as they arrive, with no jitter buffer. A hole of more than 20 ms re-phases the samples onto the clock and leaves silence. The device reports 0 latency and a 192-frame (4 ms) input safety offset, so audio input latency is 4 ms plus the client's IO buffer (the userspace flavour's ring holds 30 ms). Measured end-to-end latency and A/V offset in the dext: not yet (needs install).
+
+## PC modes (Pi forced with `kmstest` modelines, `hd60s status` and `capture -n 20`)
+The Pi's EDID lists no PC timings, so each was forced with an explicit modeline (`kmstest -c HDMI-A-1 -r <pclk Hz>,<hact>/<hfp>/<hsw>/<hbp>/<hsp>,<vact>/<vfp>/<vsw>/<vbp>/<vsp> -T smpte`; `--dmt` lookups by name fail on the Pi). The unmodified driver detects and frames all of them, with 0 discarded frames and 0 long lines:
+
+640x480@60, 800x600@60, 1024x768@60, 1152x864@75, 1280x768@60, 1280x800@60, 1280x960@60, 1280x1024@60, 1360x768@60, 1400x1050@60, 1440x900@60. 1600x900 (reduced blanking) is detected too but is not a known mode, so `status` reports `unsupported` and the camera shows the "Unsupported mode" slate. 1366x768 was rejected by the Pi's own mode set (odd active width), so it was not tested.
+
+Only 640 wide is SD (BT.601 matrix, `parser_is_sd` = 1); the PC sizes use the HD matrix and fit by their own aspect (square pixels).
 
 ## Unknown / unverified
 - Audio channel order (left first) is assumed from I2S convention, not tested with a one-sided signal.

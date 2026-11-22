@@ -4,12 +4,13 @@
 #include <stdint.h>
 #include <stdio.h>
 
+#include "parser.h"
+
 enum hd60s_speed { SPEED_UNKNOWN, SPEED_LOW, SPEED_FULL, SPEED_HIGH, SPEED_SUPER, SPEED_SUPER_PLUS };
 enum hd60s_access { ACCESS_NOT_TRIED, ACCESS_OK, ACCESS_BUSY, ACCESS_FAILED };
 enum hd60s_owner { OWNER_NONE, OWNER_CLI, OWNER_CAMERA, OWNER_DRIVER, OWNER_OTHER, OWNER_UNKNOWN };
-enum hd60s_signal { SIGNAL_UNKNOWN, SIGNAL_NONE, SIGNAL_ACTIVE };
+enum hd60s_signal { SIGNAL_UNKNOWN, SIGNAL_NONE, SIGNAL_ACTIVE, SIGNAL_UNSUPPORTED };
 enum hd60s_field_order { FIELD_NONE, FIELD_TOP_FIRST };
-enum hd60s_colour { COLOUR_UNKNOWN, COLOUR_BT709, COLOUR_BT601 };
 enum hd60s_warning { WARN_NO_DEVICE, WARN_NOT_SUPERSPEED, WARN_BUSY, WARN_OPEN_FAILED, WARN_FIRMWARE };
 
 /* MCU versions seen on working devices (b0<<16 | b1<<8 | b2). */
@@ -33,6 +34,7 @@ struct hd60s_status {
     enum hd60s_field_order field_order;
     double fps; /* frame rate; interlaced counts frames, not fields */
     enum hd60s_colour colour;
+    enum hd60s_input_format input_format;
     int audio_rate, audio_channels; /* 0 = no audio */
 
     unsigned long frames, discarded, runts, long_lines;
@@ -50,6 +52,16 @@ const char *hd60s_warning_code(enum hd60s_warning w);
 
 void hd60s_print_text(const struct hd60s_status *s, FILE *out);
 void hd60s_print_json(const struct hd60s_status *s, FILE *out);
+
+/* Field or frame rate the MST3367 measured: tenths of Hz, and whether the 1000/1001 divisor applies. */
+struct hd60s_rate {
+    int tenths, ntsc;
+};
+/* FUN_11f22: counter is MST3367 bank 0 regs 0x59:0x5a & 0x3fff, 8 us ticks per vsync period. tenths is 0 for no reading. */
+struct hd60s_rate hd60s_rate_from_vsync(unsigned counter);
+double hd60s_rate_hz(struct hd60s_rate r);
+/* Frame rate for the status report: the exact rate if it agrees with the measured fps, else measured. */
+double hd60s_exact_fps(double measured, struct hd60s_rate r, int interlaced);
 
 /* Fills presence, speed, port and owner without opening the device. */
 void hd60s_probe_usb(struct hd60s_status *s);
