@@ -112,6 +112,7 @@ final class Installer: NSObject, ObservableObject, OSSystemExtensionRequestDeleg
     @Published var audio = AudioStatus.notInstalled
 
     let dext = DextInstaller()
+    let flavour = Flavour.current
     private var installing = true
     private var query: OSSystemExtensionRequest?
 
@@ -150,18 +151,26 @@ final class Installer: NSObject, ObservableObject, OSSystemExtensionRequestDeleg
             self.dext.activate()
             self.submit(.activationRequest(forExtensionWithIdentifier: extensionID, queue: .main))
         }
-        if dext.bundled {
-            return audio == .notInstalled ? activate() : runAsAdmin(AudioPlugin.uninstallScript(), then: activate)
+        switch flavour.installStep(audio: audio, plugInSource: bundledAudio?.path) {
+        case .none: activate()
+        case .admin(let script): runAsAdmin(script, then: activate)
+        case .missingPlugIn: status = .failed("The audio plug-in is missing from the app.")
         }
-        guard let source = bundledAudio?.path else { return status = .failed("The audio plug-in is missing from the app.") }
-        runAsAdmin(AudioPlugin.installScript(source: source), then: activate)
+    }
+
+    var canInstall: Bool {
+        status.canInstall || flavour.offersReinstall(cameraInstalled: status == .installed, audio: audio, dext: dext.status)
     }
 
     func uninstall() {
         installing = false
-        runAsAdmin(AudioPlugin.uninstallScript()) {
+        let deactivate = {
             self.dext.deactivate()
             self.submit(.deactivationRequest(forExtensionWithIdentifier: extensionID, queue: .main))
+        }
+        switch flavour.uninstallStep(audio: audio) {
+        case .admin(let script): runAsAdmin(script, then: deactivate)
+        case .none, .missingPlugIn: deactivate()
         }
     }
 
@@ -261,7 +270,7 @@ struct HD60SApp: App {
                         Text(status.title).font(.text(16, .semibold)).foregroundStyle(Color.ink)
                         Text(status.detail).font(.text(13)).foregroundStyle(Color.neutral)
                             .lineLimit(3)
-                        if !dext.bundled {
+                        if installer.flavour.showsAudioPlugIn {
                             Text("Audio plug-in: \(installer.audio.label)").font(.text(13)).foregroundStyle(Color.neutral)
                         }
                         if let label = dext.status.label {
@@ -276,7 +285,7 @@ struct HD60SApp: App {
 
                 HStack(spacing: 12) {
                     Button("Install", action: installer.install).buttonStyle(BrandButton(primary: true))
-                        .keyboardShortcut(.defaultAction).disabled(!status.canInstall)
+                        .keyboardShortcut(.defaultAction).disabled(!installer.canInstall)
                     Button("Uninstall", action: installer.uninstall).buttonStyle(BrandButton(primary: false))
                         .disabled(!(status.canUninstall || installer.audio != .notInstalled))
                 }

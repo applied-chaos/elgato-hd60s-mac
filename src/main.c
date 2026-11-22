@@ -1,3 +1,4 @@
+#include <math.h>
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -78,9 +79,11 @@ static int usage(void)
 {
     fprintf(stderr, "usage: hd60s info\n"
                     "       hd60s status [--json] [-r range]\n"
-                    "       hd60s capture [-n frames] [-o out.uyvy|-] [-a out.pcm] [-r range]\n"
-                    "range: auto (default), standard, expanded (source is full-range RGB)\n"
-                    "video: raw YUY2 (ffmpeg yuyv422); audio: 48 kHz s16le stereo\n");
+                    "       hd60s capture [-n frames] [-o out.uyvy|-] [-a out.pcm] [-s hdmi|line|mix] [-g dB] [-m] [-r range] [--iso]\n"
+                    "video: raw YUY2 (ffmpeg yuyv422); audio: 48 kHz s16le stereo\n"
+                    "transfer: bulk by default, --iso for isochronous (flaky hubs)\n"
+                    "audio: -s source (default hdmi), -g gain -12..12 dB in 0.5 steps (default -6), -m mute\n"
+                    "range: auto (default), standard, expanded (source is full-range RGB)\n");
     return 2;
 }
 
@@ -88,8 +91,12 @@ struct watch {
     struct hd60s_status st;
     double first, last;
     unsigned long standard;
+    int unknown_w, unknown_h, unknown_interlaced;
+    unsigned long unknown_run;            /* same-size run: a real timing, not mode-switch runts */
     size_t audio_bytes;
 };
+
+#define UNSUPPORTED_STABLE_FRAMES 15
 
 static void watch_frame(void *ctx, const uint8_t *frame, int w, int h, int interlaced)
 {
@@ -97,8 +104,13 @@ static void watch_frame(void *ctx, const uint8_t *frame, int w, int h, int inter
     (void)frame;
     if (!hd60s_size_standard(w, h)) {
         k->st.runts++;
+        k->unknown_run = w == k->unknown_w && h == k->unknown_h ? k->unknown_run + 1 : 1;
+        k->unknown_w = w;
+        k->unknown_h = h;
+        k->unknown_interlaced = interlaced;
         return;
     }
+    k->unknown_run = 0;
     k->last = now();
     if (!k->standard++)
         k->first = k->last;
@@ -138,6 +150,12 @@ static int status(int json, struct hd60s_settings settings)
             parser_init(&parser, frame, sizeof frame, watch_frame, watch_audio, &k);
             hd60s_stream(&d, &parser, &stop_requested, 2.0);
             st->signal = k.standard ? SIGNAL_ACTIVE : SIGNAL_NONE;
+            if (k.unknown_run >= UNSUPPORTED_STABLE_FRAMES) {
+                st->signal = SIGNAL_UNSUPPORTED;
+                st->width = k.unknown_w;
+                st->height = k.unknown_h;
+                st->interlaced = k.unknown_interlaced;
+            }
             st->frames = parser.frames;
             st->discarded = parser.discarded;
             st->long_lines = parser.long_total;
@@ -155,6 +173,8 @@ static int status(int json, struct hd60s_settings settings)
         if (k.audio_bytes) {
             st->audio_rate = 48000;
             st->audio_channels = 2;
+            st->audio_source_rate =
+                hd60s_source_audio_hz(&d, tx_mode_find(st->width, st->height, st->interlaced, st->interlaced ? st->fps * 2 : st->fps));
         }
         hd60s_stop(&d);
         hd60s_close(&d);
@@ -190,9 +210,18 @@ int main(int argc, char **argv)
 
     struct capture c = {0};
     const char *vpath = NULL, *apath = NULL;
+    struct audio_settings audio = AUDIO_DEFAULT;
     int opt;
+    enum hd60s_transfer transfer = HD60S_BULK;
+    for (int i = 2; i < argc; i++)
+        if (strcmp(argv[i], "--iso") == 0) {
+            transfer = HD60S_ISO;
+            memmove(&argv[i], &argv[i + 1], (size_t)(argc - i) * sizeof *argv);
+            argc--;
+            i--;
+        }
     optind = 2;
-    while ((opt = getopt(argc, argv, "n:o:a:r:")) != -1) {
+    while ((opt = getopt(argc, argv, "n:o:a:s:g:mr:")) != -1) {
         if (opt == 'n')
             c.want = strtol(optarg, NULL, 10);
         else if (opt == 'o')
@@ -201,6 +230,16 @@ int main(int argc, char **argv)
             apath = optarg;
         else if (opt == 'r' && hd60s_range_from_name(optarg) >= 0)
             settings.range = (enum hd60s_range)hd60s_range_from_name(optarg);
+        else if (opt == 's') {
+            if (!audio_source_parse(optarg, &audio.source))
+                return usage();
+        } else if (opt == 'g') {
+            double db = strtod(optarg, NULL);
+            if (db < AUDIO_GAIN_MIN / 2.0 || db > AUDIO_GAIN_MAX / 2.0)
+                return usage();
+            audio.gain_half_db = (int)lround(db * 2);
+        } else if (opt == 'm')
+            audio.mute = 1;
         else
             return usage();
     }
@@ -218,7 +257,8 @@ int main(int argc, char **argv)
     signal(SIGPIPE, SIG_IGN); /* a closed reader becomes a write error, so the device is still stopped cleanly */
     struct hd60s d;
     int rc = 1;
-    if (hd60s_open(&d) == 0 && (d.settings = settings, hd60s_start(&d) == 0)) {
+    if (hd60s_open(&d) == 0 && (d.settings = settings, hd60s_set_audio(&d, &audio) == 0) && hd60s_start(&d) == 0) {
+        d.usb.transfer = transfer;
         if (info) {
             fprintf(stderr, "mcu firmware: %02x.%02x.%02x\n", d.mcu_version >> 16 & 0xff,
                     d.mcu_version >> 8 & 0xff, d.mcu_version & 0xff);

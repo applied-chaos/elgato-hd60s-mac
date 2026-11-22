@@ -400,7 +400,7 @@ Census of every call made from the transmitter code (0x1caf4–0x21b1e, from the
 ### 6.10 Open questions for the hardware test
 1. With a TV already connected before start, does a hotplug interrupt (0x06 bit0) fire after init, or must the driver read 0x0E bit6 itself and enter state 1?
 2. Are the per-mode MST3367 writes (§6.4 step 3) needed for the TV picture? The mode survey shows capture does not need them in any mode. Are they harmless to capture? Do b0:0xB2 bits 0–1 written on unmute change captured colour?
-3. Is 0xD4 needed for passthrough audio, and is it volatile? Does a 44.1 kHz source capture correctly without it?
+3. Is 0xD4 needed for passthrough audio, and is it volatile? (Capture side answered: a 44.1 or 32 kHz source captures at the right pitch without it, §6.11.)
 4. Does a TV without YCbCr support (RGB out, BT.601/709 matrix) show correct colour?
 5. 148.5 MHz detection uses the table row, so PC modes with a high pixel clock (1680x1050 etc., VIC 32 default) get low-speed AFE settings. Do they work?
 6. HDCP sources (PS5 with HDCP on): does the TV authenticate, and does capture still work? (Capture of HDCP content is expected to fail regardless.)
@@ -425,7 +425,11 @@ Census of every call made from the transmitter code (0x1caf4–0x21b1e, from the
 - I2C 0xD4 and 0x88 both read `FF`: neither is fitted on this unit.
 - 0xC2 stalls on alternate opens; ignoring it (as Elgato does) is harmless.
 - On this unit MST3367 b1:01 bit 2 is set, so `FUN_1caf4` takes its b2:27=0 / ADC reg 3=0xA0 / MCU `90 05 00` branch.
-- Audio source (`FUN_1ce00` arg, stored at `+0x1114`) picks which 0x94 codec input pairs are muted (bit 7). Measured with PS5 game audio: source 0 = HDMI (mute 0x0e/0x0f, unmute 0x10/0x11), RMS -26 dBFS; source 1 = analogue line-in only (unmute 0x0e/0x0f, mute 0x10/0x11), the ±2 LSB ADC noise floor; 3 = both mixed; 2 and 4 also set reg 4 bit 0 and reg 7 = 0xF0 and add a DC offset. The driver uses 0.
+- Audio source (`FUN_1ce00` arg, stored at `+0x1114`) picks which 0x94 codec input pairs are muted (bit 7). Measured with PS5 game audio: source 0 = HDMI (mute 0x0e/0x0f, unmute 0x10/0x11), RMS -26 dBFS; source 1 = analogue line-in only (unmute 0x0e/0x0f, mute 0x10/0x11), the ±2 LSB ADC noise floor; 3 = both mixed; 2 and 4 also set reg 4 bit 0 and reg 7 = 0xF0 and add a DC offset. The driver defaults to 0 and takes 0, 1 or 3 (`src/audio.c`, `hd60s_set_audio`).
+- Gain (`FUN_1ce18`): 0.5 dB steps, 7-bit two's complement code `steps & 0x7f` over -12 to +12 dB (Elgato app: `v = 2x + 123`, library code `(v + 5) & 0x7f`; default -6 dB = 0x74). Measured on the HDMI pair 0x10/0x11 with a -20 dBFS tone: codes 0x68, 0x74, 0x7A, 0x7F, 0x00, 0x01, 0x06, 0x0C, 0x18 gave -12.05, -6.02, -2.97, -0.50, 0, +0.52, +3.05, +6.02, +12.04 dB.
+- With the receiver's DVI flag set (this unit with the Pi) gain goes into the selected pair's low 7 bits and 0x0A-0x0D are 0. Without it (`FUN_1ce18`'s other branch, reg 3 bit 0) the pair keeps its own gain and a/b (0x0A/0x0B, steps > -1) or c/d (0x0C/0x0D, otherwise) get the code; Elgato does nothing for source 0 there. The driver applies gain to the analogue input only: Elgato's DVI-branch write of -6 dB to the HDMI pair would lower HDMI capture by 6 dB (measured), and its UI offers the slider for analogue audio only.
+- Mute is bit 7 of the pair's two registers. The driver sets it on every pair not selected, and on all of them for the hardware mute.
+- Routing (`FUN_1caf4`) depends on MST3367 b0:0x51 bit 7 and b1:0x01 bit 2 (DVI flag): it also sets b2:0x27, codec reg 3 (0xA0/0xA1) and MCU `90 05/03`. Starting with the source blanked leaves the HDMI branch selected and captures digital silence once the source appears; the driver re-runs routing whenever the flag changes (polled once a second). Measured: old driver silent for 13 s after the source came up, new driver audio after about 2 s.
 - Audio is 16-bit little-endian stereo at 48 kHz, band-limited to about 18 kHz; 10 s of capture gives 48.1k frames/s against the 59.94 fps video clock.
 - Every few hundred frames one line arrives `width*2 + 552` bytes long: its EAV comes through corrupted (`ff 80 ff ff 00 00 00 00 9d 9d`), so the device doesn't strip it and the horizontal blanking (`10 80…`) follows the intact video. Elgato copies the first `width*2` bytes but its fixed-distance jump then desyncs and the frame is dropped. Ours keeps the frame with the first `width*2` bytes of that line, as long as the line is under `2*width*2`; longer means a lost SAV merged two lines, so the frame is dropped.
 
@@ -514,11 +518,18 @@ Raw EDID (256 bytes, base block then CTA block):
 - A source mode change loses about 30 ms of samples, then audio resumes in real time with no backlog. With no signal, audio stops completely and resumes with the signal.
 - The DriverKit flavour clocks its audio device from this (`src/aclock.c`): zero timestamps follow a line fitted to completion times (second-order loop, ~4 s, clamped to +-1000 ppm), and samples are written into the IO buffer as they arrive, with no jitter buffer. A hole of more than 20 ms re-phases the samples onto the clock and leaves silence. The device reports 0 latency and a 192-frame (4 ms) input safety offset, so audio input latency is 4 ms plus the client's IO buffer (the userspace flavour's ring holds 30 ms). Measured end-to-end latency and A/V offset in the dext: not yet (needs install).
 
+## PC modes (Pi forced with `kmstest` modelines, `hd60s status` and `capture -n 20`)
+The Pi's EDID lists no PC timings, so each was forced with an explicit modeline (`kmstest -c HDMI-A-1 -r <pclk Hz>,<hact>/<hfp>/<hsw>/<hbp>/<hsp>,<vact>/<vfp>/<vsw>/<vbp>/<vsp> -T smpte`; `--dmt` lookups by name fail on the Pi). The unmodified driver detects and frames all of them, with 0 discarded frames and 0 long lines:
+
+640x480@60, 800x600@60, 1024x768@60, 1152x864@75, 1280x768@60, 1280x800@60, 1280x960@60, 1280x1024@60, 1360x768@60, 1400x1050@60, 1440x900@60. 1600x900 (reduced blanking) is detected too but is not a known mode, so `status` reports `unsupported` and the camera shows the "Unsupported mode" slate. 1366x768 was rejected by the Pi's own mode set (odd active width), so it was not tested.
+
+Only 640 wide is SD (BT.601 matrix, `parser_is_sd` = 1); the PC sizes use the HD matrix and fit by their own aspect (square pixels).
+
 ## Unknown / unverified
 - Audio channel order (left first) is assumed from I2S convention, not tested with a one-sided signal.
 - 0xEC padding bytes and the meaning of 0xEC, 0xC2 and 0xC7. Possibly LED/clock/enable.
 - Passthrough: documented in §6 from the decompile only; not implemented or tested. Open questions in §6.10.
-- Isoch alt 1–3 packet sizing.
+- Isoch alt 3 (39936 B per interval) delivers no data on macOS; alt 1 (16384) and alt 2 (32768) do. Alt 2 captures 1080p60 cleanly, so `--iso` uses the narrowest alt that carries 1080p60.
 - GPIO pin semantics (52 = enable, 57 = ready) are inferred from usage only.
 - Whether the app auto-prompts firmware updates. The version check is not traced.
 
@@ -529,3 +540,9 @@ Raw EDID (256 bytes, base block then CTA block):
 3. ship frames to an arm64 camera extension.
 
 Rosetta's lifetime on macOS limits this approach.
+
+### 6.11 Source sample rate on the capture stream
+
+- Measured with the Pi sending a 440 Hz sine at 32, 44.1 and 48 kHz (`/root/tone.sh`), 30 s captures: the stream is always 48 kHz and the pitch stays 440 Hz (440.1 Hz by FFT, sample counts within 0.1% of 48000 x duration). The device resamples; nothing needs to reach Core Audio, the CLI capture or the dext, which stay fixed at 48 kHz.
+- MST b2:0x9B & 0xC0 follows the source: 0x40 = 48 kHz, 0x00 = 44.1 kHz, 0xC0 = 32 kHz (matches Elgato's `FUN_12a2f`). N/CTS (b2:0x40-45, §6.7) agrees: N 6144 / 5632 / 4096.
+- `hd60s status` reports the source rate from the same N/CTS decode the transmitter uses (`hd60s_source_audio_hz`), as `(source N Hz)` in the text and `audio.source_rate` in JSON (null when unknown, e.g. no audio packets).

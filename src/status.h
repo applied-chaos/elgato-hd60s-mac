@@ -9,7 +9,7 @@
 enum hd60s_speed { SPEED_UNKNOWN, SPEED_LOW, SPEED_FULL, SPEED_HIGH, SPEED_SUPER, SPEED_SUPER_PLUS };
 enum hd60s_access { ACCESS_NOT_TRIED, ACCESS_OK, ACCESS_BUSY, ACCESS_FAILED };
 enum hd60s_owner { OWNER_NONE, OWNER_CLI, OWNER_CAMERA, OWNER_DRIVER, OWNER_OTHER, OWNER_UNKNOWN };
-enum hd60s_signal { SIGNAL_UNKNOWN, SIGNAL_NONE, SIGNAL_ACTIVE };
+enum hd60s_signal { SIGNAL_UNKNOWN, SIGNAL_NONE, SIGNAL_ACTIVE, SIGNAL_UNSUPPORTED };
 enum hd60s_field_order { FIELD_NONE, FIELD_TOP_FIRST };
 enum hd60s_warning { WARN_NO_DEVICE, WARN_NOT_SUPERSPEED, WARN_BUSY, WARN_OPEN_FAILED, WARN_FIRMWARE };
 
@@ -36,7 +36,8 @@ struct hd60s_status {
     enum hd60s_colour colour;
     enum hd60s_input_format input_format;
     enum hd60s_range range; /* the setting in force, not what the source sent */
-    int audio_rate, audio_channels; /* 0 = no audio */
+    int audio_rate, audio_channels; /* stream format, 0 = no audio */
+    int audio_source_rate;          /* rate the source sends before the device resamples to 48 kHz, 0 = unknown */
 
     unsigned long frames, discarded, runts, long_lines;
 };

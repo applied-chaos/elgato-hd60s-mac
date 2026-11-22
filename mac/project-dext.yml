@@ -1,12 +1,24 @@
 name: HD60SDev
-include: [project.yml]  # arrays append, so only the extra dependency is listed
+# Arrays append on include, so lists that differ from project.yml are replaced with :REPLACE.
+include: [project.yml]
 targets:
   HD60S:
-    dependencies:
+    settings:
+      HD60S_FLAVOUR: driverkit
+    dependencies:REPLACE:
+      - target: net.mintopia.hd60s.camera
       - target: net.mintopia.hd60s.dext
   net.mintopia.hd60s.camera:
-    sources:
+    sources:REPLACE:
+      - path: Extension
+        excludes: [AudioFeed.c, AudioFeed.h, Bridging.h]
       - ExtensionDext
+      - path: ../src/device.c
+      - path: ../src/device_libusb.c
+      - path: ../src/parser.c
+      - path: ../src/deinterlace.c
+      - path: ../src/tx.c
+      - path: ../src/audio.c
       - path: ../src/framering.c
       - path: ../src/link.c
     settings:
@@ -14,7 +26,10 @@ targets:
       SWIFT_OBJC_BRIDGING_HEADER: ExtensionDext/Bridging.h
     entitlements:
       path: Extension/HD60SCameraDext.entitlements
-      properties:
+      properties:REPLACE:
+        com.apple.security.app-sandbox: true
+        com.apple.security.device.usb: true
+        com.apple.security.application-groups: [$(TeamIdentifierPrefix)net.mintopia.hd60s]
         com.apple.security.temporary-exception.iokit-user-client-class: [IOUserUserClient]
   net.mintopia.hd60s.dext:
     type: driver-extension
@@ -24,6 +39,7 @@ targets:
       - path: ../src/device.c
       - path: ../src/parser.c
       - path: ../src/tx.c
+      - path: ../src/audio.c
       - path: ../src/aclock.c
       - path: ../src/framering.c
       - path: ../src/link.c

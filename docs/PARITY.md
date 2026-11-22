@@ -38,8 +38,8 @@ App status messages: "No Signal", "Protected with HDCP", "USB 3 is required for 
 | # | Item | Status | Notes |
 |---|---|---|---|
 | A1 | CEA modes 480i–1080p60 (all 20 Pi timings) captured and shown in the camera | done | #7 survey, #8, #9 (deinterlace), #11 (50 fps) |
-| A2 | 640x480p60 (VIC 1, code 0x12) | missing | Elgato maps it (`FUN_1d3d4`) and treats 640 wide as SD/601 (`FUN_10b6b`). Ours: `parser_is_sd` and `fitRect` reject 640x480, so the camera drops every frame |
-| A3 | PC/DMT timings (codes 0x13–0x3A, 800x600 … 1440x900) and 'B' (0x42, unknown timing) | missing | Elgato detects and captures them (PC modes get VIC 32 on passthrough). Ours: the parser probably delivers them, but `fitRect` drops non-whitelisted sizes, and `status` counts them as runts |
+| A2 | 640x480p60 (VIC 1, code 0x12) | done | #21. `parser_is_sd` and `fitRect` accept it; 640 wide is SD/601, 4:3 unless the AVI flag says 16:9 |
+| A3 | PC/DMT timings (codes 0x13–0x3A, 800x600 … 1440x900) and 'B' (0x42, unknown timing) | done | #21. Ten PC sizes (800x600 … 1440x900, HD matrix, own square-pixel aspect) are fitted; any other stable size gives the "Unsupported mode" slate and `status` state `unsupported`. PC modes do not get VIC 32 on passthrough (not changed) |
 | A4 | Exact 1001 flag (59.94 vs 60, 29.97 vs 30) | done | #22 reads MST3367 0x59:0x5a (`hd60s_rate_from_vsync`); `status` reports it. Was: Elgato: `FUN_12a2f` → `FUN_11f22` gives `fmt+0x3c`, and fps = rate×(1001−flag)/1001. Ours measures from the stream, ±0.1 fps, and can't tell them apart |
 | A5 | 24/25/30p sources: nominal camera rate | done | #22 adds 30, 25 and 24 fps formats (camera check pending reboot). Was: The camera advertises only 59.94 and 50. Frames arrive at the source rate, but the format duration is wrong for 24/25/30p |
 | A6 | EDID presets advertised to sources | n/a (write) | The EDID lives in SPI flash (`EDID_1080p_TDMS_200.bin` per GameCapture_CaptureDevices.xml). `WriteEDIDContent` (+0xa8) and `ReadEDIDContent` (+0xb0) both go through the `dev+0x41a8` MCU/flash helper, and the app calls neither. Permanently out of scope. What the device advertises can be read safely from the Pi side (`/sys/class/drm/card1-HDMI-A-1/edid`) |
@@ -52,7 +52,7 @@ App status messages: "No Signal", "Protected with HDCP", "USB 3 is required for 
 | B1 | YCbCr input detection | missing | See detail below. **High impact**: PS4/PS5 "YUV422", Xbox, Switch and Apple TV commonly send YCbCr |
 | B2 | HDMI colour range Standard/Expanded | done (#18) | `hd60s -r`, `settings.json`, dext user client. Pi measured: Full source Standard Y 2..255, Expanded 18..235; Limited source Standard 17..235 |
 | B3 | Automatic colour range | done (#18), the default | libUB530 supports a nibble per source Q: `dev+0x7c = 0x80000100` compresses only when the AVI says full range (Q=2). The Pi sends Q=0 for Broadcast RGB Full (the Elgato EDID has no QS bit), so Auto behaves as Standard there; use Expanded |
-| B4 | BT.601 matrix for SD | done | #10 (650c25e) re-runs `colour_convert` on SD/HD changes. Differences from Elgato: 1440x480i gets 601 here (Elgato 709, width test 640/720/768 only); 640 isn't covered (A2) |
+| B4 | BT.601 matrix for SD | done | #10 (650c25e) re-runs `colour_convert` on SD/HD changes. Differences from Elgato: 1440x480i gets 601 here (Elgato 709, width test 640/720/768 only); 640 is covered (#21) |
 | B5 | Source colorimetry for YCbCr input (AVI C1C0, MST b2:0x49 >> 6) | missing | Elgato reads it into `fmt+0x54` but never uses it for the matrix. With B1, the device passes YCbCr through untouched, so the camera tag must follow the source's colorimetry, falling back to 601 for SD and 709 for HD |
 | B6 | `status` colour field | partial (bug) | `src/main.c:148` still hard-codes `COLOUR_BT709` with a stale comment. Since #10, SD is 601 |
 
@@ -92,16 +92,16 @@ App status messages: "No Signal", "Protected with HDCP", "USB 3 is required for 
 | # | Item | Status | Notes |
 |---|---|---|---|
 | D1 | HDMI LPCM stereo 48 kHz capture | done | — |
-| D2 | Source sample rate | partial (verify) | See detail below |
-| D3 | Analogue line-in (3.5 mm, Chat Link) | missing | See detail below |
-| D4 | Analogue gain (−12…+12 dB) and hardware mute | missing | See detail below |
-| D5 | HDMI vs DVI re-check of audio routing on every mode change | partial | Elgato runs `FUN_1caf4` from `FUN_1d10a` on each new mode (step 3.5), so DVI→HDMI or no-signal→HDMI picks the right branch (MST b1:0x01 bit2). Ours runs `select_hdmi_audio` once in `hd60s_start`, so starting before the source is up, or a DVI-to-HDMI switch, can leave the wrong routing. Pi (start with the Pi blanked, then enable). Ticket: **Re-run HDMI audio routing when the source mode changes** |
+| D2 | Source sample rate | done (#25: device resamples to 48 kHz; status reports the source rate) | See detail below |
+| D3 | Analogue line-in (3.5 mm, Chat Link) | done (#20; line-in capture unverified, no cable on the test rig) | `hd60s capture -s line` or `-s mix`; see detail below |
+| D4 | Analogue gain (−12…+12 dB) and hardware mute | done (#20) | `-g dB`, `-m`; steps measured, see detail below |
+| D5 | HDMI vs DVI re-check of audio routing on every mode change | done (#20: re-run when the receiver's DVI flag changes; blank-start then enable now gives audio) | Elgato runs `FUN_1caf4` from `FUN_1d10a` on each new mode (step 3.5), so DVI→HDMI or no-signal→HDMI picks the right branch (MST b1:0x01 bit2). Ours runs `select_hdmi_audio` once in `hd60s_start`, so starting before the source is up, or a DVI-to-HDMI switch, can leave the wrong routing. Pi (start with the Pi blanked, then enable). Ticket: **Re-run HDMI audio routing when the source mode changes** |
 | D6 | Multichannel / bitstream audio | n/a | The device is stereo LPCM only, and its EDID governs what sources send (see A7) |
 | D7 | A/V offset and clock drift | partial | Tickets #5/#6 already exist. Elgato has an AV sync statistics view; no device-side latency control |
 
 **D2, source sample rate.**
 - What Elgato does: `FUN_12a2f` reads MST b2:0x9B & 0xF0 (0 → 44.1 kHz, 0xC0 → 32 kHz, else 48 kHz), then, for the HD60 S family (`FUN_17a0c`), **jumps to force 48000**. So Elgato always reports 48 kHz; we match.
-- Unknown: what the stream carries for a 44.1 kHz source on a unit without the 0xD4 sample-rate converter.
+- Measured (#25): the stream is 48 kHz for 32, 44.1 and 48 kHz sources, pitch correct, so nothing is passed on to consumers; `status` reports the source rate (N/CTS decode, matches b2:0x9B).
 - Test: Pi, `speaker-test -r 44100` or a sine at 44.1 kHz, then measure pitch and frame rate. If it isn't resampled, add rate detection from b2:0x9B and report it to Core Audio.
 - Ticket: **Verify 32/44.1 kHz HDMI audio capture and report the real rate**
 
@@ -162,7 +162,7 @@ App status messages: "No Signal", "Protected with HDCP", "USB 3 is required for 
 |---|---|---|---|
 | G1 | USB 3 check | partial | The CLI has it (#14: `not_superspeed` warning). Elgato shows "USB 3 is required for this device" in its UI; the app side of #14 is still open |
 | G2 | Firmware version | done | Firmware updates (`UpdateMCUFirmware` +0xa0 → `FUN_177c8`) are n/a, permanently out of scope |
-| G3 | Signal / no signal / mode | done | Slate and `status`. An "unsupported mode" message is missing (see A3) |
+| G3 | Signal / no signal / mode | done | Slate, `status`, and an "Unsupported mode" slate and status (#21) |
 | G4 | Status LED animations | missing (blocked on safety) | See detail below. Ticket: **Investigate the HD60 S LED controller at I2C 0xA4 (read-only)** |
 | G5 | HDMI vs DVI source type in status | missing | MST b1:0x01 bit2, already read in `select_hdmi_audio`. Pi (DVI mode via a DVI-only EDID override). Cheap: fold into the F1 ticket |
 | G6 | ResetDevice (vtable +0x28 → `FUN_e56e` → `FUN_179b6`) | n/a for now | It goes through the MCU helper. The app doesn't call it in the paths traced. Not worth porting without a reason |
@@ -178,7 +178,7 @@ App status messages: "No Signal", "Protected with HDCP", "USB 3 is required for 
 
 | # | Item | Status | Notes |
 |---|---|---|---|
-| H1 | Isochronous transfer mode | missing (low) | Elgato offers "USB Transfer Mode: Bulk/Isochronous" (default bulk, `BeddoRTUseBulk`): iface 0 alt 1–3, EP 0x83, 4 buffers × 160 × bytes-per-interval. Useful for flaky hubs. Mac only, no source needed. Ticket: **Offer isochronous USB transfer as a fallback** |
+| H1 | Isochronous transfer mode | done | Elgato offers "USB Transfer Mode: Bulk/Isochronous" (default bulk, `BeddoRTUseBulk`): iface 0 alt 1–3, EP 0x83, 4 buffers × 160 × bytes-per-interval. Useful for flaky hubs. Mac only, no source needed. Ticket: **Offer isochronous USB transfer as a fallback**. Done: `hd60s capture --iso`; bulk stays default. The dext is bulk only |
 | H2 | Firmware change notification (replay program + EP 0x81 interrupt) | partial (low) | Ours polls every 250 ms. Elgato uploads 10 I2C watch entries via 0xC6 wValue=100 wIndex=1 and arms EP 0x81, which gives faster mode and hotplug reaction with less bus traffic. Pi. Ticket: **Use the firmware's I2C watch program for signal-change wake-ups** |
 | H3 | Latency modes | n/a | There is no device-side latency mode. "Instant Gameview" is the app's preview path. `dev+0xa8` (0x10 or 1 by frame rate) has an unknown purpose and no public setter |
 
@@ -203,9 +203,9 @@ App status messages: "No Signal", "Protected with HDCP", "USB 3 is required for 
 
 ## Count
 
-- **Missing (18):** A2, A3, A7, B1, B2, B3, B5, C1, D3, D4, E2, E3, E4, E5, F1, G4, G5, H1.
+- **Missing (13):** A7, B1, B2, B3, B5, C1, E2, E3, E4, E5, F1, G4, G5.
   - E2 is existing ticket #16. G5 folds into F1. E5 is conditional on E1.
-- **Partial (10):** A4, A5, B6, D2, D5, D7, E1, E6, G1, H2.
+- **Partial (6):** B6, D7, E1, E6, G1, H2.
   - D7 maps to existing #5/#6. G1 is the app side of #14. E1 is the TV run of #13.
 
-Highest value first: B1 (YCbCr sources likely mis-coloured today), B2/B3 (colour range), F1 (HDCP message), D3/D4 (line-in and gain), A2/A3 (640x480 and PC modes dropped), then the TV-dependent E items.
+Highest value first: B1 (YCbCr sources likely mis-coloured today), B2/B3 (colour range), F1 (HDCP message), D3/D4 (line-in and gain), then the TV-dependent E items.

@@ -7,17 +7,45 @@ struct Rect: Equatable {
     var x, y, w, h: Int
 }
 
-// Known source sizes. HD is always 16:9; SD takes the source's AVI InfoFrame flag, 4:3 when absent.
+// Known source sizes (keep in step with modes[] in src/parser.c). HD is always 16:9; SD takes the source's
+// AVI InfoFrame flag, 4:3 when absent; PC/DMT timings are square pixels, so they keep their own aspect.
 private let hdSizes: Set<[Int]> = [[1920, 1080], [1280, 720]]
-private let sdSizes: Set<[Int]> = [[720, 576], [720, 480], [1440, 480]]
+private let sdSizes: Set<[Int]> = [[720, 576], [720, 480], [1440, 480], [640, 480]]
+private let pcSizes: Set<[Int]> = [
+    [800, 600], [1024, 768], [1152, 864], [1280, 768], [1280, 800], [1280, 960], [1280, 1024], [1360, 768],
+    [1400, 1050], [1440, 900],
+]
 
 // Where a w x h source lands in the 1920x1080 output, aspect preserved. Nil for sizes that are not a
-// known mode (runt frames while the source switches mode).
+// known mode (runt frames while the source switches mode, or a timing with no known mode).
 func fitRect(width: Int, height: Int, wide: Bool = false) -> Rect? {
     let size = [width, height]
-    guard hdSizes.contains(size) || sdSizes.contains(size) else { return nil }
-    let (n, d) = hdSizes.contains(size) || wide ? (16, 9) : (4, 3)
+    let (n, d): (Int, Int)
+    if hdSizes.contains(size) {
+        (n, d) = (16, 9)
+    } else if sdSizes.contains(size) {
+        (n, d) = wide ? (16, 9) : (4, 3)
+    } else if pcSizes.contains(size) {
+        (n, d) = (width, height)
+    } else {
+        return nil
+    }
     let w = min(outputWidth, outputHeight * n / d) & ~1
     let h = min(outputHeight, outputWidth * d / n) & ~1
     return Rect(x: (outputWidth - w) / 2 & ~1, y: (outputHeight - h) / 2, w: w, h: h)
+}
+
+// Tells a stable timing with no known mode (show the "Unsupported mode" slate) from the runt frames of a
+// mode switch, which vary in size.
+struct UnsupportedWatch {
+    static let stableFrames = 15
+    private var size = [0, 0]
+    private var run = 0
+
+    mutating func note(width: Int, height: Int, known: Bool) -> Bool {
+        guard !known else { run = 0; return false }
+        run = size == [width, height] ? run + 1 : 1
+        size = [width, height]
+        return run >= Self.stableFrames
+    }
 }

@@ -6,6 +6,7 @@
 
 struct fake {
     uint8_t mst[256][256];
+    uint8_t codec[256];
     uint8_t bank;
     uint8_t pend_addr, pend_sub[8];
     int pend_len, pend_rl;
@@ -15,6 +16,8 @@ struct fake {
 
 static void store(struct fake *f, uint8_t addr, const uint8_t *w, int n)
 {
+    if (addr == 0x94 && n >= 2)
+        f->codec[w[0]] = w[1];
     if (addr != 0x9c || n < 2)
         return;
     if (w[0] == 0)
@@ -55,6 +58,8 @@ static int fake_ctrl(void *ctx, int in, uint8_t req, uint16_t val, uint16_t idx,
             buf[0] = 'Q', buf[1] = 0x10;
         else if (f->pend_addr == 0xaa && f->pend_sub[2] == 0x58)
             buf[0] = 1, buf[1] = 2, buf[2] = 3;
+        else if (f->pend_addr == 0x94)
+            buf[0] = f->codec[f->pend_sub[0]];
         else if (f->pend_addr == 0x9c)
             buf[0] = f->mst[f->bank][f->pend_sub[0]];
     }
@@ -70,7 +75,7 @@ static void boot(struct hd60s *d, int fail_at)
     memset(&fk, 0, sizeof fk);
     fk.fail_at = fail_at;
     memset(d, 0, sizeof *d);
-    d->usb = (struct hd60s_usb){&fk, fake_ctrl, fake_sleep};
+    d->usb = (struct hd60s_usb){.ctx = &fk, .ctrl = fake_ctrl, .sleep_ms = fake_sleep};
 }
 
 static void init_runs_vendor_sequence_and_reads_mcu_version(void)
@@ -236,6 +241,73 @@ static void policy_finds_mode_from_a_stable_window(void)
     assert(pol.mode && pol.mode->vic == 16);
 }
 
+static void start_routes_hdmi_audio_by_default(void)
+{
+    struct hd60s d;
+    boot(&d, 0);
+    assert(hd60s_init(&d) == 0 && hd60s_start(&d) == 0);
+    assert(fk.codec[0x03] == 0xa1 && (fk.codec[0x04] & 0x43) == 0x40);
+    assert(fk.codec[0x0e] & 0x80 && fk.codec[0x0f] & 0x80);
+    assert(!(fk.codec[0x10] & 0x80) && !(fk.codec[0x11] & 0x80));
+}
+
+static void audio_settings_apply_at_start_and_live(void)
+{
+    struct hd60s d;
+    boot(&d, 0);
+    assert(hd60s_init(&d) == 0);
+    struct audio_settings line = {AUDIO_LINE, -12, 0};
+    assert(hd60s_set_audio(&d, &line) == 0);
+    assert(fk.codec[0x03] == 0 && d.audio.source == AUDIO_LINE);
+    assert(hd60s_start(&d) == 0);
+    assert(!(fk.codec[0x0e] & 0x80) && fk.codec[0x10] & 0x80);
+    assert(fk.codec[0x0c] == 0x74 && fk.codec[0x0a] == 0);
+    struct audio_settings mute = {AUDIO_LINE, -12, 1};
+    assert(hd60s_set_audio(&d, &mute) == 0);
+    assert(fk.codec[0x0e] & 0x80 && fk.codec[0x0f] & 0x80);
+    struct audio_settings out_of_range = {AUDIO_MIX, 99, 0};
+    assert(hd60s_set_audio(&d, &out_of_range) == 0);
+    assert(d.audio.gain_half_db == AUDIO_GAIN_MAX);
+}
+
+static void policy_reruns_routing_when_the_source_becomes_hdmi(void)
+{
+    struct hd60s d;
+    struct hd60s_parser p = {0};
+    struct hd60s_policy pol;
+    boot(&d, 0);
+    assert(hd60s_init(&d) == 0 && hd60s_start(&d) == 0);
+    hd60s_policy_begin(&pol, 0);
+    hd60s_policy_tick(&d, &p, &pol, 0);
+    assert(fk.codec[0x03] == 0xa1);
+    int before = fk.requests;
+    hd60s_policy_tick(&d, &p, &pol, 1000);
+    int idle_cost = fk.requests - before;
+    fk.mst[0][0x51] = 0x80;
+    fk.mst[1][0x01] = 0x04;
+    hd60s_policy_tick(&d, &p, &pol, 2000);
+    assert(fk.codec[0x03] == 0xa0 && fk.mst[2][0x27] == 0);
+    before = fk.requests;
+    hd60s_policy_tick(&d, &p, &pol, 3000);
+    assert(fk.requests - before == idle_cost);
+}
+
+static void transfer_plan_defaults_to_bulk_and_picks_narrowest_sufficient_iso_alt(void)
+{
+    struct hd60s_xfer_plan p;
+    enum hd60s_transfer m = HD60S_ISO;
+    int alts[HD60S_ISO_ALTS] = {16384, 32768, 39936};
+    assert(hd60s_transfer_parse("bulk", &m) && m == HD60S_BULK);
+    assert(hd60s_transfer_parse("iso", &m) && m == HD60S_ISO);
+    assert(!hd60s_transfer_parse("usb", &m));
+    assert(hd60s_xfer_plan(HD60S_BULK, alts, &p) == 0 && p.alt == 4 && p.packets == 0);
+    assert(hd60s_xfer_plan(HD60S_ISO, alts, &p) == 0 && p.alt == 2 && p.packets == 160 && p.packet_bytes == 32768 && p.buffers == 4);
+    int none[HD60S_ISO_ALTS] = {0, 16384, 0};
+    assert(hd60s_xfer_plan(HD60S_ISO, none, &p) < 0);
+    struct hd60s d = {0};
+    assert(d.usb.transfer == HD60S_BULK);
+}
+
 static struct hd60s_csc plan(enum hd60s_input_format in, int sd, enum hd60s_range r, int quant)
 {
     struct hd60s_csc c;
@@ -317,6 +389,7 @@ static void settings_round_trip_and_reject_bad_input(void)
 
 int main(void)
 {
+    transfer_plan_defaults_to_bulk_and_picks_narrowest_sufficient_iso_alt();
     init_runs_vendor_sequence_and_reads_mcu_version();
     init_ignores_vendor_init_failures();
     first_transport_error_fails_start();
@@ -331,6 +404,9 @@ int main(void)
     settings_round_trip_and_reject_bad_input();
     policy_reads_aspect_once_a_second();
     policy_finds_mode_from_a_stable_window();
+    start_routes_hdmi_audio_by_default();
+    audio_settings_apply_at_start_and_live();
+    policy_reruns_routing_when_the_source_becomes_hdmi();
     puts("test_device: ok");
     return 0;
 }

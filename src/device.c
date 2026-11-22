@@ -116,7 +116,7 @@ static struct tx_bus tx_bus(struct hd60s *d)
 }
 
 /* Source sample rate from the receiver's ACR packet (b2:0x40-42 CTS, 0x43-45 N). 0 when b2:0x0b shows no audio. */
-static int source_audio_hz(struct hd60s *d, const struct tx_mode *m)
+int hd60s_source_audio_hz(struct hd60s *d, const struct tx_mode *m)
 {
     if (!m || (mst_read(d, 2, 0x0b) & 0x62) != 0x62)
         return 0;
@@ -277,36 +277,43 @@ static void select_hdmi(struct hd60s *d)
     msleep(d, 100);
 }
 
-/* FUN_1caf4 with audio source 0 (HDMI). */
-static void select_hdmi_audio(struct hd60s *d)
+static int source_is_dvi(struct hd60s *d)
 {
-    int dvi = 0;
-    if (mst_read(d, 0, 0x51) & 0x80)
-        dvi = mst_read(d, 1, 0x01) >> 2 & 1;
-    i2c_write(d, I2C_AUDIO, 0x09, 0x46);
-    uint8_t r4 = (uint8_t)i2c_read(d, I2C_AUDIO, 0x04);
-    if (!dvi) {
-        mst_write(d, 2, 0x27, 0xff);
-        r4 = (r4 & 0xbc) | 0x40;
-        i2c_write(d, I2C_AUDIO, 0x03, 0xa1);
-        bridge_write(d, I2C_MCU, (uint8_t[]){0x12, 0x34, 0x90, 0x05, 0x01}, 5);
-        bridge_write(d, I2C_MCU, (uint8_t[]){0x12, 0x34, 0x90, 0x03, 0x01}, 5);
-    } else {
-        mst_write(d, 2, 0x27, 0x00);
-        r4 = (r4 & 0xbc) | 0x02;
-        i2c_write(d, I2C_AUDIO, 0x03, 0xa0);
-        bridge_write(d, I2C_MCU, (uint8_t[]){0x12, 0x34, 0x90, 0x05, 0x00}, 5);
-        bridge_write(d, I2C_MCU, (uint8_t[]){0x12, 0x34, 0x90, 0x03, 0x00}, 5);
+    return (mst_read(d, 0, 0x51) & 0x80) ? mst_read(d, 1, 0x01) >> 2 & 1 : 0;
+}
+
+/* FUN_1caf4 (routing) and FUN_1ce18 (gain) for d->audio. */
+static void apply_audio(struct hd60s *d)
+{
+    int dvi = source_is_dvi(d);
+    struct audio_regs cur = {.r04 = (uint8_t)i2c_read(d, I2C_AUDIO, 0x04)}, r;
+    for (int i = 0; i < 4; i++) {
+        cur.gain[i] = (uint8_t)i2c_read(d, I2C_AUDIO, (uint8_t)(0x0a + i));
+        cur.pair[i] = (uint8_t)i2c_read(d, I2C_AUDIO, (uint8_t)(0x0e + i));
     }
-    /* Elgato source 0 = HDMI only: mute the analogue line-in pair (0x0e/0x0f), unmute HDMI (0x10/0x11). */
-    uint8_t le = (uint8_t)(i2c_read(d, I2C_AUDIO, 0x0e) | 0x80);
-    uint8_t ri = (uint8_t)(i2c_read(d, I2C_AUDIO, 0x10) & 0x7f);
-    i2c_write(d, I2C_AUDIO, 0x0e, le);
-    i2c_write(d, I2C_AUDIO, 0x0f, le);
-    i2c_write(d, I2C_AUDIO, 0x10, ri);
-    i2c_write(d, I2C_AUDIO, 0x11, ri);
-    i2c_write(d, I2C_AUDIO, 0x04, r4);
-    i2c_write(d, I2C_AUDIO, 0x07, 0x00);
+    audio_plan(&d->audio, dvi, &cur, &r);
+    i2c_write(d, I2C_AUDIO, 0x09, 0x46);
+    mst_write(d, 2, 0x27, dvi ? 0x00 : 0xff);
+    i2c_write(d, I2C_AUDIO, 0x03, r.r03);
+    uint8_t mcu = dvi ? 0 : 1;
+    bridge_write(d, I2C_MCU, (uint8_t[]){0x12, 0x34, 0x90, 0x05, mcu}, 5);
+    bridge_write(d, I2C_MCU, (uint8_t[]){0x12, 0x34, 0x90, 0x03, mcu}, 5);
+    for (int i = 0; i < 4; i++) {
+        i2c_write(d, I2C_AUDIO, (uint8_t)(0x0e + i), r.pair[i]);
+        i2c_write(d, I2C_AUDIO, (uint8_t)(0x0a + i), r.gain[i]);
+    }
+    i2c_write(d, I2C_AUDIO, 0x04, r.r04);
+    i2c_write(d, I2C_AUDIO, 0x07, r.r07);
+    d->audio_routed_dvi = dvi;
+}
+
+int hd60s_set_audio(struct hd60s *d, const struct audio_settings *s)
+{
+    d->audio = *s;
+    d->audio.gain_half_db = audio_gain_clamp(s->gain_half_db);
+    if (d->started)
+        apply_audio(d);
+    return d->err ? -1 : 0;
 }
 
 /* FUN_103ea's clamp: coefficients are 15-bit with bit 14 as sign. */
@@ -431,13 +438,14 @@ int hd60s_init(struct hd60s *d)
     if (power_up(d) < 0)
         return -1;
     replay_disable(d);
+    d->audio = AUDIO_DEFAULT;
     return d->err ? -1 : 0;
 }
 
 int hd60s_start(struct hd60s *d)
 {
     select_hdmi(d);
-    select_hdmi_audio(d);
+    apply_audio(d);
     i2c_write(d, I2C_BOARD, 0x20, 0x05);
 
     receiver_pulse(d, 0x41, NULL);
@@ -500,6 +508,8 @@ void hd60s_policy_tick(struct hd60s *d, struct hd60s_parser *p, struct hd60s_pol
         uint8_t db3 = (uint8_t)mst_read(d, 2, 0x4a);
         s->src = hd60s_parse_avi(present, db1, db2, db3);
         p->wide = present && (db2 >> 4 & 3) == 2;
+        if (source_is_dvi(d) != d->audio_routed_dvi)
+            apply_audio(d);
     }
     struct hd60s_colour_cfg want = d->colour;
     int sd = parser_is_sd(p->last_w, p->last_h);
@@ -522,7 +532,7 @@ void hd60s_policy_tick(struct hd60s *d, struct hd60s_parser *p, struct hd60s_pol
     }
     if (now_ms - s->last_poll >= TX_POLL_MS) {
         struct tx_bus tb = tx_bus(d);
-        int hz = source_audio_hz(d, s->mode);
+        int hz = hd60s_source_audio_hz(d, s->mode);
         if (hz == s->hz_seen)
             s->hz = hz;
         s->hz_seen = hz;
@@ -566,5 +576,32 @@ int hd60s_settings_parse(const char *json, struct hd60s_settings *out)
     if (r < 0)
         return -1;
     out->range = (enum hd60s_range)r;
+    return 0;
+}
+
+int hd60s_transfer_parse(const char *s, enum hd60s_transfer *out)
+{
+    if (strcmp(s, "bulk") == 0)
+        *out = HD60S_BULK;
+    else if (strcmp(s, "iso") == 0 || strcmp(s, "isochronous") == 0)
+        *out = HD60S_ISO;
+    else
+        return 0;
+    return 1;
+}
+
+int hd60s_xfer_plan(enum hd60s_transfer mode, const int alt_bytes[HD60S_ISO_ALTS], struct hd60s_xfer_plan *out)
+{
+    if (mode == HD60S_BULK) {
+        *out = (struct hd60s_xfer_plan){.alt = 4, .buffers = 16};
+        return 0;
+    }
+    int best = -1;
+    for (int i = 0; i < HD60S_ISO_ALTS; i++)
+        if (alt_bytes[i] >= HD60S_ISO_MIN_BYTES && (best < 0 || alt_bytes[i] < alt_bytes[best]))
+            best = i;
+    if (best < 0)
+        return -1;
+    *out = (struct hd60s_xfer_plan){.alt = best + 1, .buffers = 4, .packets = 160, .packet_bytes = alt_bytes[best]};
     return 0;
 }

@@ -176,9 +176,21 @@ void parser_feed(struct hd60s_parser *p, const uint8_t *d, size_t len)
     }
 }
 
+/* Known mode sizes; sd selects the BT.601 matrix (Elgato: 640/720 wide, plus 1440x480 here). */
+static const struct {
+    short w, h;
+    signed char sd;
+} modes[] = {
+    {1920, 1080, 0}, {1280, 720, 0},  {720, 576, 1},   {720, 480, 1},   {1440, 480, 1},
+    {640, 480, 1},   {800, 600, 0},   {1024, 768, 0},  {1152, 864, 0},  {1280, 768, 0},
+    {1280, 800, 0},  {1280, 960, 0},  {1280, 1024, 0}, {1360, 768, 0},  {1400, 1050, 0},
+    {1440, 900, 0},
+};
+
 int parser_is_sd(int width, int height)
 {
-    if ((width == 720 || width == 1440) && (height == 480 || height == 576))
-        return 1;
-    return (width == 1280 && height == 720) || (width == 1920 && height == 1080) ? 0 : -1;
+    for (size_t i = 0; i < sizeof modes / sizeof *modes; i++)
+        if (modes[i].w == width && modes[i].h == height)
+            return modes[i].sd;
+    return -1;
 }

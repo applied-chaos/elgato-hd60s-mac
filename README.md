@@ -22,7 +22,7 @@ Installing again updates the audio plug-in to the version in the app. To remove 
 Pick "Elgato HD60 S" as the camera. In OBS, add it as a Video Capture Device, and add "Elgato HD60 S" as an Audio Input Capture.
 
 - Consoles with HDCP on send no picture. On a PS5, turn off HDCP in Settings > System > HDMI.
-- Audio only flows while something is using the camera, and runs about 30 ms behind the picture (the DriverKit DMG has no such delay).
+- Audio only flows while something is using the camera, and runs about 30 ms behind the picture (userspace DMG).
 - Only one thing can use the device at a time.
 - The camera offers 59.94, 50, 30, 25 and 24 fps. Frames are delivered at the source's own rate whichever you pick, so a 50 Hz source never drops or repeats frames; pick the rate that matches your source for correct nominal timing and "No signal" slate pacing.
 
@@ -45,8 +45,10 @@ The command-line tool captures raw video and audio:
 
 ```sh
 build/hd60s info                                  # firmware, resolution and frame rate
-build/hd60s status [--json] [-r range]             # device, USB link, owner, signal, audio, warnings
+build/hd60s status [--json] [-r range]             # device, USB link, owner, signal, audio (stream and source rate), warnings
 build/hd60s capture -n 300 -o out.yuv -a out.pcm  # 300 frames of YUY2 and 48 kHz s16le
+build/hd60s capture -s line -g 3 -a out.pcm        # audio from the 3.5 mm line-in (hdmi, line or mix) at +3 dB; -m mutes
+build/hd60s capture --iso -n 300 -o out.yuv             # isochronous USB transfer, a fallback for flaky hubs (bulk is the default)
 build/hd60s capture -o - | ffplay -f rawvideo -pixel_format yuyv422 -video_size 1920x1080 -framerate 60 -
 ```
 
@@ -68,7 +70,7 @@ Work happens on `develop`; `main` holds releases. Pushing a `vX.Y.Z` tag builds,
 
 ### DriverKit DMG
 
-`make dist-dext` builds a DMG where a driver extension owns the device: it runs the capture core over USB, is the "Elgato HD60 S" audio input whenever the device is plugged in, and hands video to the camera extension through shared memory. No libusb or HAL plug-in in this flavour. It is built locally with Xcode automatic signing, never by CI, and isn't published. It runs only on Macs in the team's development provisioning profile.
+`make dist-dext` builds a DMG where a driver extension owns the device: it runs the capture core over USB, is the "Elgato HD60 S" audio input whenever the device is plugged in, and hands video to the camera extension through shared memory. The app bundles no HAL plug-in, feed device or jitter buffer, and installing it removes a HAL plug-in left by the userspace DMG (one administrator prompt) so only one "Elgato HD60 S" input shows. It is built locally with Xcode automatic signing, never by CI, and isn't published. It runs only on Macs in the team's development provisioning profile.
 
 ## Safety
 
@@ -78,7 +80,7 @@ The driver only sends the requests Elgato's own driver sends on every start. It 
 
 - Modes other than 1080p60. SD modes also need the BT.601 matrix.
 - HDMI passthrough audio and HDCP. Video passthrough is implemented but not yet checked on a TV.
-- Rare tiny audio glitches as the HDMI and Mac clocks drift (not in the DriverKit DMG, whose audio clock follows HDMI).
+- Userspace DMG: rare tiny audio glitches as the HDMI and Mac clocks drift.
 
 ## Licence
 
