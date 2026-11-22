@@ -228,7 +228,11 @@ final class Installer: NSObject, ObservableObject, OSSystemExtensionRequestDeleg
     }
 }
 
-enum Tab { case install, status }
+enum Tab: CaseIterable {
+    case install, status
+
+    var label: String { self == .install ? "Install" : "Status" }
+}
 
 // The hidden title bar still takes this much of the window, so designed offsets from the top are reduced by it.
 private let titleBarHeight: CGFloat = 32
@@ -251,20 +255,20 @@ struct TabSwitch: View {
 
     var body: some View {
         HStack(spacing: 2) {
-            ForEach([(Tab.install, "Install"), (Tab.status, "Status")], id: \.1) { tab, label in
+            ForEach(Tab.allCases, id: \.self) { tab in
                 Button { selection = tab } label: {
-                    Text(label).font(.text(13, .semibold))
+                    Text(tab.label).font(.text(12, .semibold))
                         .foregroundStyle(selection == tab ? Color.ink : Color.muted)
-                        .padding(.horizontal, 14).frame(height: 28)
-                        .background(selection == tab ? Color.cyan : .clear, in: RoundedRectangle(cornerRadius: 7))
-                        .contentShape(RoundedRectangle(cornerRadius: 7))
+                        .padding(.horizontal, 14).frame(height: 24)
+                        .background(selection == tab ? Color.cyan : .clear, in: RoundedRectangle(cornerRadius: 6))
+                        .contentShape(RoundedRectangle(cornerRadius: 6))
                 }
                 .buttonStyle(.plain)
                 .accessibilityAddTraits(selection == tab ? .isSelected : [])
             }
         }
         .padding(3)
-        .background(Color.canvas.opacity(0.08), in: RoundedRectangle(cornerRadius: 10))
+        .background(Color.canvas.opacity(0.08), in: RoundedRectangle(cornerRadius: 9))
     }
 }
 
@@ -368,7 +372,7 @@ struct MainWindow: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            HStack(alignment: .center, spacing: 18) {
+            HStack(alignment: .center, spacing: 16) {
                 Image("Mark").resizable().scaledToFit().frame(width: 44, height: 53)
                 VStack(alignment: .leading, spacing: 4) {
                     Text(appName).font(.display(28)).tracking(-0.7).foregroundStyle(Color.canvas).frame(height: 31)
@@ -376,12 +380,10 @@ struct MainWindow: View {
                 }
                 Spacer(minLength: 0)
             }
-            .overlay(alignment: .bottomTrailing) {
-                TabSwitch(selection: Binding(get: { tab }, set: { tab = $0; chosen = true }))
-            }
-            .padding(.horizontal, 36).padding(.top, 44 - titleBarHeight).padding(.bottom, 26)
+
+            .padding(.horizontal, 36).padding(.top, 54 - titleBarHeight).padding(.bottom, 26)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .frame(height: 44 - titleBarHeight + 53 + 26)
+            .frame(height: 54 - titleBarHeight + 53 + 26)
             .background(Color.ink.ignoresSafeArea(edges: .top))
             rainbow.frame(height: 2)
 
@@ -402,8 +404,12 @@ struct MainWindow: View {
             }
             .padding(.horizontal, 36).frame(height: 47)
         }
-        .frame(width: 560, height: 460 - titleBarHeight, alignment: .topLeading)
+        .frame(width: 560, height: 490 - titleBarHeight, alignment: .topLeading)
         .background(Color.canvas)
+        .overlay(alignment: .top) {
+            TabSwitch(selection: Binding(get: { tab }, set: { tab = $0; chosen = true }))
+                .offset(y: 8 - titleBarHeight)
+        }
         .preferredColorScheme(.light)
         .onAppear {
             if let name = HD60SApp.launchArguments.value(after: "--preview-tab") { tab = name == "status" ? .status : .install }
