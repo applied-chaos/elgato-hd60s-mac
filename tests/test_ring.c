@@ -47,6 +47,12 @@ int main(void)
     assert(out[10] == 6 / 32768.0f);
     ring_free(small);
 
+    static _Alignas(16) unsigned char mem[1024];
+    assert(ring_bytes(8) <= sizeof mem);
+    struct ring *own = ring_init(mem, 8);
+    push_ramp(own, 1, 2);
+    assert(ring_pull(own, out, 2, 2) == 2 && out[2] == 2 / 32768.0f);
+
     ring_free(r);
     puts("ring tests passed");
     return 0;

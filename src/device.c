@@ -1,9 +1,6 @@
 #include "device.h"
 
-#include <stdio.h>
-#include <stdlib.h>
 #include <string.h>
-#include <time.h>
 
 #include "ub530_tables.h"
 
@@ -25,20 +22,14 @@ enum {
     BRIDGE_PROXY = 0x66,
 };
 
-static void msleep(long ms)
-{
-    struct timespec ts = {ms / 1000, (ms % 1000) * 1000000L};
-    nanosleep(&ts, NULL);
-}
+static void msleep(struct hd60s *d, int ms) { d->usb.sleep_ms(d->usb.ctx, ms); }
 
 static int ctrl(struct hd60s *d, int in, uint8_t req, uint16_t val, uint16_t idx, uint8_t *buf,
                 uint16_t len)
 {
-    int r = libusb_control_transfer(d->h, in ? 0xc0 : 0x40, req, val, idx, buf, len, 3000);
-    if (r < 0 && !d->err) {
+    int r = d->usb.ctrl(d->usb.ctx, in, req, val, idx, buf, len);
+    if (r < 0 && !d->err)
         d->err = r;
-        fprintf(stderr, "hd60s: request %02x %04x failed: %s\n", req, val, libusb_error_name(r));
-    }
     return r;
 }
 
@@ -110,7 +101,7 @@ enum { I2C_TX = 0x9a };
 static int tx_bus_read(void *c, uint8_t reg) { return i2c_read(c, I2C_TX, reg); }
 static void tx_bus_write(void *c, uint8_t reg, uint8_t val) { i2c_write(c, I2C_TX, reg, val); }
 static int tx_bus_read_n(void *c, uint8_t reg, uint8_t *buf, int n) { return bridge_read(c, I2C_TX, &reg, 1, buf, n); }
-static void tx_bus_sleep(void *c, int ms) { (void)c; msleep(ms); }
+static void tx_bus_sleep(void *c, int ms) { msleep(c, ms); }
 
 static struct tx_bus tx_bus(struct hd60s *d)
 {
@@ -129,7 +120,7 @@ static int power_up(struct hd60s *d)
     ctrl(d, 0, REQ_GPIO, 0xc039, 0, NULL, 0); /* GPIO 57 input: MCU ready */
     ctrl(d, 0, REQ_GPIO, 0x4134, 0, NULL, 0); /* GPIO 52 high: MCU/receiver enable */
     for (int i = 0; i < 100; i++) {
-        msleep(10);
+        msleep(d, 10);
         if (gpio_read(d, 0x39) == 1)
             break;
     }
@@ -144,9 +135,8 @@ static int power_up(struct hd60s *d)
         }
         if (r[0] != '3' || r[1] != 'D' || r[2] != 0x55)
             break;
-        msleep(100);
+        msleep(d, 100);
     }
-    fprintf(stderr, "hd60s: MCU bridge did not answer\n");
     return -1;
 }
 
@@ -195,7 +185,7 @@ static void select_hdmi(struct hd60s *d)
     mst_write(d, 1, 0x25, 0);
     mst_write(d, 1, 0x26, 0);
     for (int i = 0; i < 5; i++) {
-        msleep(20);
+        msleep(d, 20);
         d->mst_saved[i] = (uint8_t)mst_read(d, 1, 0x27);
     }
 
@@ -265,7 +255,7 @@ static void select_hdmi(struct hd60s *d)
     uint8_t d0 = (uint8_t)mst_read(d, 0x80, 0xd0), cf = (uint8_t)mst_read(d, 0x80, 0xcf);
     mst_write(d, 0x80, 0xd0, (uint8_t)((t >> 1 & 3) | (d0 & 0xfc)));
     mst_write(d, 0x80, 0xcf, (uint8_t)((t << 7) | (cf & 0x7f)));
-    msleep(100);
+    msleep(d, 100);
 }
 
 /* FUN_1caf4 with audio source 0 (HDMI). */
@@ -369,44 +359,13 @@ static void receiver_pulse(struct hd60s *d, uint8_t r24, const uint8_t *r27)
     mst_write(d, 0, 0xb3, 0);
 }
 
-int hd60s_quiet;
-
-int hd60s_open(struct hd60s *d)
+int hd60s_init(struct hd60s *d)
 {
-    memset(d, 0, sizeof *d);
-    if (libusb_init(&d->usb) < 0)
-        return -1;
-    d->open_err = LIBUSB_ERROR_NO_DEVICE;
-    libusb_device **list;
-    ssize_t n = libusb_get_device_list(d->usb, &list);
-    for (ssize_t i = 0; i < n && !d->h; i++) {
-        struct libusb_device_descriptor dd;
-        if (libusb_get_device_descriptor(list[i], &dd) == 0 && dd.idVendor == HD60S_VID && dd.idProduct == HD60S_PID)
-            d->open_err = libusb_open(list[i], &d->h);
-    }
-    if (n >= 0)
-        libusb_free_device_list(list, 1);
-    if (!d->h) {
-        if (!hd60s_quiet)
-            fprintf(stderr, "hd60s: no %04x:%04x found (or it is busy)\n", HD60S_VID, HD60S_PID);
-        return -1;
-    }
-    int cfg = 0;
-    libusb_get_configuration(d->h, &cfg);
-    if (cfg != 1 && (d->open_err = libusb_set_configuration(d->h, 1)) < 0)
-        return -1;
-    if ((d->open_err = libusb_claim_interface(d->h, 0)) < 0) {
-        if (!hd60s_quiet)
-            fprintf(stderr, "hd60s: cannot claim interface 0\n");
-        return -1;
-    }
-
-    /* FUN_d118 */
+    /* FUN_d118. Elgato ignores these results; 0xC2 stalls on every other open. The bridge probe is the real check. */
     uint8_t ec[10] = {0xb8, 0x22, 0, 0, 0, 0xc0, 0, 0, 0, 0xca};
-    /* Elgato ignores these results; 0xC2 stalls on every other open. The bridge probe is the real check. */
-    libusb_control_transfer(d->h, 0x40, REQ_INIT_EC, 0, 0, ec, sizeof ec, 3000);
-    libusb_control_transfer(d->h, 0x40, REQ_INIT_C2, 0, 0, NULL, 0, 3000);
-    libusb_control_transfer(d->h, 0x40, REQ_INIT_C7, 100, 0, NULL, 0, 3000);
+    d->usb.ctrl(d->usb.ctx, 0, REQ_INIT_EC, 0, 0, ec, sizeof ec);
+    d->usb.ctrl(d->usb.ctx, 0, REQ_INIT_C2, 0, 0, NULL, 0);
+    d->usb.ctrl(d->usb.ctx, 0, REQ_INIT_C7, 100, 0, NULL, 0);
     if (power_up(d) < 0)
         return -1;
     replay_disable(d);
@@ -421,13 +380,13 @@ int hd60s_start(struct hd60s *d)
 
     receiver_pulse(d, 0x41, NULL);
     for (int i = 0; i < 10 && !(mst_read(d, 2, 0x0e) & 7); i++)
-        msleep(5);
+        msleep(d, 5);
     for (int i = 0; i < 500; i++) {
         uint8_t v = (uint8_t)mst_read(d, 2, 0x0e);
         mst_write(d, 2, 0x0e, v);
         if (!(v & 7))
             break;
-        msleep(5);
+        msleep(d, 5);
     }
     colour_convert(d, 0, 0);
     d->sd = 0;
@@ -439,7 +398,7 @@ int hd60s_start(struct hd60s *d)
 
 void hd60s_stop(struct hd60s *d)
 {
-    if (!d->h)
+    if (!d->usb.ctrl)
         return;
     if (d->started) {
         struct tx_bus tb = tx_bus(d);
@@ -451,64 +410,7 @@ void hd60s_stop(struct hd60s *d)
     replay_disable(d);
 }
 
-void hd60s_close(struct hd60s *d)
-{
-    if (d->h) {
-        libusb_release_interface(d->h, 0);
-        libusb_close(d->h);
-    }
-    if (d->usb)
-        libusb_exit(d->usb);
-    memset(d, 0, sizeof *d);
-}
-
-#define NUM_XFERS 16
-#define XFER_SIZE (512 * 1024)
-
-#define TX_POLL_MS 250
-#define MODE_WINDOW_MS 2000
-
-/* Frame size and rate over a window. The size must hold for the last 3/4 of the window's frames (startup runts and mode switches fail this). */
-struct stream_ctx {
-    struct hd60s_parser *parser;
-    volatile sig_atomic_t *stop;
-    int active;
-    frame_cb frame_cb;
-    void *frame_ctx;
-    int w, h, interlaced, frames, run;
-};
-
-static void on_frame_probe(void *ctx, const uint8_t *f, int w, int h, int interlaced)
-{
-    struct stream_ctx *s = ctx;
-    s->run = s->frames && w == s->w && h == s->h && interlaced == s->interlaced ? s->run + 1 : 1;
-    s->w = w;
-    s->h = h;
-    s->interlaced = interlaced;
-    s->frames++;
-    s->frame_cb(s->frame_ctx, f, w, h, interlaced);
-}
-
-static long now_ms(void)
-{
-    struct timespec ts;
-    clock_gettime(CLOCK_MONOTONIC, &ts);
-    return ts.tv_sec * 1000L + ts.tv_nsec / 1000000L;
-}
-
-static void LIBUSB_CALL on_xfer(struct libusb_transfer *t)
-{
-    struct stream_ctx *s = t->user_data;
-    if (t->status == LIBUSB_TRANSFER_COMPLETED || t->status == LIBUSB_TRANSFER_TIMED_OUT) {
-        parser_feed(s->parser, t->buffer, (size_t)t->actual_length);
-    } else if (t->status != LIBUSB_TRANSFER_CANCELLED) {
-        fprintf(stderr, "hd60s: transfer status %d\n", t->status);
-        *s->stop = 1;
-    }
-    if (!*s->stop && libusb_submit_transfer(t) == 0)
-        return;
-    s->active--;
-}
+enum { TX_POLL_MS = 250, MODE_WINDOW_MS = 2000, ASPECT_POLL_MS = 1000 };
 
 /* Source AVI InfoFrame (same MST3367 bank 2 block the driver reads the VIC from): DB2 bits 5:4 = 2 is 16:9. */
 static int source_is_16x9(struct hd60s *d)
@@ -516,67 +418,42 @@ static int source_is_16x9(struct hd60s *d)
     return (mst_read(d, 2, 0x0b) & 0x08) && ((mst_read(d, 2, 0x49) >> 4) & 3) == 2;
 }
 
-int hd60s_stream(struct hd60s *d, struct hd60s_parser *p, volatile sig_atomic_t *stop, double seconds)
+void hd60s_policy_begin(struct hd60s_policy *s, long now_ms)
 {
-    struct stream_ctx s = {.parser = p, .stop = stop, .frame_cb = p->on_frame, .frame_ctx = p->ctx};
-    struct libusb_transfer *xfers[NUM_XFERS];
-    if (libusb_set_interface_alt_setting(d->h, 0, 4) < 0) {
-        fprintf(stderr, "hd60s: cannot select bulk alt setting\n");
-        return -1;
+    memset(s, 0, sizeof *s);
+    s->win_start = s->last_poll = now_ms;
+    s->aspect_at = now_ms - ASPECT_POLL_MS;
+}
+
+void hd60s_policy_frame(struct hd60s_policy *s, int w, int h, int interlaced)
+{
+    s->run = s->frames && w == s->w && h == s->h && interlaced == s->interlaced ? s->run + 1 : 1;
+    s->w = w;
+    s->h = h;
+    s->interlaced = interlaced;
+    s->frames++;
+}
+
+void hd60s_policy_tick(struct hd60s *d, struct hd60s_parser *p, struct hd60s_policy *s, long now_ms)
+{
+    if (now_ms - s->aspect_at >= ASPECT_POLL_MS) {
+        s->aspect_at = now_ms;
+        p->wide = source_is_16x9(d);
     }
-    p->on_frame = on_frame_probe;
-    p->ctx = &s;
-    const struct tx_mode *mode = NULL;
-    struct tx_bus tb = tx_bus(d);
-    long win_start = now_ms(), last_poll = win_start;
-    for (int i = 0; i < NUM_XFERS; i++) {
-        xfers[i] = libusb_alloc_transfer(0);
-        libusb_fill_bulk_transfer(xfers[i], d->h, HD60S_EP_VIDEO, malloc(XFER_SIZE), XFER_SIZE,
-                                  on_xfer, &s, 1000);
-        if (libusb_submit_transfer(xfers[i]) == 0)
-            s.active++;
+    int sd = parser_is_sd(p->last_w, p->last_h);
+    if (sd >= 0 && sd != d->sd) {
+        colour_convert(d, sd, 0);
+        d->sd = sd;
     }
-    struct timespec ts;
-    clock_gettime(CLOCK_MONOTONIC, &ts);
-    time_t end = ts.tv_sec + (time_t)seconds;
-    time_t aspect_at = 0;
-    while (s.active) {
-        clock_gettime(CLOCK_MONOTONIC, &ts);
-        if (ts.tv_sec != aspect_at) {
-            aspect_at = ts.tv_sec;
-            p->wide = source_is_16x9(d);
-        }
-        if (*stop || (seconds > 0 && ts.tv_sec >= end)) {
-            *stop = 1;
-            for (int i = 0; i < NUM_XFERS; i++)
-                libusb_cancel_transfer(xfers[i]);
-        }
-        struct timeval tv = {0, 100000};
-        libusb_handle_events_timeout_completed(d->usb, &tv, NULL);
-        /* Not from the transfer callback: the sync control transfers need the event loop. */
-        int sd = parser_is_sd(p->last_w, p->last_h);
-        if (sd >= 0 && sd != d->sd) {
-            colour_convert(d, sd, 0);
-            d->sd = sd;
-        }
-        long now = now_ms();
-        if (now - win_start >= MODE_WINDOW_MS) {
-            double fps = s.frames * (s.interlaced ? 2000.0 : 1000.0) / (double)(now - win_start);
-            mode = s.frames && s.run * 4 >= s.frames * 3 ? tx_mode_find(s.w, s.h, s.interlaced, fps) : NULL;
-            s.frames = 0;
-            win_start = now;
-        }
-        if (!*stop && now - last_poll >= TX_POLL_MS) {
-            tx_poll(&d->tx, &tb, mode);
-            last_poll = now;
-        }
+    if (now_ms - s->win_start >= MODE_WINDOW_MS) {
+        double fps = s->frames * (s->interlaced ? 2000.0 : 1000.0) / (double)(now_ms - s->win_start);
+        s->mode = s->frames && s->run * 4 >= s->frames * 3 ? tx_mode_find(s->w, s->h, s->interlaced, fps) : NULL;
+        s->frames = 0;
+        s->win_start = now_ms;
     }
-    p->on_frame = s.frame_cb;
-    p->ctx = s.frame_ctx;
-    for (int i = 0; i < NUM_XFERS; i++) {
-        free(xfers[i]->buffer);
-        libusb_free_transfer(xfers[i]);
+    if (now_ms - s->last_poll >= TX_POLL_MS) {
+        struct tx_bus tb = tx_bus(d);
+        tx_poll(&d->tx, &tb, s->mode);
+        s->last_poll = now_ms;
     }
-    libusb_set_interface_alt_setting(d->h, 0, 0);
-    return 0;
 }

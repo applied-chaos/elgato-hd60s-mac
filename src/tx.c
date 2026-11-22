@@ -1,6 +1,5 @@
 #include "tx.h"
 
-#include <math.h>
 #include <string.h>
 
 enum { INIT_MARK = 0xb2, EDID_RETRY_POLLS = 8 };
@@ -21,7 +20,7 @@ const struct tx_mode *tx_mode_find(int width, int height, int interlaced, double
     const struct tx_mode *best = NULL;
     double bd = 3.0;
     for (size_t i = 0; i < sizeof modes / sizeof *modes; i++) {
-        double d = fabs(fps - modes[i].fps);
+        double d = fps > modes[i].fps ? fps - modes[i].fps : modes[i].fps - fps;
         if (modes[i].w == width && modes[i].h == height && modes[i].interlaced == !!interlaced && d <= bd) {
             best = &modes[i].m;
             bd = d;

@@ -73,7 +73,11 @@ final class DeviceSource: NSObject, CMIOExtensionDeviceSource {
             p.model = "Game Capture HD60 S"
         }
         if properties.contains(.deviceLinkedCoreAudioDeviceUID) {
+            #if DEXT
+            p.linkedCoreAudioDeviceUID = "net.mintopia.hd60s.dext.device"
+            #else
             p.linkedCoreAudioDeviceUID = "net.mintopia.hd60s.audio"
+            #endif
         }
         return p
     }
@@ -145,6 +149,24 @@ final class StreamSource: NSObject, CMIOExtensionStreamSource {
 
     func authorizedToStartStream(for client: CMIOExtensionClient) -> Bool { true }
 
+    #if DEXT
+    private let dextFrame = UnsafeMutablePointer<UInt8>.allocate(capacity: Int(DEXT_FRAME_BYTES))
+
+    func startStream() throws {
+        guard timer == nil else { return }
+        lastFrameNs.withLock { $0 = 0 }
+        restartTimer()
+    }
+
+    func stopStream() throws {
+        guard timer != nil else { return }
+        timer?.cancel()
+        timer = nil
+        dext_feed_close()
+        if let scaler { VTPixelTransferSessionInvalidate(scaler) }
+        scaler = nil
+    }
+    #else
     func startStream() throws {
         guard worker == nil else { return }
         stop.pointee = 0
@@ -157,16 +179,6 @@ final class StreamSource: NSObject, CMIOExtensionStreamSource {
         restartTimer()
     }
 
-    private func restartTimer() {
-        timer?.cancel()
-        let timer = DispatchSource.makeTimerSource(queue: DispatchQueue(label: "hd60s slate"))
-        let period = rate.withLock { $0.duration.seconds }
-        timer.schedule(deadline: .now(), repeating: .nanoseconds(Int(period * 1e9)), leeway: .milliseconds(1))
-        timer.setEventHandler { [unowned self] in tick() }
-        timer.resume()
-        self.timer = timer
-    }
-
     func stopStream() throws {
         guard worker != nil else { return }
         timer?.cancel()
@@ -177,6 +189,17 @@ final class StreamSource: NSObject, CMIOExtensionStreamSource {
         if let scaler { VTPixelTransferSessionInvalidate(scaler) }
         scaler = nil
         worker = nil
+    }
+    #endif
+
+    private func restartTimer() {
+        timer?.cancel()
+        let timer = DispatchSource.makeTimerSource(queue: DispatchQueue(label: "hd60s slate"))
+        let period = rate.withLock { $0.duration.seconds }
+        timer.schedule(deadline: .now(), repeating: .nanoseconds(Int(period * 1e9)), leeway: .milliseconds(1))
+        timer.setEventHandler { [unowned self] in tick() }
+        timer.resume()
+        self.timer = timer
     }
 
     // Reconnects every second so unplugging or a busy device doesn't end the stream.
@@ -193,7 +216,8 @@ final class StreamSource: NSObject, CMIOExtensionStreamSource {
             if hd60s_open(&d) == 0 && hd60s_start(&d) == 0 {
                 log.info("capture started")
                 parser_init(parser, buf, cap, { ctx, frame, w, h, interlaced in
-                    Unmanaged<StreamSource>.fromOpaque(ctx!).takeUnretainedValue().send(UnsafeMutablePointer(mutating: frame!), Int(w), Int(h), interlaced != 0)
+                    let me = Unmanaged<StreamSource>.fromOpaque(ctx!).takeUnretainedValue()
+                    me.send(UnsafeMutablePointer(mutating: frame!), Int(w), Int(h), interlaced != 0, wide: me.parser.pointee.wide != 0)
                 }, { _, pcm, len in audio_feed_push(pcm, len) }, ctx)
                 hd60s_stream(&d, parser, stop, 0)
             } else {
@@ -208,8 +232,8 @@ final class StreamSource: NSObject, CMIOExtensionStreamSource {
     }
 
     // Frames of any known mode are scaled into the 1080p output, aspect preserved; runts from a mode switch are dropped.
-    private func send(_ frame: UnsafeMutablePointer<UInt8>, _ w: Int, _ h: Int, _ interlaced: Bool) {
-        guard let r = fitRect(width: w, height: h, wide: parser.pointee.wide != 0) else { return }
+    private func send(_ frame: UnsafeMutablePointer<UInt8>, _ w: Int, _ h: Int, _ interlaced: Bool, wide: Bool) {
+        guard let r = fitRect(width: w, height: h, wide: wide) else { return }
         if interlaced { deint_frame(deinterlacer, frame, Int32(w), Int32(h)) }
         var pb: CVPixelBuffer?
         guard CVPixelBufferPoolCreatePixelBuffer(kCFAllocatorDefault, pool, &pb) == kCVReturnSuccess, let pb else { return }
@@ -260,14 +284,26 @@ final class StreamSource: NSObject, CMIOExtensionStreamSource {
     }
 
     private func tick() {
+        #if DEXT
+        var info = fr_frame()
+        if dext_feed_poll(dextFrame, Int(DEXT_FRAME_BYTES), &info) != 0 {
+            send(dextFrame, Int(info.width), Int(info.height), info.interlaced != 0, wide: info.wide != 0)
+        }
+        #endif
         if let slate, hostNs() &- lastFrameNs.withLock({ $0 }) > noFramesTimeoutNs {
             emit(slate)
         }
         ticks += 1
         if ticks % statsEveryTicks == 0 {
             // ponytail: unsynchronised reads of counters the capture thread writes; fine for logging.
+            #if DEXT
+            let p = dext_feed_counters()
+            let long_total = p.long_lines
+            log.info("parser: \(p.frames) frames, \(p.discarded) discarded, \(long_total) long lines kept, link \(p.link.rawValue), \(p.errors) errors")
+            #else
             let p = parser.pointee
             log.info("parser: \(p.frames) frames, \(p.discarded) discarded, \(p.long_total) long lines kept")
+            #endif
         }
     }
 

@@ -1,0 +1,31 @@
+#include "link.h"
+
+static enum link_action back_off(struct link *l, long now_ms)
+{
+    l->state = LINK_BACKOFF;
+    l->retry_at = now_ms + LINK_RETRY_MS;
+    l->failures++;
+    return LINK_TEAR_DOWN;
+}
+
+enum link_action link_step(struct link *l, enum link_event e, long now_ms)
+{
+    switch (l->state) {
+    case LINK_DOWN:
+    case LINK_BACKOFF:
+        if (e != LINK_TICK || (l->state == LINK_BACKOFF && now_ms < l->retry_at))
+            return LINK_NONE;
+        l->state = LINK_CONNECTING;
+        return LINK_BRING_UP;
+    case LINK_CONNECTING:
+        if (e == LINK_UP_OK) {
+            l->state = LINK_UP;
+            l->failures = 0;
+            return LINK_NONE;
+        }
+        return e == LINK_UP_FAILED ? back_off(l, now_ms) : LINK_NONE;
+    case LINK_UP:
+        return e == LINK_LOST ? back_off(l, now_ms) : LINK_NONE;
+    }
+    return LINK_NONE;
+}

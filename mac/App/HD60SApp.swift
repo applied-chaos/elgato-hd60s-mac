@@ -146,11 +146,15 @@ final class Installer: NSObject, ObservableObject, OSSystemExtensionRequestDeleg
     // One admin prompt; the extension request only follows if it succeeds, so a cancel changes nothing.
     func install() {
         installing = true
-        guard let source = bundledAudio?.path else { return status = .failed("The audio plug-in is missing from the app.") }
-        runAsAdmin(AudioPlugin.installScript(source: source)) {
+        let activate = {
             self.dext.activate()
             self.submit(.activationRequest(forExtensionWithIdentifier: extensionID, queue: .main))
         }
+        if dext.bundled {
+            return audio == .notInstalled ? activate() : runAsAdmin(AudioPlugin.uninstallScript(), then: activate)
+        }
+        guard let source = bundledAudio?.path else { return status = .failed("The audio plug-in is missing from the app.") }
+        runAsAdmin(AudioPlugin.installScript(source: source), then: activate)
     }
 
     func uninstall() {
@@ -257,7 +261,9 @@ struct HD60SApp: App {
                         Text(status.title).font(.text(16, .semibold)).foregroundStyle(Color.ink)
                         Text(status.detail).font(.text(13)).foregroundStyle(Color.neutral)
                             .lineLimit(3)
-                        Text("Audio plug-in: \(installer.audio.label)").font(.text(13)).foregroundStyle(Color.neutral)
+                        if !dext.bundled {
+                            Text("Audio plug-in: \(installer.audio.label)").font(.text(13)).foregroundStyle(Color.neutral)
+                        }
                         if let label = dext.status.label {
                             Text("Driver extension: \(label)").font(.text(13)).foregroundStyle(Color.neutral)
                         }

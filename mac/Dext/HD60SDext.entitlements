@@ -4,7 +4,18 @@
 <dict>
 	<key>com.apple.developer.driverkit</key>
 	<true/>
+	<key>com.apple.developer.driverkit.allow-any-userclient-access</key>
+	<true/>
 	<key>com.apple.developer.driverkit.family.audio</key>
 	<true/>
+	<key>com.apple.developer.driverkit.transport.usb</key>
+	<array>
+		<dict>
+			<key>idProduct</key>
+			<integer>116</integer>
+			<key>idVendor</key>
+			<integer>4057</integer>
+		</dict>
+	</array>
 </dict>
 </plist>

@@ -1,7 +1,7 @@
 #include "ring.h"
 
+#include <TargetConditionals.h>
 #include <stdatomic.h>
-#include <stdlib.h>
 #include <string.h>
 
 struct ring {
@@ -11,18 +11,30 @@ struct ring {
     int16_t pcm[];
 };
 
+size_t ring_bytes(size_t frames) { return sizeof(struct ring) + frames * 2 * sizeof(int16_t); }
+
+struct ring *ring_init(void *mem, size_t frames)
+{
+    struct ring *r = mem;
+    memset(r, 0, ring_bytes(frames));
+    r->cap = frames;
+    return r;
+}
+
+#if !TARGET_OS_DRIVERKIT
+#include <stdlib.h>
+
 struct ring *ring_create(size_t frames)
 {
-    struct ring *r = calloc(1, sizeof *r + frames * 2 * sizeof(int16_t));
-    if (r)
-        r->cap = frames;
-    return r;
+    void *m = malloc(ring_bytes(frames));
+    return m ? ring_init(m, frames) : NULL;
 }
 
 void ring_free(struct ring *r)
 {
     free(r);
 }
+#endif
 
 void ring_push(struct ring *r, const int16_t *pcm, size_t frames)
 {

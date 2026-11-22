@@ -1,0 +1,14 @@
+#ifndef HD60SUserClient_h
+#define HD60SUserClient_h
+
+#include <DriverKit/IOUserClient.iig>
+
+class HD60SUserClient : public IOUserClient
+{
+public:
+    virtual kern_return_t Start(IOService *provider) override;
+    virtual kern_return_t Stop(IOService *provider) override;
+    virtual kern_return_t CopyClientMemoryForType(uint64_t type, uint64_t *options, IOMemoryDescriptor **memory) override;
+};
+
+#endif
