@@ -386,6 +386,7 @@ void IMPL(HD60SDriver, PolicyOccurred)
     }
     if (iv->link.state == LINK_UP) hd60s_policy_tick(&iv->dev, &iv->parser, &iv->policy, static_cast<long>(nowMs(iv)));
     fr_status(iv->frames, iv->link.state, iv->parser.frames, iv->parser.discarded, iv->parser.long_total, iv->link.failures);
+    fr_device(iv->frames, iv->dev.mcu_version, iv->dev.sd, iv->parser.top_first);
     iv->policyTimer->WakeAtTime(kIOTimerClockMachAbsoluteTime, mach_absolute_time() + kPolicyMs * iv->msTicks, 0);
 }
 

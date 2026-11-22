@@ -28,6 +28,7 @@ struct hd60s_parser {
     int frame_bad;
     unsigned long frames, discarded, long_total;
     int last_w, last_h; /* size of the last frame emitted */
+    int top_first;      /* last interlaced frame was an even (F=0) field then an odd one; 0 for progressive */
     int wide;           /* source AVI InfoFrame flags 16:9; set by hd60s_stream, about once a second */
 };
 

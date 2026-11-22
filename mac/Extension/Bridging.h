@@ -2,3 +2,4 @@
 #include "parser.h"
 #include "deinterlace.h"
 #include "AudioFeed.h"
+#include "status.h"

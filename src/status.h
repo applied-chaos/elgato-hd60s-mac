@@ -2,6 +2,7 @@
 #define HD60S_STATUS_H
 
 #include <stdint.h>
+#include <signal.h>
 #include <stdio.h>
 
 enum hd60s_speed { SPEED_UNKNOWN, SPEED_LOW, SPEED_FULL, SPEED_HIGH, SPEED_SUPER, SPEED_SUPER_PLUS };
@@ -10,7 +11,7 @@ enum hd60s_owner { OWNER_NONE, OWNER_CLI, OWNER_CAMERA, OWNER_DRIVER, OWNER_OTHE
 enum hd60s_signal { SIGNAL_UNKNOWN, SIGNAL_NONE, SIGNAL_ACTIVE };
 enum hd60s_field_order { FIELD_NONE, FIELD_TOP_FIRST };
 enum hd60s_colour { COLOUR_UNKNOWN, COLOUR_BT709, COLOUR_BT601 };
-enum hd60s_warning { WARN_NO_DEVICE, WARN_NOT_SUPERSPEED, WARN_BUSY, WARN_OPEN_FAILED, WARN_FIRMWARE };
+enum hd60s_warning { WARN_NO_DEVICE, WARN_NOT_SUPERSPEED, WARN_BUSY, WARN_OPEN_FAILED };
 
 /* MCU versions seen on working devices (b0<<16 | b1<<8 | b2). */
 extern const uint32_t HD60S_KNOWN_MCU[];
@@ -44,6 +45,8 @@ enum hd60s_owner hd60s_owner_from_path(const char *exe_path);
 int hd60s_parse_owner_pid(const char *usb_exclusive_owner, int *pid);
 int hd60s_size_standard(int width, int height);
 
+/* Firmware read but not in the known list: informational, not a warning. */
+int hd60s_firmware_untested(const struct hd60s_status *s);
 uint32_t hd60s_warnings(const struct hd60s_status *s); /* bit per enum hd60s_warning */
 void hd60s_warning_message(enum hd60s_warning w, const struct hd60s_status *s, char *buf, size_t n);
 const char *hd60s_warning_code(enum hd60s_warning w);
@@ -53,5 +56,8 @@ void hd60s_print_json(const struct hd60s_status *s, FILE *out);
 
 /* Fills presence, speed, port and owner without opening the device. */
 void hd60s_probe_usb(struct hd60s_status *s);
+
+/* Probes, then opens the device and watches the stream for `seconds` (device must be free). */
+void hd60s_sample(struct hd60s_status *out, double seconds, volatile sig_atomic_t *stop);
 
 #endif

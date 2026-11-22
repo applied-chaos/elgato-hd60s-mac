@@ -10,6 +10,7 @@ private let width = Int32(outputWidth)
 private let height = Int32(outputHeight)
 private let noFramesTimeoutNs: UInt64 = 200_000_000
 private let statsEveryTicks = 600
+private let publishIntervalNs: UInt64 = 1_000_000_000
 private let log = Logger(subsystem: "net.mintopia.hd60s.camera", category: "capture")
 
 final class ProviderSource: NSObject, CMIOExtensionProviderSource {
@@ -100,6 +101,9 @@ final class StreamSource: NSObject, CMIOExtensionStreamSource {
     private var timer: DispatchSourceTimer?
     private var ticks = 0
     private var scaler: VTPixelTransferSession?
+    private let statusOut = StatusPublisher()
+    private var lastPublishNs: UInt64 = 0
+    private var device: UnsafeMutablePointer<hd60s>?
 
     override init() {
         var desc: CMFormatDescription?
@@ -147,7 +151,10 @@ final class StreamSource: NSObject, CMIOExtensionStreamSource {
         if timer != nil { restartTimer() }
     }
 
-    func authorizedToStartStream(for client: CMIOExtensionClient) -> Bool { true }
+    func authorizedToStartStream(for client: CMIOExtensionClient) -> Bool {
+        statusOut.setClient(pid: client.pid, signingID: client.signingID)
+        return true
+    }
 
     #if DEXT
     private let dextFrame = UnsafeMutablePointer<UInt8>.allocate(capacity: Int(DEXT_FRAME_BYTES))
@@ -163,6 +170,7 @@ final class StreamSource: NSObject, CMIOExtensionStreamSource {
         timer?.cancel()
         timer = nil
         dext_feed_close()
+        statusOut.clear()
         if let scaler { VTPixelTransferSessionInvalidate(scaler) }
         scaler = nil
     }
@@ -186,6 +194,7 @@ final class StreamSource: NSObject, CMIOExtensionStreamSource {
         stop.pointee = 1
         finished.wait()
         audio_feed_stop()
+        statusOut.clear()
         if let scaler { VTPixelTransferSessionInvalidate(scaler) }
         scaler = nil
         worker = nil
@@ -215,11 +224,19 @@ final class StreamSource: NSObject, CMIOExtensionStreamSource {
             var d = hd60s()
             if hd60s_open(&d) == 0 && hd60s_start(&d) == 0 {
                 log.info("capture started")
+                statusOut.setFirmware(d.mcu_version)
                 parser_init(parser, buf, cap, { ctx, frame, w, h, interlaced in
                     let me = Unmanaged<StreamSource>.fromOpaque(ctx!).takeUnretainedValue()
+                    me.statusOut.frame(width: Int(w), height: Int(h), interlaced: interlaced != 0,
+                                       topFirst: me.parser.pointee.top_first != 0, sd: (me.device?.pointee.sd ?? 0) != 0,
+                                       nowNs: me.hostNs())
                     me.send(UnsafeMutablePointer(mutating: frame!), Int(w), Int(h), interlaced != 0, wide: me.parser.pointee.wide != 0)
                 }, { _, pcm, len in audio_feed_push(pcm, len) }, ctx)
-                hd60s_stream(&d, parser, stop, 0)
+                withUnsafeMutablePointer(to: &d) { dp in
+                    device = dp
+                    hd60s_stream(dp, parser, stop, 0)
+                    device = nil
+                }
             } else {
                 log.error("device open failed")
             }
@@ -287,6 +304,10 @@ final class StreamSource: NSObject, CMIOExtensionStreamSource {
         #if DEXT
         var info = fr_frame()
         if dext_feed_poll(dextFrame, Int(DEXT_FRAME_BYTES), &info) != 0 {
+            let c = dext_feed_counters()
+            statusOut.frame(width: Int(info.width), height: Int(info.height), interlaced: info.interlaced != 0,
+                            topFirst: c.top_first != 0, sd: c.sd != 0, nowNs: hostNs())
+            statusOut.setFirmware(c.mcu_version)
             send(dextFrame, Int(info.width), Int(info.height), info.interlaced != 0, wide: info.wide != 0)
         }
         #endif
@@ -294,6 +315,7 @@ final class StreamSource: NSObject, CMIOExtensionStreamSource {
             emit(slate)
         }
         ticks += 1
+        publishStatus()
         if ticks % statsEveryTicks == 0 {
             // ponytail: unsynchronised reads of counters the capture thread writes; fine for logging.
             #if DEXT
@@ -305,6 +327,19 @@ final class StreamSource: NSObject, CMIOExtensionStreamSource {
             log.info("parser: \(p.frames) frames, \(p.discarded) discarded, \(p.long_total) long lines kept")
             #endif
         }
+    }
+
+    private func publishStatus() {
+        let now = hostNs()
+        guard now &- lastPublishNs >= publishIntervalNs else { return }
+        lastPublishNs = now
+        #if DEXT
+        let p = dext_feed_counters()
+        statusOut.publish(frames: UInt(p.frames), discarded: UInt(p.discarded), longLines: UInt(p.long_lines), nowNs: now)
+        #else
+        let p = parser.pointee
+        statusOut.publish(frames: p.frames, discarded: p.discarded, longLines: UInt(p.long_total), nowNs: now)
+        #endif
     }
 
     private func makeSlate() -> CVPixelBuffer? {

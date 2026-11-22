@@ -4,5 +4,9 @@
 <dict>
 	<key>com.apple.developer.system-extension.install</key>
 	<true/>
+	<key>com.apple.security.application-groups</key>
+	<array>
+		<string>$(TeamIdentifierPrefix)net.mintopia.hd60s</string>
+	</array>
 </dict>
 </plist>

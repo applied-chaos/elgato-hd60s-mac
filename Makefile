@@ -20,8 +20,8 @@ build/libUB530.dylib:
 build/ub530_tables.h: tools/extract-tables.py build/libUB530.dylib
 	python3 -I tools/extract-tables.py build/libUB530.dylib > $@.tmp && mv $@.tmp $@
 
-build/hd60s: src/main.c src/device.c src/device_libusb.c src/device_libusb.h src/parser.c src/tx.c src/status.c src/status_probe.c src/device.h src/parser.h src/tx.h src/status.h build/ub530_tables.h
-	$(CC) $(CFLAGS) -o $@ src/main.c src/device.c src/device_libusb.c src/parser.c src/tx.c src/status.c src/status_probe.c $(LDLIBS) -framework IOKit -framework CoreFoundation
+build/hd60s: src/main.c src/device.c src/device_libusb.c src/device_libusb.h src/parser.c src/tx.c src/status.c src/status_probe.c src/status_sample.c src/device.h src/parser.h src/tx.h src/status.h build/ub530_tables.h
+	$(CC) $(CFLAGS) -o $@ src/main.c src/device.c src/device_libusb.c src/parser.c src/tx.c src/status.c src/status_probe.c src/status_sample.c $(LDLIBS) -framework IOKit -framework CoreFoundation
 
 build/test_parser: tests/test_parser.c src/parser.c src/parser.h
 	@mkdir -p build
@@ -98,11 +98,15 @@ build/test_plugin: tests/test_plugin.c mac/Audio/HD60SAudio.c
 	@mkdir -p build
 	$(CC) $(CFLAGS) -Wno-four-char-constants -fsanitize=address,undefined -o $@ tests/test_plugin.c -framework CoreFoundation
 
+build/test_status_view: tests/test_status_view.swift mac/App/StatusModel.swift
+	@mkdir -p build
+	swiftc -parse-as-library -o $@ mac/App/StatusModel.swift tests/test_status_view.swift
+
 build/test_frame_fit: tests/test_frame_fit.swift mac/Extension/FrameFit.swift
 	@mkdir -p build
 	swiftc -parse-as-library -o $@ mac/Extension/FrameFit.swift tests/test_frame_fit.swift
 
-test: build/test_parser build/test_device build/test_framering build/test_link build/test_tx build/test_deinterlace build/test_ring build/test_status build/test_plugin build/test_audio_plugin build/test_frame_fit build/test_frame_rates
+test: build/test_parser build/test_device build/test_framering build/test_link build/test_tx build/test_deinterlace build/test_ring build/test_status build/test_plugin build/test_audio_plugin build/test_frame_fit build/test_frame_rates build/test_status_view
 	build/test_parser
 	build/test_device
 	build/test_framering
@@ -115,6 +119,7 @@ test: build/test_parser build/test_device build/test_framering build/test_link b
 	build/test_audio_plugin
 	build/test_frame_fit
 	build/test_frame_rates
+	build/test_status_view
 
 clean:
 	rm -rf build

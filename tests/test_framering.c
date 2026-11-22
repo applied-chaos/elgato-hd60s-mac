@@ -25,6 +25,8 @@ static void publish_then_take_newest_only(struct fr_header *h)
     assert(seq == 2 && out[0] == 2 && out[sizeof frame - 1] == 2);
     assert(info.width == 64 && info.height == 4 && info.interlaced == 1 && info.wide == 0 && info.len == sizeof frame);
     assert(fr_take(h, seq, out, sizeof out, &info) == 0);
+    struct fr_frame head = {0};
+    assert(fr_latest(h, &head) == seq && head.width == 64 && head.height == 4 && head.interlaced == 1);
 }
 
 static void rejects_torn_and_oversized(struct fr_header *h)
@@ -57,6 +59,9 @@ static void status_reaches_the_reader(struct fr_header *h)
     fr_status(h, LINK_UP, 10, 2, 3, 1);
     struct fr_counters c = fr_counters(h);
     assert(c.link == LINK_UP && c.frames == 10 && c.discarded == 2 && c.long_lines == 3 && c.errors == 1);
+    fr_device(h, 0x110311, 1, 1);
+    c = fr_counters(h);
+    assert(c.mcu_version == 0x110311 && c.sd == 1 && c.top_first == 1 && c.frames == 10);
 }
 
 struct stress {

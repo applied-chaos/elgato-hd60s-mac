@@ -82,6 +82,7 @@ static void end_active(struct hd60s_parser *p)
     if (p->capturing && complete) {
         if (!p->frame_bad && p->lines > 0) {
             p->frames++;
+            p->top_first = p->interlaced && (p->fields & 3) == 1;
             p->last_w = (int)(p->stride / 2);
             p->last_h = p->lines;
             p->on_frame(p->ctx, p->buf, (int)(p->stride / 2), p->lines, p->interlaced);

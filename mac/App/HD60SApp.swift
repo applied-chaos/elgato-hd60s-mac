@@ -3,6 +3,9 @@ import CoreText
 import SystemExtensions
 
 private let extensionID = "net.mintopia.hd60s.camera"
+let appName = "Elgato HD60 S"
+private let repoURL = URL(string: "https://github.com/applied-chaos/elgato-hd60s-mac")!
+private let siteURL = URL(string: "https://appliedentropy.dev")!
 
 enum Status: Equatable {
     case notInstalled, working, needsApproval, installed, needsRestart, cancelled, failed(String)
@@ -47,12 +50,7 @@ enum Status: Equatable {
         }
     }
 
-    var canUninstall: Bool {
-        switch self {
-        case .needsApproval, .installed, .cancelled, .failed: true
-        case .notInstalled, .working, .needsRestart: false
-        }
-    }
+    var offersUninstall: Bool { self == .installed || self == .needsApproval }
 
     static func preview(_ name: String) -> Status? {
         switch name {
@@ -79,6 +77,13 @@ extension Color {
     static let border = Color(hex: 0xD1D5DB)
     static let neutral = Color(hex: 0x6B7280)
     static let cyan = Color(hex: 0x06B6D4)
+    static let hairline = Color(hex: 0xE5E7EB)
+    static let amber = Color(hex: 0xB45309)
+    static let link = Color(hex: 0x0E7490)
+    static let linkUnderline = Color(hex: 0xA5F3FC)
+    static let ok = Color(hex: 0x4ADE80)
+    static let warn = Color(hex: 0xFBBF24)
+    static let bad = Color(hex: 0xF87171)
 }
 
 extension Font {
@@ -214,19 +219,267 @@ final class Installer: NSObject, ObservableObject, OSSystemExtensionRequestDeleg
     }
 }
 
-@main
-struct HD60SApp: App {
+enum Tab { case install, status }
+
+// The hidden title bar still takes this much of the window, so designed offsets from the top are reduced by it.
+private let titleBarHeight: CGFloat = 32
+
+private let rainbow = LinearGradient(colors: [0xC21CF0, 0xFF2D8A, 0xFF5A2D, 0xFF9A00, 0xFFE000, 0x3EE05A, 0x00C8FF, 0x3D5AFE, 0x8E2DE2].map { Color(hex: $0) },
+                                     startPoint: .leading, endPoint: .trailing)
+
+extension StatusView.Dot {
+    var colour: Color {
+        switch self {
+        case .ok: .ok
+        case .warn: .warn
+        case .bad: .bad
+        }
+    }
+}
+
+struct TabSwitch: View {
+    @Binding var selection: Tab
+
+    var body: some View {
+        HStack(spacing: 2) {
+            ForEach([(Tab.install, "Install"), (Tab.status, "Status")], id: \.1) { tab, label in
+                Button { selection = tab } label: {
+                    Text(label).font(.text(13, .semibold))
+                        .foregroundStyle(selection == tab ? Color.ink : Color.muted)
+                        .padding(.horizontal, 14).frame(height: 28)
+                        .background(selection == tab ? Color.cyan : .clear, in: RoundedRectangle(cornerRadius: 7))
+                        .contentShape(RoundedRectangle(cornerRadius: 7))
+                }
+                .buttonStyle(.plain)
+                .accessibilityAddTraits(selection == tab ? .isSelected : [])
+            }
+        }
+        .padding(3)
+        .background(Color.canvas.opacity(0.08), in: RoundedRectangle(cornerRadius: 10))
+    }
+}
+
+struct StateBlock: View {
+    let dot: Color
+    let title: String
+    let detail: String
+    var extra: [String] = []
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 12) {
+            Circle().fill(dot).frame(width: 10, height: 10).padding(.top, 6)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(title).font(.text(16, .semibold)).foregroundStyle(Color.ink)
+                Text(detail).font(.text(13)).foregroundStyle(Color.neutral).frame(maxWidth: 452, alignment: .leading)
+                ForEach(extra, id: \.self) { Text($0).font(.text(13)).foregroundStyle(Color.neutral) }
+            }
+            .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 0)
+        }
+        .accessibilityElement(children: .combine)
+    }
+}
+
+struct FactsColumn: View {
+    let heading: String
+    let rows: [StatusView.Row]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(heading).font(.text(13, .semibold)).foregroundStyle(Color.ink)
+            Grid(alignment: .leading, horizontalSpacing: 14, verticalSpacing: 6) {
+                ForEach(rows, id: \.label) { row in
+                    GridRow {
+                        Text(row.label).foregroundStyle(Color.neutral)
+                        Text(row.value).monospacedDigit()
+                            .foregroundStyle(row.flag ? Color.amber : Color.ink)
+                            .fontWeight(row.flag ? .semibold : .regular)
+                    }
+                    .font(.text(13))
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .topLeading)
+    }
+}
+
+struct StatusTab: View {
+    @ObservedObject var poller: StatusPoller
+
+    var body: some View {
+        if let v = poller.view {
+            StateBlock(dot: v.dot.colour, title: v.title, detail: v.detail)
+            if !v.connection.isEmpty {
+                HStack(alignment: .top, spacing: 32) {
+                    if !v.input.isEmpty { FactsColumn(heading: "Input", rows: v.input) }
+                    FactsColumn(heading: "Connection", rows: v.connection)
+                }
+                .padding(.top, 28)
+            }
+        } else {
+            StateBlock(dot: .neutral, title: "Checking", detail: "Looking for the HD60 S.")
+        }
+    }
+}
+
+struct InstallTab: View {
+    @ObservedObject var installer: Installer
+    @ObservedObject var dext: DextInstaller
+
+    private var audioDiffers: Bool { installer.audio != (installer.status == .installed ? .installed : .notInstalled) }
+
+    var body: some View {
+        let status = installer.status
+        var extra: [String] = []
+        if !dext.bundled && audioDiffers { extra.append("Audio plug-in: \(installer.audio.label)") }
+        if let label = dext.status.label { extra.append("Driver extension: \(label)") }
+        return VStack(alignment: .leading, spacing: 0) {
+            StateBlock(dot: status.colour, title: status.title, detail: status.detail, extra: extra)
+            Group {
+                if status.offersUninstall {
+                    Button("Uninstall", action: installer.uninstall).buttonStyle(BrandButton(primary: false))
+                } else {
+                    Button("Install", action: installer.install).buttonStyle(BrandButton(primary: true))
+                        .keyboardShortcut(.defaultAction).disabled(!status.canInstall)
+                }
+            }
+            .padding(.top, 24).padding(.leading, 22)
+        }
+    }
+}
+
+struct MainWindow: View {
     @StateObject private var installer = Installer.shared
     @StateObject private var dext = Installer.shared.dext
+    @StateObject private var poller = StatusPoller(preview: HD60SApp.launchArguments.value(after: "--preview-facts").flatMap(PreviewFacts.init))
+    @State private var tab = Tab.install
+    @State private var chosen = HD60SApp.launchArguments.value(after: "--preview-tab") != nil
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(alignment: .center, spacing: 18) {
+                Image("Mark").resizable().scaledToFit().frame(width: 44, height: 53)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(appName).font(.display(28)).tracking(-0.7).foregroundStyle(Color.canvas).frame(height: 31)
+                    Text("Camera and microphone for your Mac").font(.text(13)).foregroundStyle(Color.muted).frame(height: 16)
+                }
+                Spacer(minLength: 0)
+            }
+            .overlay(alignment: .bottomTrailing) {
+                TabSwitch(selection: Binding(get: { tab }, set: { tab = $0; chosen = true }))
+            }
+            .padding(.horizontal, 36).padding(.top, 44 - titleBarHeight).padding(.bottom, 26)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .frame(height: 44 - titleBarHeight + 53 + 26)
+            .background(Color.ink.ignoresSafeArea(edges: .top))
+            rainbow.frame(height: 2)
+
+            VStack(alignment: .leading, spacing: 0) {
+                switch tab {
+                case .install: InstallTab(installer: installer, dext: dext)
+                case .status: StatusTab(poller: poller)
+                }
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 36).padding(.top, 28)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+
+            Rectangle().fill(Color.hairline).frame(height: 1)
+            HStack(spacing: 8) {
+                Image("MarkSmall").resizable().scaledToFit().frame(height: 18)
+                Text("An Applied Entropy project").font(.text(12)).foregroundStyle(Color.neutral)
+            }
+            .padding(.horizontal, 36).frame(height: 47)
+        }
+        .frame(width: 560, height: 460 - titleBarHeight, alignment: .topLeading)
+        .background(Color.canvas)
+        .preferredColorScheme(.light)
+        .onAppear {
+            if let name = HD60SApp.launchArguments.value(after: "--preview-tab") { tab = name == "status" ? .status : .install }
+            if tab == .status { poller.start() }
+        }
+        .onDisappear { poller.stop() }
+        .onChange(of: tab) { _, new in new == .status ? poller.start() : poller.stop() }
+        .onChange(of: installer.status) { _, new in
+            if !chosen, new != .working { tab = new == .installed ? .status : .install }
+        }
+    }
+}
+
+struct AboutWindow: View {
+    @StateObject private var dext = DextInstaller()
+
+    private var version: String {
+        let info = Bundle.main.infoDictionary
+        return "Version \(info?["CFBundleShortVersionString"] as? String ?? "0") (\(info?["CFBundleVersion"] as? String ?? "0"))"
+    }
+
+    private var description: String {
+        let dextBuild = HD60SApp.launchArguments.value(after: "--preview-flavour").map { $0 == "dext" } ?? dext.bundled
+        return dextBuild ? "DriverKit development build for\nthe HD60 S on Apple silicon Macs." : "Userspace driver for the\nHD60 S on Apple silicon Macs."
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            VStack(spacing: 0) {
+                Image("Mark").resizable().scaledToFit().frame(width: 64, height: 77)
+                Text(appName).font(.display(24)).tracking(-0.6).foregroundStyle(Color.canvas).padding(.top, 16)
+                Text(version).font(.text(13)).monospacedDigit().foregroundStyle(Color.muted).padding(.top, 6)
+            }
+            .padding(.horizontal, 24).padding(.top, 48 - titleBarHeight).padding(.bottom, 26)
+            .frame(maxWidth: .infinity)
+            .background(Color.ink.ignoresSafeArea(edges: .top))
+            rainbow.frame(height: 2)
+            VStack(spacing: 0) {
+                Text(description).font(.text(13)).foregroundStyle(Color.ink).lineSpacing(2.5).fixedSize(horizontal: false, vertical: true).padding(.bottom, 18.5)
+                VStack(spacing: 2) {
+                    AboutLink("An Applied Entropy project", siteURL).frame(height: 18)
+                    HStack(spacing: 3.5) {
+                        Text("MIT licence ·")
+                        AboutLink("Source on GitHub", repoURL)
+                    }
+                    .frame(height: 18)
+                    Text("Not affiliated with Elgato or Corsair.").frame(height: 18)
+                }
+                .font(.text(12)).foregroundStyle(Color.neutral)
+            }
+            .multilineTextAlignment(.center)
+            .padding(.horizontal, 28).padding(.vertical, 24)
+        }
+        .frame(width: 320)
+        .background(Color.canvas)
+        .preferredColorScheme(.light)
+    }
+}
+
+struct AboutLink: View {
+    let label: String
+    let url: URL
+    init(_ label: String, _ url: URL) { (self.label, self.url) = (label, url) }
+
+    var body: some View {
+        Link(destination: url) {
+            Text(label).font(.text(12)).foregroundStyle(Color.link)
+                .padding(.bottom, 1)
+                .overlay(alignment: .bottom) { Rectangle().fill(Color.linkUnderline).frame(height: 1) }
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+@main
+struct HD60SApp: App {
+    static let launchArguments = LaunchArguments(CommandLine.arguments)
+    @Environment(\.openWindow) private var openWindow
 
     init() {
-        let args = CommandLine.arguments
+        let args = Self.launchArguments
         for name in ["RedHatDisplay", "RedHatText"] {
             if let url = Bundle.main.url(forResource: name, withExtension: "ttf") {
                 CTFontManagerRegisterFontsForURL(url as CFURL, .process, nil)
             }
         }
-        if let i = args.firstIndex(of: "--preview-state"), i + 1 < args.count, let s = Status.preview(args[i + 1]) {
+        if let s = args.value(after: "--preview-state").flatMap(Status.preview) {
             Installer.shared.status = s
         } else if args.contains("--install") {
             Installer.shared.install()
@@ -236,65 +489,27 @@ struct HD60SApp: App {
     }
 
     var body: some Scene {
-        WindowGroup("HD60 S Camera") {
-            VStack(alignment: .leading, spacing: 0) {
-                HStack(spacing: 20) {
-                    Image("Mark").resizable().scaledToFit().frame(width: 56, height: 56 * 1.2)
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("HD60 S Camera").font(.display(30)).tracking(-0.7).foregroundStyle(Color.canvas)
-                        Text("Use your Elgato HD60 S as a camera and microphone.")
-                            .font(.text(14)).foregroundStyle(Color.muted)
-                    }
-                }
-                .padding(.horizontal, 36).padding(.top, 44).padding(.bottom, 30)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(Color.ink)
-                LinearGradient(colors: [0xC21CF0, 0xFF2D8A, 0xFF5A2D, 0xFF9A00, 0xFFE000, 0x3EE05A, 0x00C8FF, 0x3D5AFE, 0x8E2DE2].map { Color(hex: $0) },
-                               startPoint: .leading, endPoint: .trailing)
-                    .frame(height: 2).padding(.bottom, 28)
-
-                VStack(alignment: .leading, spacing: 0) {
-                let status = installer.status
-                HStack(alignment: .top, spacing: 12) {
-                    Circle().fill(status.colour).frame(width: 10, height: 10).padding(.top, 5)
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(status.title).font(.text(16, .semibold)).foregroundStyle(Color.ink)
-                        Text(status.detail).font(.text(13)).foregroundStyle(Color.neutral)
-                            .lineLimit(3)
-                        if !dext.bundled {
-                            Text("Audio plug-in: \(installer.audio.label)").font(.text(13)).foregroundStyle(Color.neutral)
-                        }
-                        if let label = dext.status.label {
-                            Text("Driver extension: \(label)").font(.text(13)).foregroundStyle(Color.neutral)
-                        }
-                    }
-                    Spacer(minLength: 0)
-                }
-                .padding(.vertical, 2)
-                .frame(maxWidth: .infinity, minHeight: 100, maxHeight: 100, alignment: .topLeading)
-                .accessibilityElement(children: .combine)
-
-                HStack(spacing: 12) {
-                    Button("Install", action: installer.install).buttonStyle(BrandButton(primary: true))
-                        .keyboardShortcut(.defaultAction).disabled(!status.canInstall)
-                    Button("Uninstall", action: installer.uninstall).buttonStyle(BrandButton(primary: false))
-                        .disabled(!(status.canUninstall || installer.audio != .notInstalled))
-                }
-                .padding(.top, 22)
-
-                Spacer(minLength: 0)
-                HStack(spacing: 8) {
-                    Image("MarkSmall").resizable().scaledToFit().frame(height: 18)
-                    Text("An Applied Entropy project").font(.text(12)).foregroundStyle(Color.neutral)
-                }
-                }
-                .padding(.horizontal, 36).padding(.bottom, 28)
+        WindowGroup(appName) {
+            MainWindow().onAppear {
+                if Self.launchArguments.contains("--preview-about") { openWindow(id: "about") }
             }
-            .frame(width: 560, height: 420, alignment: .topLeading)
-            .background(Color.canvas)
-            .preferredColorScheme(.light)
         }
         .windowStyle(.hiddenTitleBar)
         .windowResizability(.contentSize)
+        .commands {
+            CommandGroup(replacing: .appInfo) {
+                Button("About \(appName)") { openWindow(id: "about") }
+            }
+        }
+        Window("About \(appName)", id: "about") { AboutWindow() }
+            .windowStyle(.hiddenTitleBar)
+            .windowResizability(.contentSize)
     }
+}
+
+struct LaunchArguments {
+    let all: [String]
+    init(_ all: [String]) { self.all = all }
+    func contains(_ flag: String) -> Bool { all.contains(flag) }
+    func value(after flag: String) -> String? { all.firstIndex(of: flag).flatMap { $0 + 1 < all.count ? all[$0 + 1] : nil } }
 }

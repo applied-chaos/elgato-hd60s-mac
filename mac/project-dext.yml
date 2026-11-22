@@ -2,8 +2,15 @@ name: HD60SDev
 include: [project.yml]  # arrays append, so only the extra dependency is listed
 targets:
   HD60S:
+    sources:
+      - ExtensionDext/DextFeed.c
+      - path: ../src/framering.c
+      - path: ../src/link.c
     dependencies:
       - target: net.mintopia.hd60s.dext
+    settings:
+      SWIFT_ACTIVE_COMPILATION_CONDITIONS: DEXT
+      GCC_PREPROCESSOR_DEFINITIONS: [HD60S_DEXT=1]
   net.mintopia.hd60s.camera:
     sources:
       - ExtensionDext
