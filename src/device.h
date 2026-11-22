@@ -10,6 +10,8 @@
 #define HD60S_VID 0x0fd9
 #define HD60S_PID 0x0074
 #define HD60S_EP_VIDEO 0x83
+#define HD60S_EP_WATCH 0x81
+#define HD60S_IF_WATCH 1
 
 /* Transport seam: libusb on the Mac, IOUSBHostInterface in the driver extension. */
 struct hd60s_usb {
@@ -57,11 +59,13 @@ struct hd60s {
     struct tx tx;          /* HDMI-out transmitter state */
     struct audio_settings audio;
     int audio_routed_dvi;
+    int watching;          /* firmware I2C watch program is uploaded */
+    int watch_suspended;
 };
 
 /* Periodic work while streaming: aspect, colour matrix, HDMI-out mode. */
 struct hd60s_policy {
-    long win_start, last_poll, aspect_at;
+    long win_start, last_poll, aspect_at, settle_until;
     struct hd60s_source src;
     int w, h, interlaced, frames, run; /* frame size must hold for 3/4 of the window's frames */
     const struct tx_mode *mode;
@@ -74,6 +78,13 @@ int hd60s_start(struct hd60s *d);
 void hd60s_stop(struct hd60s *d);
 /* Gain is clamped to +-12 dB. Sent now if started, otherwise at hd60s_start. 0, or -1 on a transport error. */
 int hd60s_set_audio(struct hd60s *d, const struct audio_settings *s);
+
+/* Elgato's I2C watch program (10 entries, byte for byte). 0, or < 0 if the upload failed (polling continues). */
+int hd60s_watch_start(struct hd60s *d);
+/* Disables the program. Safe to repeat. */
+void hd60s_watch_stop(struct hd60s *d);
+/* The firmware saw a watched value change: poll now and at the fast rate for a while. */
+void hd60s_policy_wake(struct hd60s_policy *s, long now_ms);
 
 void hd60s_policy_begin(struct hd60s_policy *s, long now_ms);
 void hd60s_policy_frame(struct hd60s_policy *s, int w, int h, int interlaced);

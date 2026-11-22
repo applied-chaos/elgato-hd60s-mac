@@ -196,6 +196,13 @@ When the signal is stable:
 
 **A simpler driver can skip this:** send `0xC6` len 0 once, then poll detection every ~250–500 ms.
 
+**What we do (libusb path, #31).** We upload Elgato's 10 entries and arm EP 0x81, with polling kept as the fallback.
+- Upload: `0xC6` OUT wValue=100 wIndex=0x0101 (high byte `dev+0xac`=1, low byte 1), 40 bytes, 2 s timeout in Elgato's call. The bytes are copied byte for byte from `FUN_00010130`'s stack image (the first 32 live at libUB530 file offset 0x28680; the last 8 are an immediate). Never alter them, add entries, or send any other 0xC6 payload.
+- Teardown matches Elgato's `FUN_00010240`: disarm EP 0x81, then `0xC6` len 0 (wIndex 0x100). Done on stop, on stream exit, on an upload or EP error, and before every host I2C request (`ctrl()` in `device.c`), re-uploaded at the end of the next policy tick.
+- A change interrupt wakes the policy loop: immediate poll, then the 250 ms cadence for 3 s. Otherwise, while armed, receiver and transmitter polls slow to 1 s. `HD60S_NO_WATCH=1` keeps the old 250 ms polling.
+- Safety reasoning and residual risk: the host only sees a vendor control transfer; the decompile cannot show where the firmware stores the payload. Evidence it is volatile program state: it is not 0xA0 (FX3 RAM) or any update request, the payload is I2C-op shaped rather than code, Elgato re-uploads it constantly (after every host I2C burst), len 0 disables it, and we already sent len 0 at init. No firmware dump confirms it. The user accepted this residual risk for the exact Elgato bytes only (2026-11-22).
+
+
 ## 4. Signal detection
 - `DetectVideoFormat` → `FUN_8e56` → `FUN_dece` → `FUN_12a2f`. The HDMI path is a 2.3k-line MST3367 timing measurement with tables at DAT_2c7f0..
 - It fills the format struct at `dev+0x4160`: +0x30 width, +0x34 active lines (per field when interlaced), +0x38 rate, +0x3c 1001-flag.

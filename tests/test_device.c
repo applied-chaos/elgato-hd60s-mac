@@ -12,6 +12,9 @@ struct fake {
     int pend_len, pend_rl;
     int requests, fail_at, slept_ms;
     uint8_t first_req[3];
+    int c6_calls, c6_fail, c6_len, c6_i2c_while_armed, armed;
+    uint16_t c6_val, c6_idx;
+    uint8_t c6_data[64];
 };
 
 static void store(struct fake *f, uint8_t addr, const uint8_t *w, int n)
@@ -38,8 +41,19 @@ static int fake_ctrl(void *ctx, int in, uint8_t req, uint16_t val, uint16_t idx,
         buf[0] = 1;
         return 1;
     }
+    if (req == 0xc6) {
+        f->c6_calls++;
+        if (len && f->c6_fail)
+            return -7;
+        f->c6_val = val, f->c6_idx = idx, f->c6_len = len, f->armed = len > 0;
+        if (len)
+            memcpy(f->c6_data, buf, len);
+        return len;
+    }
     if (req != 0xc0)
         return len;
+    if (f->armed)
+        f->c6_i2c_while_armed++;
     uint8_t addr = val & 0xff;
     if (!in && addr == 0x66) {
         if (buf[0] & 1) {
@@ -292,8 +306,63 @@ static void policy_reruns_routing_when_the_source_becomes_hdmi(void)
     assert(fk.requests - before == idle_cost);
 }
 
+static const uint8_t WATCH[40] = {0x55, 0x80, 0x3c, 0x00, 0x6a, 0x80, 0x0f, 0x00, 0x6b, 0x80, 0xfe, 0x00, 0x01, 0x81,
+                                  0x07, 0x00, 0x0b, 0x82, 0xdf, 0x00, 0x0c, 0x82, 0x3f, 0x00, 0x0e, 0x82, 0x08, 0x00,
+                                  0x48, 0x82, 0x60, 0x00, 0x9b, 0x82, 0xf0, 0x00, 0x0e, 0x40, 0x80, 0x9a};
+
+static void watch_uploads_elgatos_program_and_stop_disarms(void)
+{
+    struct hd60s d;
+    boot(&d, 0);
+    assert(hd60s_init(&d) == 0 && hd60s_start(&d) == 0);
+    assert(hd60s_watch_start(&d) == 0 && d.watching);
+    assert(fk.c6_val == 100 && fk.c6_idx == 0x101 && fk.c6_len == 40 && !memcmp(fk.c6_data, WATCH, 40));
+    hd60s_stop(&d);
+    assert(!d.watching && fk.c6_len == 0 && fk.c6_idx == 0x100 && !fk.armed);
+}
+
+static void watch_upload_failure_falls_back_to_polling(void)
+{
+    struct hd60s d;
+    boot(&d, 0);
+    assert(hd60s_init(&d) == 0 && hd60s_start(&d) == 0);
+    fk.c6_fail = 1;
+    assert(hd60s_watch_start(&d) < 0 && !d.watching && !fk.armed && d.err == 0);
+}
+
+static void watch_never_overlaps_host_i2c_and_slows_polling(void)
+{
+    struct hd60s d;
+    struct hd60s_parser p = {0};
+    struct hd60s_policy pol;
+    boot(&d, 0);
+    assert(hd60s_init(&d) == 0 && hd60s_start(&d) == 0);
+    hd60s_policy_begin(&pol, 0);
+    assert(hd60s_watch_start(&d) == 0);
+    hd60s_policy_tick(&d, &p, &pol, 0);
+    assert(fk.c6_i2c_while_armed == 0 && fk.armed && !d.watch_suspended);
+    int before = fk.requests;
+    hd60s_policy_tick(&d, &p, &pol, 300);
+    assert(fk.requests == before);
+    hd60s_policy_wake(&pol, 300);
+    hd60s_policy_tick(&d, &p, &pol, 310);
+    assert(fk.requests > before && fk.c6_i2c_while_armed == 0 && fk.armed);
+    before = fk.requests;
+    hd60s_policy_tick(&d, &p, &pol, 1400);
+    assert(fk.requests > before);
+    hd60s_policy_tick(&d, &p, &pol, 4000);
+    before = fk.requests;
+    hd60s_policy_tick(&d, &p, &pol, 4300);
+    assert(fk.requests == before);
+    hd60s_policy_tick(&d, &p, &pol, 5100);
+    assert(fk.requests > before && fk.c6_i2c_while_armed == 0 && fk.armed);
+}
+
 int main(void)
 {
+    watch_uploads_elgatos_program_and_stop_disarms();
+    watch_upload_failure_falls_back_to_polling();
+    watch_never_overlaps_host_i2c_and_slows_polling();
     init_runs_vendor_sequence_and_reads_mcu_version();
     init_ignores_vendor_init_failures();
     first_transport_error_fails_start();

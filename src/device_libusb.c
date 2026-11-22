@@ -81,6 +81,7 @@ struct stream_ctx {
     struct hd60s_parser *parser;
     volatile sig_atomic_t *stop;
     int active;
+    volatile int watch_fired, watch_released;
     frame_cb frame_cb;
     void *frame_ctx;
     struct hd60s_policy policy;
@@ -114,6 +115,17 @@ static void LIBUSB_CALL on_xfer(struct libusb_transfer *t)
     s->active--;
 }
 
+static int watch_enabled(void) { return !getenv("HD60S_NO_WATCH"); }
+
+static void LIBUSB_CALL on_watch(struct libusb_transfer *t)
+{
+    struct stream_ctx *s = t->user_data;
+    if (t->status == LIBUSB_TRANSFER_COMPLETED)
+        s->watch_fired = 1;
+    else
+        s->watch_released = 1;
+}
+
 int hd60s_stream(struct hd60s *d, struct hd60s_parser *p, volatile sig_atomic_t *stop, double seconds)
 {
     struct stream_ctx s = {.parser = p, .stop = stop, .frame_cb = p->on_frame, .frame_ctx = p->ctx};
@@ -132,6 +144,19 @@ int hd60s_stream(struct hd60s *d, struct hd60s_parser *p, volatile sig_atomic_t 
         if (libusb_submit_transfer(xfers[i]) == 0)
             s.active++;
     }
+    struct libusb_transfer *wt = NULL;
+    uint8_t wbuf[8];
+    int claimed = 0;
+    if (watch_enabled() && (claimed = libusb_claim_interface(d->h, HD60S_IF_WATCH) == 0) && hd60s_watch_start(d) == 0 &&
+        (wt = libusb_alloc_transfer(0))) {
+        libusb_fill_interrupt_transfer(wt, d->h, HD60S_EP_WATCH, wbuf, sizeof wbuf, on_watch, &s, 0);
+        if (libusb_submit_transfer(wt) < 0) {
+            hd60s_watch_stop(d);
+            s.watch_released = 1;
+        }
+    } else {
+        s.watch_released = 1;
+    }
     long end = now_ms() + (long)(seconds * 1000);
     while (s.active) {
         if (*stop || (seconds > 0 && now_ms() >= end)) {
@@ -142,9 +167,29 @@ int hd60s_stream(struct hd60s *d, struct hd60s_parser *p, volatile sig_atomic_t 
         struct timeval tv = {0, 100000};
         libusb_handle_events_timeout_completed(d->lusb, &tv, NULL);
         /* Not from the transfer callback: the sync control transfers need the event loop. */
-        if (!*stop)
+        if (!*stop) {
+            if (s.watch_fired && !s.watch_released) {
+                s.watch_fired = 0;
+                hd60s_policy_wake(&s.policy, now_ms());
+                if (libusb_submit_transfer(wt) < 0)
+                    s.watch_released = 1;
+            }
+            if (s.watch_released && d->watching)
+                hd60s_watch_stop(d);
             hd60s_policy_tick(d, p, &s.policy, now_ms());
+        }
     }
+    hd60s_watch_stop(d);
+    if (wt) {
+        libusb_cancel_transfer(wt);
+        while (!s.watch_released && !s.watch_fired) {
+            struct timeval tv = {0, 100000};
+            libusb_handle_events_timeout_completed(d->lusb, &tv, NULL);
+        }
+        libusb_free_transfer(wt);
+    }
+    if (claimed)
+        libusb_release_interface(d->h, HD60S_IF_WATCH);
     p->on_frame = s.frame_cb;
     p->ctx = s.frame_ctx;
     for (int i = 0; i < NUM_XFERS; i++) {
