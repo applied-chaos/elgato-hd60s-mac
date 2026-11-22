@@ -1,0 +1,46 @@
+# Development-only spec: project.yml plus the AudioDriverKit extension. Release uses project.yml.
+name: HD60SDev
+include: [project.yml]  # arrays append, so only the extra dependency is listed
+targets:
+  HD60S:
+    dependencies:
+      - target: net.mintopia.hd60s.dext
+  net.mintopia.hd60s.dext:
+    type: driver-extension
+    platform: macOS
+    sources: [Dext]
+    info:
+      path: Dext/Info.plist
+      properties:
+        CFBundleDisplayName: Elgato HD60 S (DriverKit)
+        CFBundlePackageType: $(PRODUCT_BUNDLE_PACKAGE_TYPE)
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        OSBundleUsageDescription: Makes the Elgato HD60 S available as an audio input.
+        IOKitPersonalities:
+          HD60SDriver:
+            CFBundleIdentifier: $(PRODUCT_BUNDLE_IDENTIFIER)
+            IOClass: IOUserService
+            IOMatchCategory: $(PRODUCT_BUNDLE_IDENTIFIER)
+            IOProviderClass: IOUserResources
+            IOResourceMatch: IOKit
+            IOUserClass: HD60SDriver
+            IOUserServerName: $(PRODUCT_BUNDLE_IDENTIFIER)
+            UserClientProperties:
+              IOClass: IOUserUserClient
+              IOUserClass: IOUserAudioDriverUserClient
+    entitlements:
+      path: Dext/HD60SDext.entitlements
+      properties:
+        com.apple.developer.driverkit: true
+        com.apple.developer.driverkit.family.audio: true
+    settings:
+      SDKROOT: driverkit
+      SUPPORTED_PLATFORMS: driverkit
+      DRIVERKIT_DEPLOYMENT_TARGET: "25.0"
+      PRODUCT_BUNDLE_IDENTIFIER: net.mintopia.hd60s.dext
+      PROVISIONING_PROFILE_SPECIFIER: $(HD60S_DEXT_PROFILE)
+      CODE_SIGN_STYLE: Automatic
+      OTHER_LDFLAGS: [-framework, AudioDriverKit, -framework, DriverKit]
+      ENABLE_HARDENED_RUNTIME: YES
+      CLANG_CXX_LANGUAGE_STANDARD: gnu++20

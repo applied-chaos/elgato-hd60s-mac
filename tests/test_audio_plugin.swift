@@ -12,6 +12,12 @@ func check(_ ok: Bool, _ what: String, line: UInt = #line) {
         check(AudioPlugin.status(installed: "9", bundled: "12") == .outdated, "numeric, not lexical")
         check(AudioPlugin.status(installed: "1.10.0", bundled: "1.9") == .installed, "newer installed")
         check(AudioPlugin.status(installed: "1.2", bundled: "1.2.1") == .outdated, "missing component is zero")
+        // driver extension status from system extension properties
+        check(DextStatus.found(enabled: true, awaitingApproval: false) == .installed, "enabled")
+        check(DextStatus.found(enabled: false, awaitingApproval: true) == .needsApproval, "approval")
+        check(DextStatus.found(enabled: true, awaitingApproval: true) == .installed, "enabled wins")
+        check(DextStatus.found(enabled: false, awaitingApproval: false) == .notInstalled, "none")
+        check(DextStatus.notBundled.label == nil && DextStatus.installed.label == "installed", "hidden unless bundled")
         // admin prompt outcomes
         check(AudioPlugin.outcome(exitCode: 0, stderr: "") == .done, "ok")
         check(AudioPlugin.outcome(exitCode: 1, stderr: "execution error: User canceled. (-128)") == .cancelled, "cancel")
