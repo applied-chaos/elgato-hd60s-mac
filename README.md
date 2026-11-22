@@ -35,6 +35,8 @@ brew install libusb pkg-config xcodegen
 make            # command-line tool, build/hd60s
 make test
 make install-app    # builds the app, camera extension and audio plug-in, installs to /Applications
+make dist           # notarisable userspace DMG, build/HD60S-x.y.z.dmg
+make dist-dext      # local-only DriverKit DMG, build/HD60S-DriverKit-x.y.z.dmg
 ```
 
 The build downloads Elgato's Game Capture HD 2.11.14 for macOS and reads a few register tables from its `libUB530.dylib`. The tables aren't in this repo. The app builds need signing into Xcode with your own team; change `DEVELOPMENT_TEAM` in `mac/project.yml`.
@@ -60,6 +62,10 @@ Work happens on `develop`; `main` holds releases. Pushing a `vX.Y.Z` tag builds,
 | `ASC_KEY_P8` | App Store Connect API key, base64 `.p8`, for notarisation |
 | `ASC_KEY_ID` | Its key ID |
 | `ASC_ISSUER_ID` | Its issuer ID |
+
+### DriverKit DMG
+
+`make dist-dext` builds a DMG with the audio driver extension. It is built locally with Xcode automatic signing, never by CI, and isn't published. It runs only on Macs in the team's development provisioning profile.
 
 ## Safety
 

@@ -6,8 +6,8 @@ import ImageIO
 import os
 import VideoToolbox
 
-private let width: Int32 = 1920
-private let height: Int32 = 1080
+private let width = Int32(outputWidth)
+private let height = Int32(outputHeight)
 private let noFramesTimeoutNs: UInt64 = 200_000_000
 private let statsEveryTicks = 600
 private let log = Logger(subsystem: "net.mintopia.hd60s.camera", category: "capture")
@@ -94,6 +94,7 @@ final class StreamSource: NSObject, CMIOExtensionStreamSource {
     private var slate: CVPixelBuffer?
     private var timer: DispatchSourceTimer?
     private var ticks = 0
+    private var scaler: VTPixelTransferSession?
 
     override init() {
         var desc: CMFormatDescription?
@@ -171,6 +172,8 @@ final class StreamSource: NSObject, CMIOExtensionStreamSource {
         stop.pointee = 1
         finished.wait()
         audio_feed_stop()
+        if let scaler { VTPixelTransferSessionInvalidate(scaler) }
+        scaler = nil
         worker = nil
     }
 
@@ -202,22 +205,51 @@ final class StreamSource: NSObject, CMIOExtensionStreamSource {
         }
     }
 
-    // ponytail: only 1920x1080 frames are forwarded; other modes need extra stream formats.
+    // Frames of any known mode are scaled into the 1080p output, aspect preserved; runts from a mode switch are dropped.
     private func send(_ frame: UnsafePointer<UInt8>, _ w: Int, _ h: Int) {
-        guard w == Int(width), h == Int(height) else { return }
+        guard let r = fitRect(width: w, height: h) else { return }
         var pb: CVPixelBuffer?
         guard CVPixelBufferPoolCreatePixelBuffer(kCFAllocatorDefault, pool, &pb) == kCVReturnSuccess, let pb else { return }
         CVPixelBufferLockBaseAddress(pb, [])
         let dst = CVPixelBufferGetBaseAddress(pb)!.assumingMemoryBound(to: UInt8.self)
         let dstStride = CVPixelBufferGetBytesPerRow(pb)
         let rowBytes = w * 2
-        for y in 0..<h {
-            (dst + y * dstStride).update(from: frame + y * rowBytes, count: rowBytes)
+        if r.w == w && r.h == h {
+            for y in 0..<h {
+                (dst + y * dstStride).update(from: frame + y * rowBytes, count: rowBytes)
+            }
+        } else if !scale(frame, w, h, into: dst + r.y * dstStride + r.x * 2, stride: dstStride, r, clear: dst) {
+            CVPixelBufferUnlockBaseAddress(pb, [])
+            return
         }
         CVPixelBufferUnlockBaseAddress(pb, [])
         tag709(pb)
         lastFrameNs.withLock { $0 = hostNs() }
         emit(pb)
+    }
+
+    // Wraps the parser buffer and the target rectangle as pixel buffers for VideoToolbox; bars are filled black.
+    // #10: tag the source buffer BT.601 for SD here and VideoToolbox converts to the 709 output.
+    private func scale(_ frame: UnsafePointer<UInt8>, _ w: Int, _ h: Int, into at: UnsafeMutablePointer<UInt8>,
+                       stride: Int, _ r: Rect, clear base: UnsafeMutablePointer<UInt8>) -> Bool {
+        if scaler == nil {
+            VTPixelTransferSessionCreate(allocator: kCFAllocatorDefault, pixelTransferSessionOut: &scaler)
+            if let scaler { VTSessionSetProperty(scaler, key: kVTPixelTransferPropertyKey_RealTime, value: kCFBooleanTrue) }
+        }
+        guard let scaler else { return false }
+        var black: [UInt8] = [0x10, 0x80, 0x10, 0x80]
+        memset_pattern4(base, &black, stride * outputHeight)
+        var src: CVPixelBuffer?
+        var out: CVPixelBuffer?
+        guard CVPixelBufferCreateWithBytes(kCFAllocatorDefault, w, h, kCVPixelFormatType_422YpCbCr8_yuvs,
+                                           UnsafeMutableRawPointer(mutating: frame), w * 2, nil, nil, nil, &src) == kCVReturnSuccess,
+              let src,
+              CVPixelBufferCreateWithBytes(kCFAllocatorDefault, r.w, r.h, kCVPixelFormatType_422YpCbCr8_yuvs,
+                                           at, stride, nil, nil, nil, &out) == kCVReturnSuccess,
+              let out else { return false }
+        tag709(src)
+        tag709(out)
+        return VTPixelTransferSessionTransferImage(scaler, from: src, to: out) == noErr
     }
 
     private func tick() {

@@ -108,10 +108,11 @@ The Nuvoton MCU owns the board I2C bus. The bridge uses the "0x66" proxy target,
 | addr | device | access |
 |---|---|---|
 | 0x9C | MStar MST3367 HDMI receiver, banked | `ReadReg(bank,reg)` @0xb9f4 = I2C write [bank] to sub 0x00, then I2C read sub=reg. `WriteReg` @0xb98e = write [bank]→sub 0, then [val]→sub reg |
-| 0x9A | MST3367 second page (status/HDCP) | `FUN_bafa`: reg 0x09 ≠ 0xB2 → chip not ready; reg 0x0E bit7 = signal/sync lost |
+| 0x9A | ITE IT66121 HDMI transmitter (HDMI out), see §6 | `FUN_bafa`/`FUN_bad2` read/write one register, `FUN_babb`/`FUN_baa4` bursts. Reg 0x09 ≠ 0xB2 → transmitter lost its init; reg 0x0E bit7 = transmitter interrupt pending |
 | 0x94 | audio codec/volume (`FUN_1ce18`, `FUN_1caf4`) | regs 3,4,7,9,0x0a–0x11 |
 | 0x98 | board control/MCU | reg 0x20: bit6 = SD (240/288-line) mode, written 5 at init (HD60 S); reg 0x00/0xF0 on other boards |
-| 0xAA, 0xD4 | MCU bridge (0x4f/0x5e only), audio | – |
+| 0xAA | MCU commands | see the bridge above |
+| 0xD4 | audio device with 16-bit register addresses, probably a sample-rate converter (§6.8) | write `[00 reg val]`; read `[00 reg]` → 2 bytes, value in the second |
 | 0x88 | analogue decoder | internal inputs 5/6 only; unused on HD60 S |
 
 ## 3. Sequences (PID 0x74)
@@ -177,7 +178,7 @@ When the signal is stable:
 - Reported fps = `rate*(1001-flag)/1001` (`FUN_90bc`).
 - Interlaced is reported as 1920×540, 720×240 or 720×288; the caller doubles the height and sets the interlaced flag.
 - Mode index: `FUN_1d3d4(input, w, h, rate)` → CEA-like code, 'D' (0x44) = none.
-- No signal: `FUN_bafa(0x9A, 0x0E)` bit7 set. Audio rate is fixed at 48000 (`dev+0x18`).
+- No signal: detection leaves `dev+0x1c = 0` and the mode index is 'D'. (`0x9A` reg `0x0E` bit7, listed here before, is the transmitter's interrupt-pending bit; see §6.) Audio rate is fixed at 48000 (`dev+0x18`).
 
 ## 5. Stream format on EP 0x83 (FUN_d476, called from ParseInput → FUN_da2e)
 The payload is a stream of 32-bit words. Transfers are concatenated; packet boundaries carry no meaning.
@@ -194,11 +195,203 @@ The payload is a stream of 32-bit words. Transfers are concatenated; packet boun
 - Elgato buffers are 0x546000 bytes each (4 rotating).
 - An audio-presence counter saturates at 350000 consecutive packets (`state[0x15]`).
 
+## 6. HDMI passthrough: IT66121 transmitter (FUN_1d10a)
+
+Recovered statically from `libUB530.dylib`; the transmitter part matches the structure of ITE's IT66121 reference driver, so register names below follow ITE's. Nothing here has been written to hardware.
+
+### 6.1 Overview
+- The MST3367 output bus feeds both the FX3 (capture) and an ITE IT66121 at I2C 0x9A, which drives HDMI out. Passthrough means bringing the IT66121 up and keeping it in step with the input.
+- Transmitter object: `tx = fmt + 0x10f8` (`fmt = dev+0x4160`), with `tx+0x1c8 = dev`.
+- `FUN_1d10a(tx, mode)` is the only entry point. Callers:
+  - `FUN_8e56` (`DetectVideoFormat`) on every detection poll: `mode = FUN_1d3d4(input, w, h, rate)`, or 0x44 when `dev+0x1c == 0` (no lock).
+  - `FUN_1d02e` (Rx init), `FUN_cc7e` (start) and `FUN_cf6c` (stop) with 0x44.
+- Elgato polls only while the replay program reports a change (`FUN_ab47`). The program's last entry `0e 40 80 9a` watches 0x9A reg 0x0E bit7, so a TV hotplug wakes the host. A driver without the replay program just calls the state machine on each detection poll.
+- `FUN_1d10a` returns at once if no transmitter was found (`tx+0x12 == 0`).
+
+### 6.2 Access (no new request types)
+Everything goes through the existing MCU bridge proxy (§2). Every transmitter access is bRequest 0xC0 with wValue 0x5066:
+
+| operation | wire | `src/device.c` |
+|---|---|---|
+| read reg `r` | OUT `[9B 01 r]`, then IN 1 byte | `i2c_read(d, 0x9a, r)` |
+| write reg `r` = `v` | OUT `[9A r v]` | `i2c_write(d, 0x9a, r, v)` |
+| burst read `n` from `r` (`FUN_babb`) | OUT `[9B n r]`, then IN `n` | `bridge_read(d, 0x9a, &r, 1, buf, n)` |
+| burst write (`FUN_baa4`) | OUT `[9A r v0 v1 …]` | `bridge_write(d, 0x9a, …)` |
+
+- Bank select is reg 0x0F bit0. `b1:xx` below means write 0x0F = 1, access `xx`, then write 0x0F = 0, as Elgato does.
+- `rmw(r, mask, val)` below is `FUN_1f268`: `r = (r & ~mask) | val`.
+- Register names (ITE): 0x04 SW_RST (bit5 REF, bit4 AREF, bit3 video, bit2 audio, bit1 HDMI, bit0 HDCP), 0x05 INT_CTRL, 0x06–0x08 INT_STAT1–3, 0x09–0x0B INT_MASK1–3, 0x0C/0x0D INT_CLR, 0x0E SYS_STATUS (bit7 interrupt, bit6 HPD, bit5 Rx sense, bit4 video stable, bit0 interrupt-clear pulse), 0x10–0x17 DDC master (0x16 status: bit7 done, bits 5/3 error; 0x17 FIFO), 0x61–0x68 AFE, 0x70 input mode, 0x72–0x87 colour-space converter, 0xC0 HDMI/DVI, 0xC1 AV mute, 0xC6/0xC9–0xD0 packet enables, 0xE0–0xE4 audio input.
+
+### 6.3 Chip detect and init (FUN_1db0a, FUN_1d980)
+Run from `FUN_1d02e` once, and again by `FUN_1d10a` whenever reg 0x09 ≠ 0xB2 (the transmitter lost its init, e.g. after a power cycle).
+1. Read regs 0x01, 0x02, 0x03, 0x05.
+   - `49 12 16`: type 2 (IT66121). **This unit** (confirmed on hardware).
+   - `CA 11 16` with reg 0x05 bit5: type 1, another ITE part on other boards.
+   - Anything else: no transmitter.
+2. State := 0. 0x05 = 0x00.
+3. 0x04 = 0x3D (all resets), sleep 5 ms, 0x04 = 0x1D (release REF only).
+4. 0x61 = 0x30 (AFE off).
+5. 0x09 = 0xB2, 0x0A = 0xF8, 0x0B = 0x37 (interrupt masks; 0x09 = 0xB2 doubles as the "initialised" marker).
+6. 0xC9–0xD0 = 0x00 (all packet generators off).
+7. `FUN_20a4e`: load the 0xD4 table (§6.8).
+
+### 6.4 FUN_1d10a(tx, mode) per call
+Mode codes come from `FUN_1d3d4` (HDMI input):
+
+| code | input | VIC sent |
+|---|---|---|
+| 0x00 / 0x01 | 720x240@60 / 720x288@50 (480i / 576i) | 6 / 21 |
+| 0x02 / 0x03 | 1280x720@60 / @50 | 4 / 19 |
+| 0x07 / 0x08 | 1920x540@60 / @50 (1080i) | 5 / 20 |
+| 0x09 / 0x0A / 0x0B | 1920x1080@30 / @25 / @24 | 34 / 33 / 32 |
+| 0x0E / 0x0F | 1920x1080@60 / @50 | 16 / 31 |
+| 0x10 / 0x11 | 720x480@60 / 720x576@50 | 2 / 17 |
+| 0x12 | 640x480@60 | 1 |
+| 0x13–0x3A | PC modes (800x600 … 1440x900) | 32 (default) |
+| 0x42 'B' | signal with unknown timing | 32 (default) |
+| 0x44 'D' | no signal | output blanked |
+| 0x45 / 0x46 | analogue SD inputs 5/6 (not on HD60 S) | 6 / 21 |
+
+Rate is the integer rate; 59.94 is 60 plus the 1001 flag. For an HDMI source sending an AVI InfoFrame the table VIC is replaced by the source's own (below).
+
+Steps:
+1. If reg 0x09 ≠ 0xB2: re-init (§6.3), then **blank**.
+2. If mode is 0x43 or 0x44, **blank**: clear the embedded-sync flags (re-running video setup §6.6 if they were set), `cur_mode` := 0x44, AV mute (0x0F = 0, 0xC1 = 1, 0xC6 = 3), service interrupts (§6.5), return. The state is not touched and the AFE stays as it was.
+3. If mode ≠ `cur_mode`:
+   1. `FUN_1e230`: is the receiver stable? HDMI (MST b0:0x51 bit7): b0:0x55 & 0x3C == 0x3C; it also sets `tx+2` (HDMI source with AVI InfoFrame) from b1:0x01 bit2. DVI: b0:0x14 bit7, or b0:0x15 bit6 with b0:0x14 bit4 clear. Not stable: return and retry on the next poll.
+   2. AV mute; `cur_mode` := mode.
+   3. **MST3367 writes for the new mode** (receiver, not transmitter; Elgato runs these during capture even with no TV):
+      - `FUN_20b4c`: b0:0xB2 &= ~0x08; b0:0xB5 &= 0xC3.
+      - `FUN_20c02`: b0:0x03 = 0x08 (codes 0, 1), 0x40 (2, 3), 0xC8 (0x0E, 0x0F), 0x48 (0x10, 0x11), else 0xC0.
+      - `FUN_20cdc`: b0:0x0F \|= 0x20; b0:0x12 = 0x04; b0:0x17 \|= 0x02; then codes < 0x10: b0:0x12 = 0x04 (codes 0, 1) or 0x00, b0:0x13 = 0x14; codes 0x10/0x11: b0:0x12 = 0x04, b0:0x13 = 0x14; codes ≥ 0x12: b0:0x13 = 0x04.
+      - b0:0x60 &= ~0x04.
+   4. `FUN_2041c`: measure the source audio rate from MST b2:0x11/0x12 and b2:0x40–0x47 (N/CTS), and reprogram 0xD4 (§6.8).
+   5. `FUN_1caf4`: board audio routing (the driver's `select_hdmi_audio`).
+4. VIC from the table above; if `tx+2`, wait for MST b2:0x0B bit3 (≤ 100 × 5 ms) and use b2:0x4B & 0x7F.
+5. Sync: separate syncs for HDMI; embedded sync with 2x CCIR656 clock only for the analogue codes. If that changes, re-run video setup (§6.6).
+6. Up to 21 times: service interrupts (§6.5), run one state step (§6.6), then the mode check (`FUN_1e0d4`: in state 6, if mode or VIC differ from what is being sent, go to state 4). Stop when the state is 0 (no TV) or 6 (running).
+
+### 6.5 Interrupt service (FUN_1dbe2)
+Only when 0x0E bit7 is set:
+- 0x06 bit7 (audio FIFO overflow): `tx+8` := 3 (an audio flag nothing else in the transmitter code reads).
+- 0x06 bit4 (DDC FIFO error): 0x10 = 1, 0x15 = 0x09 (clear FIFO).
+- 0x06 bit2 (DDC bus hang): abort DDC (`FUN_1df04`); if HDCP is on, redo HDCP.
+- 0x06 bit0 (**hotplug**): HPD = 0x0E bit6. Unplugged: 0x04 = 0x1D, 0x61 = 0x30 (AFE off). State := HPD ? 1 : 0.
+- 0x07 bit1 (HDCP authenticated): 0x0A \|= 0x02. 0x07 bit0 (HDCP failed): abort DDC.
+- 0x08 bit4 (video-stable change): if 0x0E bit4, state 6 redoes audio (§6.7) and state 3 goes to 5; otherwise state > 1 goes to 3.
+- Clear: 0x0C, 0x0D = the bits seen; 0x0E = (0x0E & 0xFC) \| 1, then without bit0.
+
+Abort DDC (`FUN_1df04`): save 0x04 and 0x20; 0x65 = 2; 0x20 &= ~1; 0x04 \|= 1; 0x10 = 1; 0x15 = 0x0F twice, waiting for DDC each time; 0x65 = 0.
+
+### 6.6 States (tx+4) and FUN_1e30c
+
+| state | meaning | action | next |
+|---|---|---|---|
+| 0 | idle, no TV | if an EDID was parsed: forget it, HDCP off | 1 on hotplug |
+| 1 | TV plugged | read and parse the TV's EDID (below) | 2, or 0 if the EDID read fails |
+| 2 | EDID known | pick output colour and the table row for the VIC (`FUN_1e81c`) | 4 |
+| 3 | video not stable | as state 4 | 4 / 5 |
+| 4 | program video | below | 5 if stable, else 3 |
+| 5 | enable output | below | 6 |
+| 6 | running | nothing; mode check may send it to 4 | 4 |
+
+**State 1, EDID read (`FUN_1e638`).** The transmitter's own DDC master reads the TV's EDID (slave 0xA0) on the HDMI-out port. Per 32-byte chunk (`FUN_1fed0`): 0x10 = 1 (host owns DDC), 0x15 = 0x09 (clear FIFO), 0x65 = 2, 0x11 = 0xA0, 0x12 = offset, 0x13 = count, 0x14 = segment, 0x15 = 0x03 (EDID read), poll 0x16 (≤ 200 times), read `count` bytes from 0x17. 0x65 = 0 at the end.
+- Block 0 must have checksum 0, header `00 FF FF FF FF FF FF 00`, and a digital input (byte 0x14 bit7) or Rx sense (0x0E bit5).
+- Up to 4 extension blocks (segment `n>>1`, offset `(n&1)*0x80`). A CEA block (`02 03`, `FUN_2011a`) gives YCbCr 4:4:4 (byte 3 bit5), 4:2:2 (bit4), basic audio (bit6), the supported VICs, audio formats, and HDMI mode from the vendor block OUI 00-0C-03 (DVI otherwise).
+- The EDID stays in host memory (`tx+0x138`) and is never written anywhere.
+- Output colour (`tx+0x10`): 4:4:4 if supported, else 4:2:2, else RGB. Input colour (`tx+0x0f`) is always YCbCr 4:2:2.
+
+**State 2/3/4 table row (`FUN_1e81c`).** DAT_28a10 has 37 rows `{id, VIC, pixel clock Hz, flags}` (flags bit0 = 16:9, bits 1–2 = pixel repetition, terminator VIC 0xFF). An unknown VIC uses row 0 (VIC 1). Also picks the audio format from the TV's SADs (`FUN_2033c`); on the HD60 S it is forced to 48 kHz, 2 channels, 24-bit when the 0xD4 table verified.
+
+**State 3/4, program video.**
+1. `FUN_1e8d2`:
+   1. 0x04 = 0x1D. AV mute if HDMI.
+   2. 0x70 = (0x70 & 0x23) \| 0x40 (YCbCr 4:2:2 input, separate syncs).
+   3. Separate syncs: 0x90 = 0, 0x91–0xA3 = 0xFF (sync/DE generator off), then 0xC0 = r(0x90) \| 0x08, 0xA2 = 0xFF, 0xC0 = r(0xA3) \| 0x0F. The two 0xC0 writes look like an Elgato slip (ITE writes 0x90 and 0xA3) and are overwritten in step 5. (Embedded sync instead loads 0x90–0xA3 from DAT_28c70 by VIC.)
+   4. Colour-space converter (`FUN_1effc`): 4:2:2 in to 4:2:2 or 4:4:4 out needs no matrix: 0x72 = 0x72 & 0x1C, then rmw(0x0F, 0x10, 0x10). RGB out: 0x73–0x75 = `10 80 10`, 0x76–0x87 = 18 bytes from DAT_33070 (BT.601 limited range; Elgato's input mode never selects the BT.709 or full-range tables at DAT_330b0/33050/33090), 0x72 = 3 \| (0x72 & 0x1C), rmw(0x0F, 0x10, 0).
+   5. 0xC0 = HDMI ? 1 : 0.
+   6. Type 2 only: b1:0x58 = HDMI ? 0x10 : 0; rmw(0xC1, 3, HDMI ? 3 : 2); rmw(0xC6, 3, HDMI ? 3 : 0); rmw(0x71, 0xFC, 0x1C).
+   7. AFE (`FUN_1f2d2`), `hs` = 148.5 MHz row (VIC 16 or 31): 0x61 = 0x10; rmw(0x62, 0x90, hs ? 0x80 : 0x10); rmw(0x64, 0x89, hs ? 0x80 : 0x09); rmw(0x68, 0x10, hs ? 0x80 : 0x10); 0x04 &= 0xC5; 0x59 \|= 0x08.
+2. AVI InfoFrame (`FUN_1eaf4` → `FUN_1f44a`): b1:0x58–0x65 = DB1–DB13, b1:0x5D = 0x6F − ΣDB, then 0xCD = 0x03. DB1 = 0x10 / 0x30 / 0x50 for RGB / 4:2:2 / 4:4:4; DB2 = 0x08 \| (16:9 ? 0x20 : 0x10) \| (HD row ? 0x80 BT.709 : 0x40 BT.601); DB3 = 0; DB4 = VIC; DB5 = pixel repetition. Example, 1080p60 to a 4:4:4 TV: `50 A8 00 10 00`, checksum 0x67.
+3. 0x04 &= ~0x08 (release video).
+4. If 0x0E bit4 (video stable): state 5. Else, unless the mode is 'D', poll up to 50 × 10 ms; if the receiver goes unstable, sleep 100 ms; either way, still unstable means state 3.
+
+**State 5, enable output.**
+1. AV mute; 0x0F = 0; 0x61 = 0x00 (AFE on).
+2. HDMI TV with audio (§6.7), then `FUN_1caf4`.
+3. HDCP: if the source is encrypted (`dev+0x20`, from MST b1:0x01 bit0 or b1:0x34 bit7) and `tx+2`, authenticate (`FUN_20dc0`, below); else HDCP off (`FUN_2109e`).
+4. Unmute (`FUN_1ec3c` → `FUN_2067c`), unless HDCP was required and failed: 0x0F = 0, 0xC1 = 0, 0xC6 = 3, and MST b0:0xB2 bits 0–1 from the source's colour info (b0:0x55 for HDMI, b0:0x14 for DVI).
+5. State 6.
+
+**HDCP (`FUN_20dc0`)**, only for encrypted sources. Keys stay inside the IT66121; the host only reads over DDC.
+1. Wait for video stable (≤ 10 reads).
+2. Reset HDCP (`FUN_2144a`).
+3. Up to 40 × 15 ms: DDC burst read (0x15 = 0) of the TV's BCaps/BStatus (slave 0x74, offset 0x40, 3 bytes), until the BStatus HDMI bit matches 0xC0 bit0.
+4. Read the BKSV (0x74, offset 0, 5 bytes) into 0x3B–0x3F. If it has exactly 20 one bits:
+   - 0x04 &= ~1;
+   - generate An (0x1F = 1, 1 ms, 0x1F = 0, copy 0x30–0x37 to 0x28–0x2F);
+   - 0x22 = 0, 0x20 = 1;
+   - unmask and clear the auth interrupts;
+   - 0x10 = 0 (HDCP owns DDC), 0x21 = 1 (start);
+   - poll 0x46 bit7 / 0x07 bit0, up to 100 × 5 ms.
+
+HDCP off (`FUN_2109e`): 0x22 = 0, 0x20 = 0, 0x04 \|= 1, 0x10 = 1, clear interrupts, abort DDC.
+
+### 6.7 Audio out (FUN_1e034), HD60 S case: 48 kHz, 2 ch, 24-bit
+1. N (`FUN_1f64e`): b1:0x33–0x35 = N (6144 = `00 18 00` for integer frame rates; 11648, or 5824 above 145 MHz, for 1001 rates), then 0xC5 = 0 (CTS measured by the chip) and 0x58 = (0x58 & 0xF3) \| 0x04.
+2. Input (`FUN_1f862`): 0x0F = 0; 0x04 \|= 0x04; 0xE2 = 0xE4; 0xE3 = 0x00; 0xE4 = 0x08; 0xE0 = 0xC1; 0xE1 = 0x01.
+3. Channel status: b1:0x91 = 0, 0x92 = 0, 0x93 = 0x01, 0x94–0x97 = `21 43 65 87`, 0x98 = 0x02, 0x99 = 0xDB. Then 0x04 = r(0x04) & 0x04.
+4. Audio InfoFrame (`FUN_1fb78` → `FUN_1fbfc`): b1:0x68 = 0x01, 0x6B = 0x00, 0x6C = 0x00, 0x6D = 0x70 (checksum), then 0xCE = 0x03.
+5. 0x04 &= ~0x04 (release audio).
+
+### 6.8 I2C 0xD4 (not the transmitter)
+- `FUN_20a4e` (init) writes 208 bytes from DAT_29110 to 0xD4 registers 0x0000–0x00CF, one OUT `[D4 00 idx val]` each. After each one it reads back (OUT `[D5 02 00 idx]`, IN 2) and compares the second byte. All match: `tx+0x1bc = 1`.
+- `FUN_2163c` then rewrites 0xD4 regs 0x2A/0x2B/0x2E/0x2F/0x39/0x01 by pixel clock (27.0/27.027/74.176/74.25/148.35/148.5 MHz) and measured source audio rate.
+- `FUN_1caf4` writes reg 0x0004 = 0x80 or 0x03 when `tx+0x1bc`.
+- With `tx+0x1bc` set, output audio is forced to 48 kHz. That suggests 0xD4 is an audio sample-rate converter between the receiver and the transmitter/codec.
+- Not flash, firmware or EDID as far as statics show:
+  - every byte is read back with no EEPROM write-cycle delay;
+  - the whole table is rewritten on every Initialize and transmitter re-init;
+  - registers are rewritten on every mode change.
+- Hardware read (2026-11-22): every 0xD4 read returns `FF FF`, the same as the unfitted 0x88. 0xD4 is probably not fitted on this unit. Elgato's verify would then fail (`tx+0x1bc = 0`), so it never writes 0xD4 again and never forces 48 kHz.
+- A driver can skip 0xD4.
+
+### 6.9 Safety
+Census of every call made from the transmitter code (0x1caf4–0x21b1e, from the disassembly):
+- Only the I2C helpers (`FUN_bad2`/`bafa`/`baa4`/`babb` for 0x9A, `FUN_b98e`/`b9f4` for MST3367, `FUN_9cfa`/`9da7`/`9e04`/`9e26` for 0x94/0x88/0xD4/0xAA, `FUN_9b7a` and `FUN_1c746` for the 0xD4 bridge) and libc sleeps.
+- **No** `FUN_175cc` request other than bRequest 0xC0 with wValue 0x5066 (proxy) or 0x509C (MST3367). No firmware update (`FUN_177c8`), no EDID read/write (`FUN_17990`/`FUN_1796a`, the `dev+0x41a8` flash helper), no FX3 RAM (0xA0).
+- DDC traffic goes out the HDMI-out port to the TV and is read-only: commands 0x03 (EDID read), 0x00 (burst read), 0x09 (clear FIFO), 0x0F (abort). Burst write is never issued.
+- Writes outside the transmitter are:
+  - MST3367 registers (§6.4 step 3, §6.6 state 5 unmute);
+  - board audio (`FUN_1caf4`, already sent by the driver);
+  - 0xD4 (§6.8).
+
+### 6.10 Open questions for the hardware test
+1. With a TV already connected before start, does a hotplug interrupt (0x06 bit0) fire after init, or must the driver read 0x0E bit6 itself and enter state 1?
+2. Are the per-mode MST3367 writes (§6.4 step 3) needed for the TV picture? The mode survey shows capture does not need them in any mode. Are they harmless to capture? Do b0:0xB2 bits 0–1 written on unmute change captured colour?
+3. Is 0xD4 needed for passthrough audio, and is it volatile? Does a 44.1 kHz source capture correctly without it?
+4. Does a TV without YCbCr support (RGB out, BT.601/709 matrix) show correct colour?
+5. 148.5 MHz detection uses the table row, so PC modes with a high pixel clock (1680x1050 etc., VIC 32 default) get low-speed AFE settings. Do they work?
+6. HDCP sources (PS5 with HDCP on): does the TV authenticate, and does capture still work? (Capture of HDCP content is expected to fail regardless.)
+7. Who initialised the transmitter on this unit? (See "Confirmed on hardware": it is set up before the driver touches it.) Unplug and replug the HD60 S, run only the power-up, then read reg 0x09. A driver should not depend on the answer: run §6.3 whenever reg 0x09 ≠ 0xB2, as Elgato does.
+8. Elgato's transient 0xC0 writes (§6.6): harmless to skip?
+
 ## Confirmed on hardware (0fd9:0074, PS5 at 1080p60, `src/` driver)
 - Pixels are **YUY2** (Y Cb Y Cr, ffmpeg `yuyv422`), not UYVY.
 - Streaming starts when iface 0 alt 4 is selected after the MST3367 start sequence; no extra request is needed. About 260 MB/s on bulk EP 0x83.
 - One timing code per line, then exactly `width*2` bytes of active video. 1080p60 measures 1920x1080 at 59.94 fps from the stream itself, without porting `FUN_12a2f`.
-- 0x9A is an ITE IT66121 HDMI **transmitter** (regs 1-3 = `49 12 16`), i.e. the passthrough output, not the receiver. The `FUN_1d10a` state machine drives passthrough and is not needed for capture.
+- 0x9A is an ITE IT66121 HDMI **transmitter** (regs 1-3 = `49 12 16`), i.e. the passthrough output, not the receiver. The `FUN_1d10a` state machine drives passthrough and is not needed for 1080p60 capture, though it also carries Elgato's per-mode MST3367 writes (§6.4).
+- IT66121 read-only probe (2026-11-22, no TV on HDMI out; the driver had never written 0x9A):
+  - Regs 0x00–0x03 = `54 49 12 16`.
+  - The chip is already set up the way Elgato's init and video setup leave it with no TV:
+    - 0x09–0x0B = `B2 F8 37`;
+    - 0x04 = 0x05, 0x61 = 0x10 (AFE held in reset), 0x70 = 0x40, 0x72 = 0x00;
+    - 0x90 = 0x00, 0x91–0xA3 = 0xFF;
+    - 0xC0 = 0x00 (DVI), 0xC1 = 0x02, 0xC6 = 0x00, 0x71 = 0x1C;
+    - 0x62/0x64 set for high speed.
+  - 0x0E = 0x1C: no HPD, no Rx sense, video stable. This holds straight after power-up, before any MST3367 setup, survives the GPIO 52 power-down, and nothing changes it over 4.5 s idle.
+  - Either the MCU firmware initialises the transmitter, or the state is left over from an earlier Elgato session.
+- I2C 0xD4 and 0x88 both read `FF`: neither is fitted on this unit.
 - 0xC2 stalls on alternate opens; ignoring it (as Elgato does) is harmless.
 - On this unit MST3367 b1:01 bit 2 is set, so `FUN_1caf4` takes its b2:27=0 / ADC reg 3=0xA0 / MCU `90 05 00` branch.
 - Audio source (`FUN_1ce00` arg, stored at `+0x1114`) picks which 0x94 codec input pairs are muted (bit 7). Measured with PS5 game audio: source 0 = HDMI (mute 0x0e/0x0f, unmute 0x10/0x11), RMS -26 dBFS; source 1 = analogue line-in only (unmute 0x0e/0x0f, mute 0x10/0x11), the ±2 LSB ADC noise floor; 3 = both mixed; 2 and 4 also set reg 4 bit 0 and reg 7 = 0xF0 and add a DC offset. The driver uses 0.
@@ -229,7 +422,7 @@ Every mode the Pi's EDID offers was driven with `kmstest` (SMPTE pattern) and ca
 ## Unknown / unverified
 - Audio channel order (left first) is assumed from I2S convention, not tested with a one-sided signal.
 - 0xEC padding bytes and the meaning of 0xEC, 0xC2 and 0xC7. Possibly LED/clock/enable.
-- Passthrough: the IT66121 is not initialised by the new driver.
+- Passthrough: documented in §6 from the decompile only; not implemented or tested. Open questions in §6.10.
 - Isoch alt 1–3 packet sizing.
 - GPIO pin semantics (52 = enable, 57 = ready) are inferred from usage only.
 - Whether the app auto-prompts firmware updates. The version check is not traced.
