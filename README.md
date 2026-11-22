@@ -24,6 +24,7 @@ Pick "Elgato HD60 S" as the camera. In OBS, add it as a Video Capture Device, an
 - Consoles with HDCP on send no picture. On a PS5, turn off HDCP in Settings > System > HDMI.
 - Audio only flows while something is using the camera, and runs about 30 ms behind the picture.
 - Only one thing can use the device at a time.
+- The camera offers 59.94 and 50 fps. Frames are delivered at the source's own rate whichever you pick, so a 50 Hz source never drops or repeats frames; pick the rate that matches your source for correct nominal timing and "No signal" slate pacing.
 
 ## Build from source
 

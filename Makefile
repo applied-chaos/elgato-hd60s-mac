@@ -70,6 +70,10 @@ build/test_tone: tests/test_tone.c mac/Dext/Tone.h
 	@mkdir -p build
 	$(CC) $(CFLAGS) -fsanitize=address,undefined -o $@ tests/test_tone.c -lm
 
+build/test_frame_rates: tests/test_frame_rates.swift mac/Extension/FrameRate.swift
+	@mkdir -p build
+	swiftc -parse-as-library -o $@ mac/Extension/FrameRate.swift tests/test_frame_rates.swift
+
 build/test_plugin: tests/test_plugin.c mac/Audio/HD60SAudio.c
 	@mkdir -p build
 	$(CC) $(CFLAGS) -Wno-four-char-constants -fsanitize=address,undefined -o $@ tests/test_plugin.c -framework CoreFoundation
@@ -78,13 +82,14 @@ build/test_frame_fit: tests/test_frame_fit.swift mac/Extension/FrameFit.swift
 	@mkdir -p build
 	swiftc -parse-as-library -o $@ mac/Extension/FrameFit.swift tests/test_frame_fit.swift
 
-test: build/test_parser build/test_ring build/test_plugin build/test_audio_plugin build/test_tone build/test_frame_fit
+test: build/test_parser build/test_ring build/test_plugin build/test_audio_plugin build/test_tone build/test_frame_fit build/test_frame_rates
 	build/test_parser
 	build/test_ring
 	build/test_plugin
 	build/test_audio_plugin
 	build/test_tone
 	build/test_frame_fit
+	build/test_frame_rates
 
 clean:
 	rm -rf build
