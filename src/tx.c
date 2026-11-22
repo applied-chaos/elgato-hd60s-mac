@@ -80,7 +80,7 @@ int tx_audio_rate(uint32_t pclk_khz, uint32_t n, uint32_t cts)
         return 0;
     double fs = (double)pclk_khz * 1000.0 * n / (128.0 * cts);
     for (size_t i = 0; i < sizeof std / sizeof *std; i++)
-        if (fabs(fs - std[i]) < std[i] * 0.02)
+        if ((fs > std[i] ? fs - std[i] : std[i] - fs) < std[i] * 0.02)
             return std[i];
     return 0;
 }
