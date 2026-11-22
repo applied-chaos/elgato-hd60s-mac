@@ -32,6 +32,13 @@ app: build/ub530_tables.h
 	$(XCODEBUILD) -scheme HD60S -derivedDataPath build/xcode -allowProvisioningUpdates -quiet build
 	rm -rf build/HD60S.app && cp -R build/xcode/Build/Products/Release/HD60S.app build/
 
+# Development-signed build with the AudioDriverKit extension (needs the DriverKit dev profile; not for release).
+dext-dev: build/ub530_tables.h
+	cd mac && xcodegen generate --quiet --spec project-dext.yml
+	xcodebuild -project mac/HD60SDev.xcodeproj -configuration Debug MARKETING_VERSION=$(VERSION) CURRENT_PROJECT_VERSION=$(BUILD) \
+		-scheme HD60S -derivedDataPath build/xcode-dext -allowProvisioningUpdates -quiet build
+	rm -rf build/HD60S-dext.app && cp -R build/xcode-dext/Build/Products/Debug/HD60S.app build/HD60S-dext.app
+
 install-app: app
 	-killall HD60S 2>/dev/null
 	rm -rf /Applications/HD60S.app && cp -R build/HD60S.app /Applications/
@@ -46,21 +53,26 @@ build/test_ring: tests/test_ring.c src/ring.c src/ring.h
 	@mkdir -p build
 	$(CC) $(CFLAGS) -fsanitize=address,undefined -o $@ tests/test_ring.c src/ring.c
 
-build/test_audio_plugin: tests/test_audio_plugin.swift mac/App/AudioPlugin.swift
+build/test_audio_plugin: tests/test_audio_plugin.swift mac/App/AudioPlugin.swift mac/App/DextStatus.swift
 	@mkdir -p build
-	swiftc -parse-as-library -o $@ mac/App/AudioPlugin.swift tests/test_audio_plugin.swift
+	swiftc -parse-as-library -o $@ mac/App/AudioPlugin.swift mac/App/DextStatus.swift tests/test_audio_plugin.swift
+
+build/test_tone: tests/test_tone.c mac/Dext/Tone.h
+	@mkdir -p build
+	$(CC) $(CFLAGS) -fsanitize=address,undefined -o $@ tests/test_tone.c -lm
 
 build/test_plugin: tests/test_plugin.c mac/Audio/HD60SAudio.c
 	@mkdir -p build
 	$(CC) $(CFLAGS) -Wno-four-char-constants -fsanitize=address,undefined -o $@ tests/test_plugin.c -framework CoreFoundation
 
-test: build/test_parser build/test_ring build/test_plugin build/test_audio_plugin
+test: build/test_parser build/test_ring build/test_plugin build/test_audio_plugin build/test_tone
 	build/test_parser
 	build/test_ring
 	build/test_plugin
 	build/test_audio_plugin
+	build/test_tone
 
 clean:
 	rm -rf build
 
-.PHONY: all app dist install-app test clean
+.PHONY: all app dext-dev dist install-app test clean
