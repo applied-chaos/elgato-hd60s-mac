@@ -258,10 +258,10 @@ static void audio_settings_apply_at_start_and_live(void)
     assert(hd60s_init(&d) == 0);
     struct audio_settings line = {AUDIO_LINE, -12, 0};
     assert(hd60s_set_audio(&d, &line) == 0);
-    assert(fk.codec[0x03] == 0 && d.audio.source == AUDIO_LINE); /* nothing sent before start */
+    assert(fk.codec[0x03] == 0 && d.audio.source == AUDIO_LINE);
     assert(hd60s_start(&d) == 0);
     assert(!(fk.codec[0x0e] & 0x80) && fk.codec[0x10] & 0x80);
-    assert(fk.codec[0x0c] == 0x74 && fk.codec[0x0a] == 0); /* HDMI-mode gain registers */
+    assert(fk.codec[0x0c] == 0x74 && fk.codec[0x0a] == 0);
     struct audio_settings mute = {AUDIO_LINE, -12, 1};
     assert(hd60s_set_audio(&d, &mute) == 0);
     assert(fk.codec[0x0e] & 0x80 && fk.codec[0x0f] & 0x80);
@@ -282,9 +282,9 @@ static void policy_reruns_routing_when_the_source_becomes_hdmi(void)
     assert(fk.codec[0x03] == 0xa1);
     int before = fk.requests;
     hd60s_policy_tick(&d, &p, &pol, 1000);
-    int idle_cost = fk.requests - before; /* polls only, no routing writes */
-    fk.mst[0][0x51] = 0x80; /* receiver sees a source ... */
-    fk.mst[1][0x01] = 0x04; /* ... in the DVI branch */
+    int idle_cost = fk.requests - before;
+    fk.mst[0][0x51] = 0x80;
+    fk.mst[1][0x01] = 0x04;
     hd60s_policy_tick(&d, &p, &pol, 2000);
     assert(fk.codec[0x03] == 0xa0 && fk.mst[2][0x27] == 0);
     before = fk.requests;

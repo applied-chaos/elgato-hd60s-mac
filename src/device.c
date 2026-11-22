@@ -303,7 +303,7 @@ static void apply_audio(struct hd60s *d)
     }
     i2c_write(d, I2C_AUDIO, 0x04, r.r04);
     i2c_write(d, I2C_AUDIO, 0x07, r.r07);
-    d->audio_dvi = dvi;
+    d->audio_routed_dvi = dvi;
 }
 
 int hd60s_set_audio(struct hd60s *d, const struct audio_settings *s)
@@ -486,7 +486,7 @@ void hd60s_policy_tick(struct hd60s *d, struct hd60s_parser *p, struct hd60s_pol
         uint8_t db1 = (uint8_t)mst_read(d, 2, 0x48), db2 = (uint8_t)mst_read(d, 2, 0x49);
         s->src = hd60s_parse_avi(present, db1, db2);
         p->wide = present && (db2 >> 4 & 3) == 2;
-        if (source_is_dvi(d) != d->audio_dvi)
+        if (source_is_dvi(d) != d->audio_routed_dvi)
             apply_audio(d);
     }
     struct hd60s_colour_cfg want = d->colour;

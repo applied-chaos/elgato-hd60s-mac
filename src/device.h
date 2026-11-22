@@ -55,8 +55,8 @@ struct hd60s {
     int started;
     struct hd60s_colour_cfg colour;
     struct tx tx;          /* HDMI-out transmitter state */
-    struct audio_settings audio; /* applied at start and on change; hd60s_init sets Elgato's defaults */
-    int audio_dvi;         /* receiver DVI flag the routing was last computed for */
+    struct audio_settings audio;
+    int audio_routed_dvi;
 };
 
 /* Periodic work while streaming: aspect, colour matrix, HDMI-out mode. */

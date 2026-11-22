@@ -9,11 +9,11 @@ static void gain_code_matches_elgato_mapping(void)
 {
     /* Elgato app: v = 2x + 123, library code = (v + 5) & 0x7f, so code = steps & 0x7f. */
     assert(audio_gain_code(0) == 0x00);
-    assert(audio_gain_code(-12) == 0x74); /* default -6 dB */
+    assert(audio_gain_code(AUDIO_DEFAULT.gain_half_db) == 0x74);
     assert(audio_gain_code(-24) == 0x68);
     assert(audio_gain_code(24) == 0x18);
     assert(audio_gain_code(-1) == 0x7f);
-    assert(audio_gain_code(-100) == 0x68 && audio_gain_code(100) == 0x18); /* clamped to +-12 dB */
+    assert(audio_gain_code(-100) == 0x68 && audio_gain_code(100) == 0x18);
 }
 
 static void default_is_hdmi_at_minus_6_db(void)
