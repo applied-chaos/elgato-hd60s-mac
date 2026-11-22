@@ -209,7 +209,7 @@ final class StreamSource: NSObject, CMIOExtensionStreamSource {
 
     // Frames of any known mode are scaled into the 1080p output, aspect preserved; runts from a mode switch are dropped.
     private func send(_ frame: UnsafeMutablePointer<UInt8>, _ w: Int, _ h: Int, _ interlaced: Bool) {
-        guard let r = fitRect(width: w, height: h) else { return }
+        guard let r = fitRect(width: w, height: h, wide: parser.pointee.wide != 0) else { return }
         if interlaced { deint_frame(deinterlacer, frame, Int32(w), Int32(h)) }
         var pb: CVPixelBuffer?
         guard CVPixelBufferPoolCreatePixelBuffer(kCFAllocatorDefault, pool, &pb) == kCVReturnSuccess, let pb else { return }
@@ -232,7 +232,7 @@ final class StreamSource: NSObject, CMIOExtensionStreamSource {
     }
 
     // Wraps the parser buffer and the target rectangle as pixel buffers for VideoToolbox; bars are filled black.
-    // #10: tag the source buffer BT.601 for SD here and VideoToolbox converts to the 709 output.
+    // SD frames come off the device BT.601 encoded; tagging the source so VideoToolbox converts to the 709 output.
     private func scale(_ frame: UnsafePointer<UInt8>, _ w: Int, _ h: Int, into at: UnsafeMutablePointer<UInt8>,
                        stride: Int, _ r: Rect, clear base: UnsafeMutablePointer<UInt8>) -> Bool {
         if scaler == nil {
@@ -251,6 +251,10 @@ final class StreamSource: NSObject, CMIOExtensionStreamSource {
                                            at, stride, nil, nil, nil, &out) == kCVReturnSuccess,
               let out else { return false }
         tag709(src)
+        if h <= 576 {
+            // Matrix only: primaries and transfer stay 709 so SD and HD bars keep the same RGB.
+            CVBufferSetAttachment(src, kCVImageBufferYCbCrMatrixKey, kCVImageBufferYCbCrMatrix_ITU_R_601_4, .shouldPropagate)
+        }
         tag709(out)
         return VTPixelTransferSessionTransferImage(scaler, from: src, to: out) == noErr
     }

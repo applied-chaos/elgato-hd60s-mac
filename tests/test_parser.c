@@ -233,7 +233,15 @@ static void test_720p_frame_size(void)
     assert(s.frames >= 2);
     assert(s.last_w == 1280 && s.last_h == 720 && !s.last_interlaced);
     assert(p.discarded == 0);
+    assert(p.last_w == 1280 && p.last_h == 720);
     free(st.b);
+}
+
+static void test_is_sd(void)
+{
+    assert(parser_is_sd(720, 576) == 1 && parser_is_sd(720, 480) == 1 && parser_is_sd(1440, 480) == 1);
+    assert(parser_is_sd(1280, 720) == 0 && parser_is_sd(1920, 1080) == 0);
+    assert(parser_is_sd(1280, 12) == -1 && parser_is_sd(720, 1080) == -1 && parser_is_sd(0, 0) == -1);
 }
 
 int main(void)
@@ -249,6 +257,7 @@ int main(void)
     test_lost_sav_merges_lines_drops_frame();
     test_mode_change();
     test_720p_frame_size();
+    test_is_sd();
     puts("parser tests passed");
     return 0;
 }
