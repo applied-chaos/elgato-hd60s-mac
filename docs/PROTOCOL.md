@@ -196,6 +196,16 @@ When the signal is stable:
 
 **A simpler driver can skip this:** send `0xC6` len 0 once, then poll detection every ~250–500 ms.
 
+**Investigated in #31, not adopted.** We prototyped uploading Elgato's program and arming EP 0x81 on the libusb path, then removed it.
+- Upload: `0xC6` OUT wValue=100 wIndex=0x0101 (high byte `dev+0xac`=1, low byte 1), 40 bytes, 2 s timeout. The bytes are `FUN_00010130`'s stack image: the first 32 are at libUB530 file offset 0x28680, the last 8 are an immediate. Entries (hex bytes): `55803c00 6a800f00 6b80fe00 01810700 0b82df00 0c823f00 0e820800 48826000 9b82f000 0e40809a`. Send nothing else on 0xC6.
+- Teardown (`FUN_00010240`): disarm EP 0x81, then `0xC6` len 0, wIndex 0x100. Also before every host I2C request, with a re-upload after.
+- EP 0x81 (interrupt IN, 1 byte) is on **interface 1**, not interface 0. The host must claim interface 1 before submitting the read, or libusb returns NOT_FOUND.
+- Safety reasoning: the host only sees a vendor control transfer, so the decompile cannot show where the firmware keeps the payload. No firmware dump confirms it. Circumstantial evidence for volatile program state: it is not 0xA0 (FX3 RAM) or any update request, the payload is I2C-op shaped rather than code, Elgato re-uploads it after every host I2C burst, len 0 disables it, and we already send len 0 at init. The user accepted the residual risk for the exact Elgato bytes only (2026-11-22). Nothing odd was seen on the device (enumeration and status normal) across all runs.
+- Behaviour: the program is single-shot. After one interrupt it must be re-uploaded, and any host I2C needs it disabled first, so each burst costs a disable and an upload. A change that lands while it is disabled is not reported.
+- Measured (1080p60, Pi source, 30 s steady state): 1290 control transfers polling every 250 ms, 825 with the program armed and polls slowed to 1 s (-36%).
+- Wake reliability: after a stray unlocked use of the device by another process was ruled out, 6 of 8 Pi mode switches woke (all 4 in one run, 2 of 4 in the other), 1.6 to 1.9 s after the switch command, with no spurious wakes. Earlier contaminated runs showed 0 to 1 of 4. A missed wake falls back to the 1 s poll, so detection can be up to 1 s late against 250 ms with plain polling.
+- Why not adopted: the wake is not reliable enough to replace polling, so the poll has to stay, and slowing it to 1 s makes missed mode and hotplug changes up to 4x slower to detect (and TV hotplug on the output, which the program does not watch, slower too). Keeping the 250 ms poll leaves no traffic saving, and each burst costs two extra control transfers. Polling at 250 ms stays.
+
 ## 4. Signal detection
 - `DetectVideoFormat` → `FUN_8e56` → `FUN_dece` → `FUN_12a2f`. The HDMI path is a 2.3k-line MST3367 timing measurement with tables at DAT_2c7f0..
 - It fills the format struct at `dev+0x4160`: +0x30 width, +0x34 active lines (per field when interlaced), +0x38 rate, +0x3c 1001-flag.
