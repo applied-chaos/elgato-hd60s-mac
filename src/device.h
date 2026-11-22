@@ -18,10 +18,9 @@ struct hd60s_usb {
     void (*sleep_ms)(void *ctx, int ms);
 };
 
-/* Colour pipeline inputs. Everything the receiver's matrix depends on lives here. */
 struct hd60s_colour_cfg {
     enum hd60s_input_format input;
-    int sd; /* 1 = BT.601 for RGB input, 0 = BT.709 */
+    int sd;
 };
 
 /* MST3367 CSC: bank 0 reg 0x92 mode and the 12 words written from reg 0x93. */
@@ -53,14 +52,14 @@ struct hd60s {
     uint32_t mcu_version;  /* b0<<16 | b1<<8 | b2 from MCU command 0x58 */
     uint8_t mst_saved[5];  /* MST3367 bank 1 reg 0x27 snapshot, restored on stop */
     int started;
-    struct hd60s_colour_cfg colour; /* matrix applied */
+    struct hd60s_colour_cfg colour;
     struct tx tx;          /* HDMI-out transmitter state */
 };
 
 /* Periodic work while streaming: aspect, colour matrix, HDMI-out mode. */
 struct hd60s_policy {
     long win_start, last_poll, aspect_at;
-    struct hd60s_source src; /* latest AVI read */
+    struct hd60s_source src;
     int w, h, interlaced, frames, run; /* frame size must hold for 3/4 of the window's frames */
     const struct tx_mode *mode;
     int hz, hz_seen; /* source audio rate, accepted once two polls agree */

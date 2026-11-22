@@ -33,7 +33,7 @@ struct hd60s_status {
     int width, height, interlaced;
     enum hd60s_field_order field_order;
     double fps; /* frame rate; interlaced counts frames, not fields */
-    enum hd60s_colour colour; /* matrix of the frames the host receives */
+    enum hd60s_colour colour;
     enum hd60s_input_format input_format;
     int audio_rate, audio_channels; /* 0 = no audio */
 

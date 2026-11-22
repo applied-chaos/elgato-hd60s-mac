@@ -33,8 +33,8 @@ struct hd60s_parser {
     unsigned long frames, discarded, long_total;
     int last_w, last_h; /* size of the last frame emitted */
     int wide;           /* source AVI InfoFrame flags 16:9; set by hd60s_stream, about once a second */
-    enum hd60s_colour colour;             /* matrix of the frames emitted; set with wide */
-    enum hd60s_input_format input_format; /* source pixel format; set with wide */
+    enum hd60s_colour colour;
+    enum hd60s_input_format input_format;
 };
 
 /* 1 for a standard SD frame size, 0 for 720p/1080p, -1 otherwise (runts while the source switches mode). */

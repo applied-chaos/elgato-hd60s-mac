@@ -16,7 +16,7 @@
 
 struct fr_slot {
     _Atomic uint32_t seq; /* frame number held, 0 while being written */
-    int32_t width, height, interlaced, wide, colour; /* colour: enum hd60s_colour */
+    int32_t width, height, interlaced, wide, colour;
     uint32_t len;
 };
 
