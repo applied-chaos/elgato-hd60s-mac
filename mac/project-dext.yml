@@ -1,39 +1,65 @@
-# Development-only spec: project.yml plus the AudioDriverKit extension. Release uses project.yml.
 name: HD60SDev
 include: [project.yml]  # arrays append, so only the extra dependency is listed
 targets:
   HD60S:
     dependencies:
       - target: net.mintopia.hd60s.dext
+  net.mintopia.hd60s.camera:
+    sources:
+      - ExtensionDext
+      - path: ../src/framering.c
+      - path: ../src/link.c
+    settings:
+      SWIFT_ACTIVE_COMPILATION_CONDITIONS: DEXT
+      SWIFT_OBJC_BRIDGING_HEADER: ExtensionDext/Bridging.h
+    entitlements:
+      path: Extension/HD60SCameraDext.entitlements
+      properties:
+        com.apple.security.temporary-exception.iokit-user-client-class: [IOUserUserClient]
   net.mintopia.hd60s.dext:
     type: driver-extension
     platform: macOS
-    sources: [Dext]
+    sources:
+      - Dext
+      - path: ../src/device.c
+      - path: ../src/parser.c
+      - path: ../src/tx.c
+      - path: ../src/ring.c
+      - path: ../src/framering.c
+      - path: ../src/link.c
     info:
       path: Dext/Info.plist
       properties:
-        CFBundleDisplayName: Elgato HD60 S (DriverKit)
+        CFBundleDisplayName: Elgato HD60 S
         CFBundlePackageType: $(PRODUCT_BUNDLE_PACKAGE_TYPE)
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
-        OSBundleUsageDescription: Makes the Elgato HD60 S available as an audio input.
+        OSBundleUsageDescription: "Runs the Elgato HD60 S: HDMI audio input and video for the camera."
         IOKitPersonalities:
           HD60SDriver:
             CFBundleIdentifier: $(PRODUCT_BUNDLE_IDENTIFIER)
             IOClass: IOUserService
             IOMatchCategory: $(PRODUCT_BUNDLE_IDENTIFIER)
-            IOProviderClass: IOUserResources
-            IOResourceMatch: IOKit
+            IOProviderClass: IOUSBHostDevice
+            idVendor: 4057
+            idProduct: 116
             IOUserClass: HD60SDriver
             IOUserServerName: $(PRODUCT_BUNDLE_IDENTIFIER)
             UserClientProperties:
               IOClass: IOUserUserClient
               IOUserClass: IOUserAudioDriverUserClient
+            HD60SUserClientProperties:
+              IOClass: IOUserUserClient
+              IOUserClass: HD60SUserClient
     entitlements:
       path: Dext/HD60SDext.entitlements
       properties:
         com.apple.developer.driverkit: true
         com.apple.developer.driverkit.family.audio: true
+        com.apple.developer.driverkit.transport.usb:
+          - idVendor: 4057
+            idProduct: 116
+        com.apple.developer.driverkit.allow-any-userclient-access: true
     settings:
       SDKROOT: driverkit
       SUPPORTED_PLATFORMS: driverkit
@@ -41,6 +67,8 @@ targets:
       PRODUCT_BUNDLE_IDENTIFIER: net.mintopia.hd60s.dext
       PROVISIONING_PROFILE_SPECIFIER: ""
       CODE_SIGN_STYLE: Automatic
-      OTHER_LDFLAGS: [-framework, AudioDriverKit, -framework, DriverKit]
+      OTHER_LDFLAGS: [-framework, AudioDriverKit, -framework, USBDriverKit, -framework, DriverKit]
+      HEADER_SEARCH_PATHS: [$(SRCROOT)/../src, $(SRCROOT)/../build]
+      GCC_C_LANGUAGE_STANDARD: c17
       ENABLE_HARDENED_RUNTIME: YES
       CLANG_CXX_LANGUAGE_STANDARD: gnu++20

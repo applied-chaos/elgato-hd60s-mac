@@ -8,6 +8,9 @@
 struct ring;
 
 struct ring *ring_create(size_t frames);
+/* For callers without malloc: mem holds ring_bytes(frames), suitably aligned. */
+size_t ring_bytes(size_t frames);
+struct ring *ring_init(void *mem, size_t frames);
 void ring_free(struct ring *r);
 /* Producer: drops the whole push if it does not fit. */
 void ring_push(struct ring *r, const int16_t *pcm, size_t frames);

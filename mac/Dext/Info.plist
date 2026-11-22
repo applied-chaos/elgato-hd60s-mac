@@ -5,7 +5,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
-	<string>Elgato HD60 S (DriverKit)</string>
+	<string>Elgato HD60 S</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -26,14 +26,19 @@
 		<dict>
 			<key>CFBundleIdentifier</key>
 			<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+			<key>HD60SUserClientProperties</key>
+			<dict>
+				<key>IOClass</key>
+				<string>IOUserUserClient</string>
+				<key>IOUserClass</key>
+				<string>HD60SUserClient</string>
+			</dict>
 			<key>IOClass</key>
 			<string>IOUserService</string>
 			<key>IOMatchCategory</key>
 			<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
 			<key>IOProviderClass</key>
-			<string>IOUserResources</string>
-			<key>IOResourceMatch</key>
-			<string>IOKit</string>
+			<string>IOUSBHostDevice</string>
 			<key>IOUserClass</key>
 			<string>HD60SDriver</string>
 			<key>IOUserServerName</key>
@@ -45,9 +50,13 @@
 				<key>IOUserClass</key>
 				<string>IOUserAudioDriverUserClient</string>
 			</dict>
+			<key>idProduct</key>
+			<integer>116</integer>
+			<key>idVendor</key>
+			<integer>4057</integer>
 		</dict>
 	</dict>
 	<key>OSBundleUsageDescription</key>
-	<string>Makes the Elgato HD60 S available as an audio input.</string>
+	<string>Runs the Elgato HD60 S: HDMI audio input and video for the camera.</string>
 </dict>
 </plist>

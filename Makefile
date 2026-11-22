@@ -20,8 +20,8 @@ build/libUB530.dylib:
 build/ub530_tables.h: tools/extract-tables.py build/libUB530.dylib
 	python3 -I tools/extract-tables.py build/libUB530.dylib > $@.tmp && mv $@.tmp $@
 
-build/hd60s: src/main.c src/device.c src/parser.c src/tx.c src/status.c src/status_probe.c src/device.h src/parser.h src/tx.h src/status.h build/ub530_tables.h
-	$(CC) $(CFLAGS) -o $@ src/main.c src/device.c src/parser.c src/tx.c src/status.c src/status_probe.c $(LDLIBS) -framework IOKit -framework CoreFoundation
+build/hd60s: src/main.c src/device.c src/device_libusb.c src/device_libusb.h src/parser.c src/tx.c src/status.c src/status_probe.c src/device.h src/parser.h src/tx.h src/status.h build/ub530_tables.h
+	$(CC) $(CFLAGS) -o $@ src/main.c src/device.c src/device_libusb.c src/parser.c src/tx.c src/status.c src/status_probe.c $(LDLIBS) -framework IOKit -framework CoreFoundation
 
 build/test_parser: tests/test_parser.c src/parser.c src/parser.h
 	@mkdir -p build
@@ -58,6 +58,18 @@ dist-dext: DEXT_CONFIG = Release
 dist-dext: dext-dev
 	$(call dmg,build/HD60S-dext.app,build/HD60S-DriverKit-$(VERSION).dmg)
 
+build/test_device: tests/test_device.c src/device.c src/tx.c src/parser.c src/device.h build/ub530_tables.h
+	@mkdir -p build
+	$(CC) $(CFLAGS) -fsanitize=address,undefined -o $@ tests/test_device.c src/device.c src/tx.c src/parser.c
+
+build/test_framering: tests/test_framering.c src/framering.c src/framering.h src/link.h
+	@mkdir -p build
+	$(CC) $(CFLAGS) -fsanitize=address,undefined -o $@ tests/test_framering.c src/framering.c
+
+build/test_link: tests/test_link.c src/link.c src/link.h
+	@mkdir -p build
+	$(CC) $(CFLAGS) -fsanitize=address,undefined -o $@ tests/test_link.c src/link.c
+
 build/test_deinterlace: tests/test_deinterlace.c src/deinterlace.c src/deinterlace.h
 	@mkdir -p build
 	$(CC) $(CFLAGS) -fsanitize=address,undefined -o $@ tests/test_deinterlace.c src/deinterlace.c
@@ -78,10 +90,6 @@ build/test_audio_plugin: tests/test_audio_plugin.swift mac/App/AudioPlugin.swift
 	@mkdir -p build
 	swiftc -parse-as-library -o $@ mac/App/AudioPlugin.swift mac/App/DextStatus.swift tests/test_audio_plugin.swift
 
-build/test_tone: tests/test_tone.c mac/Dext/Tone.h
-	@mkdir -p build
-	$(CC) $(CFLAGS) -fsanitize=address,undefined -o $@ tests/test_tone.c -lm
-
 build/test_frame_rates: tests/test_frame_rates.swift mac/Extension/FrameRate.swift
 	@mkdir -p build
 	swiftc -parse-as-library -o $@ mac/Extension/FrameRate.swift tests/test_frame_rates.swift
@@ -94,15 +102,17 @@ build/test_frame_fit: tests/test_frame_fit.swift mac/Extension/FrameFit.swift
 	@mkdir -p build
 	swiftc -parse-as-library -o $@ mac/Extension/FrameFit.swift tests/test_frame_fit.swift
 
-test: build/test_parser build/test_tx build/test_deinterlace build/test_ring build/test_status build/test_plugin build/test_audio_plugin build/test_tone build/test_frame_fit build/test_frame_rates
+test: build/test_parser build/test_device build/test_framering build/test_link build/test_tx build/test_deinterlace build/test_ring build/test_status build/test_plugin build/test_audio_plugin build/test_frame_fit build/test_frame_rates
 	build/test_parser
+	build/test_device
+	build/test_framering
+	build/test_link
 	build/test_tx
 	build/test_deinterlace
 	build/test_ring
 	build/test_status
 	build/test_plugin
 	build/test_audio_plugin
-	build/test_tone
 	build/test_frame_fit
 	build/test_frame_rates
 

@@ -5,7 +5,7 @@
 #include <time.h>
 #include <unistd.h>
 
-#include "device.h"
+#include "device_libusb.h"
 #include "parser.h"
 #include "status.h"
 

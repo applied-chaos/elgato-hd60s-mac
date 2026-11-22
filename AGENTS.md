@@ -8,7 +8,7 @@ Userspace driver for the Elgato HD60 S on Apple silicon: C core (`src/`), camera
 - Tests: `make test`
 - App and extension: `make app` (signed, needs Xcode team) or `make app XCODEFLAGS=CODE_SIGNING_ALLOWED=NO`
 - Install locally: `make install-app`, `make install-audio`
-- Dev-only AudioDriverKit prototype: `make dext-dev` (Apple Development signed, not in release)
+- DriverKit flavour (dext owns USB, camera reads frames from it): `make dext-dev`, `make dist-dext` (Apple Development signed, not in release)
 - Release: push a `vX.Y.Z` tag on `main`; `.github/workflows/release.yml` signs, notarises and publishes
 
 <!-- shared-rules:start (source: mintopia/home AGENTS.md; edit there, then copy) -->

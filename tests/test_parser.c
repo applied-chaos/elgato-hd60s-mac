@@ -131,12 +131,19 @@ static void test_interlaced(int first_field)
     free(st.b);
 }
 
+static void ignore_frame(void *ctx, const uint8_t *f, int w, int h, int interlaced)
+{
+    (void)ctx; (void)f; (void)w; (void)h; (void)interlaced;
+}
+
 static void test_audio(void)
 {
     static uint8_t buf[1 << 16];
     struct sink s = {0};
     struct hd60s_parser p;
     parser_init(&p, buf, sizeof buf, on_frame, on_audio, &s);
+    p.on_frame = ignore_frame; /* swapped frame ctx (hd60s_stream probe) must not redirect audio */
+    p.ctx = NULL;
     struct stream st = {0};
     /* Payload deliberately contains a timing-code pattern that must not be treated as one. */
     uint8_t pcm[8] = {0xff, 0x00, 0x00, 0x00, 0x01, 0x02, 0x03, 0x04};
@@ -149,8 +156,6 @@ static void test_audio(void)
     assert(s.audio_len == 3 * sizeof pcm);
     for (int i = 0; i < 3; i++)
         assert(memcmp(s.audio + i * sizeof pcm, pcm, sizeof pcm) == 0);
-    assert(s.frames >= 2);
-    check_progressive_frame(s.last);
     free(st.b);
 }
 
@@ -233,7 +238,15 @@ static void test_720p_frame_size(void)
     assert(s.frames >= 2);
     assert(s.last_w == 1280 && s.last_h == 720 && !s.last_interlaced);
     assert(p.discarded == 0);
+    assert(p.last_w == 1280 && p.last_h == 720);
     free(st.b);
+}
+
+static void test_is_sd(void)
+{
+    assert(parser_is_sd(720, 576) == 1 && parser_is_sd(720, 480) == 1 && parser_is_sd(1440, 480) == 1);
+    assert(parser_is_sd(1280, 720) == 0 && parser_is_sd(1920, 1080) == 0);
+    assert(parser_is_sd(1280, 12) == -1 && parser_is_sd(720, 1080) == -1 && parser_is_sd(0, 0) == -1);
 }
 
 int main(void)
@@ -249,6 +262,7 @@ int main(void)
     test_lost_sav_merges_lines_drops_frame();
     test_mode_change();
     test_720p_frame_size();
+    test_is_sd();
     puts("parser tests passed");
     return 0;
 }

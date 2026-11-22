@@ -1,0 +1,156 @@
+#include "device_libusb.h"
+
+#include <libusb.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <time.h>
+
+static int lctrl(void *ctx, int in, uint8_t req, uint16_t val, uint16_t idx, uint8_t *buf, uint16_t len)
+{
+    struct hd60s *d = ctx;
+    int r = libusb_control_transfer(d->h, in ? 0xc0 : 0x40, req, val, idx, buf, len, 3000);
+    /* 0xEC/0xC2/0xC7 are Elgato's init requests, whose failures it ignores. */
+    if (r < 0 && !d->err && req != 0xec && req != 0xc2 && req != 0xc7)
+        fprintf(stderr, "hd60s: request %02x %04x failed: %s\n", req, val, libusb_error_name(r));
+    return r;
+}
+
+static void lsleep(void *ctx, int ms)
+{
+    (void)ctx;
+    struct timespec ts = {ms / 1000, (ms % 1000) * 1000000L};
+    nanosleep(&ts, NULL);
+}
+
+int hd60s_quiet;
+
+int hd60s_open(struct hd60s *d)
+{
+    memset(d, 0, sizeof *d);
+    if (libusb_init(&d->lusb) < 0)
+        return -1;
+    d->open_err = LIBUSB_ERROR_NO_DEVICE;
+    libusb_device **list;
+    ssize_t n = libusb_get_device_list(d->lusb, &list);
+    for (ssize_t i = 0; i < n && !d->h; i++) {
+        struct libusb_device_descriptor dd;
+        if (libusb_get_device_descriptor(list[i], &dd) == 0 && dd.idVendor == HD60S_VID && dd.idProduct == HD60S_PID)
+            d->open_err = libusb_open(list[i], &d->h);
+    }
+    if (n >= 0)
+        libusb_free_device_list(list, 1);
+    if (!d->h) {
+        if (!hd60s_quiet)
+            fprintf(stderr, "hd60s: no %04x:%04x found (or it is busy)\n", HD60S_VID, HD60S_PID);
+        return -1;
+    }
+    int cfg = 0;
+    libusb_get_configuration(d->h, &cfg);
+    if (cfg != 1 && (d->open_err = libusb_set_configuration(d->h, 1)) < 0)
+        return -1;
+    if ((d->open_err = libusb_claim_interface(d->h, 0)) < 0) {
+        if (!hd60s_quiet)
+            fprintf(stderr, "hd60s: cannot claim interface 0\n");
+        return -1;
+    }
+    d->usb = (struct hd60s_usb){d, lctrl, lsleep};
+    if (hd60s_init(d) < 0) {
+        if (!d->err)
+            fprintf(stderr, "hd60s: MCU bridge did not answer\n");
+        return -1;
+    }
+    return 0;
+}
+
+void hd60s_close(struct hd60s *d)
+{
+    if (d->h) {
+        libusb_release_interface(d->h, 0);
+        libusb_close(d->h);
+    }
+    if (d->lusb)
+        libusb_exit(d->lusb);
+    memset(d, 0, sizeof *d);
+}
+
+#define NUM_XFERS 16
+#define XFER_SIZE (512 * 1024)
+
+struct stream_ctx {
+    struct hd60s_parser *parser;
+    volatile sig_atomic_t *stop;
+    int active;
+    frame_cb frame_cb;
+    void *frame_ctx;
+    struct hd60s_policy policy;
+};
+
+static void on_frame_probe(void *ctx, const uint8_t *f, int w, int h, int interlaced)
+{
+    struct stream_ctx *s = ctx;
+    hd60s_policy_frame(&s->policy, w, h, interlaced);
+    s->frame_cb(s->frame_ctx, f, w, h, interlaced);
+}
+
+static long now_ms(void)
+{
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return ts.tv_sec * 1000L + ts.tv_nsec / 1000000L;
+}
+
+static void LIBUSB_CALL on_xfer(struct libusb_transfer *t)
+{
+    struct stream_ctx *s = t->user_data;
+    if (t->status == LIBUSB_TRANSFER_COMPLETED || t->status == LIBUSB_TRANSFER_TIMED_OUT) {
+        parser_feed(s->parser, t->buffer, (size_t)t->actual_length);
+    } else if (t->status != LIBUSB_TRANSFER_CANCELLED) {
+        fprintf(stderr, "hd60s: transfer status %d\n", t->status);
+        *s->stop = 1;
+    }
+    if (!*s->stop && libusb_submit_transfer(t) == 0)
+        return;
+    s->active--;
+}
+
+int hd60s_stream(struct hd60s *d, struct hd60s_parser *p, volatile sig_atomic_t *stop, double seconds)
+{
+    struct stream_ctx s = {.parser = p, .stop = stop, .frame_cb = p->on_frame, .frame_ctx = p->ctx};
+    struct libusb_transfer *xfers[NUM_XFERS];
+    if (libusb_set_interface_alt_setting(d->h, 0, 4) < 0) {
+        fprintf(stderr, "hd60s: cannot select bulk alt setting\n");
+        return -1;
+    }
+    p->on_frame = on_frame_probe;
+    p->ctx = &s;
+    hd60s_policy_begin(&s.policy, now_ms());
+    for (int i = 0; i < NUM_XFERS; i++) {
+        xfers[i] = libusb_alloc_transfer(0);
+        libusb_fill_bulk_transfer(xfers[i], d->h, HD60S_EP_VIDEO, malloc(XFER_SIZE), XFER_SIZE,
+                                  on_xfer, &s, 1000);
+        if (libusb_submit_transfer(xfers[i]) == 0)
+            s.active++;
+    }
+    long end = now_ms() + (long)(seconds * 1000);
+    while (s.active) {
+        if (*stop || (seconds > 0 && now_ms() >= end)) {
+            *stop = 1;
+            for (int i = 0; i < NUM_XFERS; i++)
+                libusb_cancel_transfer(xfers[i]);
+        }
+        struct timeval tv = {0, 100000};
+        libusb_handle_events_timeout_completed(d->lusb, &tv, NULL);
+        /* Not from the transfer callback: the sync control transfers need the event loop. */
+        if (!*stop)
+            hd60s_policy_tick(d, p, &s.policy, now_ms());
+    }
+    p->on_frame = s.frame_cb;
+    p->ctx = s.frame_ctx;
+    for (int i = 0; i < NUM_XFERS; i++) {
+        free(xfers[i]->buffer);
+        libusb_free_transfer(xfers[i]);
+    }
+    libusb_set_interface_alt_setting(d->h, 0, 0);
+    return 0;
+}
