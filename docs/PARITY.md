@@ -93,9 +93,9 @@ App status messages: "No Signal", "Protected with HDCP", "USB 3 is required for 
 |---|---|---|---|
 | D1 | HDMI LPCM stereo 48 kHz capture | done | — |
 | D2 | Source sample rate | partial (verify) | See detail below |
-| D3 | Analogue line-in (3.5 mm, Chat Link) | missing | See detail below |
-| D4 | Analogue gain (−12…+12 dB) and hardware mute | missing | See detail below |
-| D5 | HDMI vs DVI re-check of audio routing on every mode change | partial | Elgato runs `FUN_1caf4` from `FUN_1d10a` on each new mode (step 3.5), so DVI→HDMI or no-signal→HDMI picks the right branch (MST b1:0x01 bit2). Ours runs `select_hdmi_audio` once in `hd60s_start`, so starting before the source is up, or a DVI-to-HDMI switch, can leave the wrong routing. Pi (start with the Pi blanked, then enable). Ticket: **Re-run HDMI audio routing when the source mode changes** |
+| D3 | Analogue line-in (3.5 mm, Chat Link) | done (#20; line-in capture unverified, no cable on the test rig) | `hd60s capture -s line` or `-s mix`; see detail below |
+| D4 | Analogue gain (−12…+12 dB) and hardware mute | done (#20) | `-g dB`, `-m`; steps measured, see detail below |
+| D5 | HDMI vs DVI re-check of audio routing on every mode change | done (#20: re-run when the receiver's DVI flag changes; blank-start then enable now gives audio) | Elgato runs `FUN_1caf4` from `FUN_1d10a` on each new mode (step 3.5), so DVI→HDMI or no-signal→HDMI picks the right branch (MST b1:0x01 bit2). Ours runs `select_hdmi_audio` once in `hd60s_start`, so starting before the source is up, or a DVI-to-HDMI switch, can leave the wrong routing. Pi (start with the Pi blanked, then enable). Ticket: **Re-run HDMI audio routing when the source mode changes** |
 | D6 | Multichannel / bitstream audio | n/a | The device is stereo LPCM only, and its EDID governs what sources send (see A7) |
 | D7 | A/V offset and clock drift | partial | Tickets #5/#6 already exist. Elgato has an AV sync statistics view; no device-side latency control |
 

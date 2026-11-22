@@ -46,6 +46,7 @@ targets:
       - path: ../src/deinterlace.c
       - path: ../src/ring.c
       - path: ../src/tx.c
+      - path: ../src/audio.c
     info:
       path: Extension/Info.plist
       properties:
