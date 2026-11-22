@@ -114,7 +114,7 @@ int dext_feed_poll(uint8_t *out, size_t cap, struct fr_frame *info)
 
 struct fr_counters dext_feed_counters(void)
 {
-    struct fr_counters none = {LINK_DOWN, 0, 0, 0, 0, 0, 0, 0};
+    struct fr_counters none = {LINK_DOWN, 0, 0, 0, 0, 0, 0};
     return session.state == LINK_UP ? fr_counters((const struct fr_header *)addr) : none;
 }
 

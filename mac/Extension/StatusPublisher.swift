@@ -4,7 +4,7 @@ import Darwin
 
 final class StatusPublisher {
     private struct State {
-        var width = 0, height = 0, interlaced = false, topFirst = false, sd = false
+        var width = 0, height = 0, interlaced = false, topFirst = false, bt601 = false
         var frames = 0
         var markNs: UInt64 = 0
         var lastFrameNs: UInt64 = 0
@@ -26,13 +26,13 @@ final class StatusPublisher {
 
     func setFirmware(_ mcu: UInt32) { state.withLock { $0.firmware = mcu } }
 
-    func frame(width: Int, height: Int, interlaced: Bool, topFirst: Bool, sd: Bool, nowNs: UInt64) {
+    func frame(width: Int, height: Int, interlaced: Bool, topFirst: Bool, bt601: Bool, nowNs: UInt64) {
         state.withLock {
             $0.width = width
             $0.height = height
             $0.interlaced = interlaced
             $0.topFirst = topFirst
-            $0.sd = sd
+            $0.bt601 = bt601
             $0.frames += 1
             $0.lastFrameNs = nowNs
         }
@@ -69,7 +69,7 @@ final class StatusPublisher {
             st.interlaced = s.interlaced ? 1 : 0
             st.field_order = s.topFirst ? FIELD_TOP_FIRST : FIELD_NONE
             st.fps = s.fps
-            st.colour = s.sd ? COLOUR_BT601 : COLOUR_BT709
+            st.colour = s.bt601 ? COLOUR_BT601 : COLOUR_BT709
             st.audio_rate = 48000
             st.audio_channels = 2
         } else {

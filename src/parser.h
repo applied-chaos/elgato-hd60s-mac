@@ -4,6 +4,10 @@
 #include <stddef.h>
 #include <stdint.h>
 
+enum hd60s_colour { COLOUR_UNKNOWN, COLOUR_BT709, COLOUR_BT601 };
+/* Source pixel format from the AVI InfoFrame (Y1Y0). */
+enum hd60s_input_format { INPUT_RGB, INPUT_YCBCR444, INPUT_YCBCR422 };
+
 /* Width in pixels, height in lines; frame is YUY2 (Y Cb Y Cr), stride = width * 2. */
 typedef void (*frame_cb)(void *ctx, const uint8_t *frame, int width, int height, int interlaced);
 typedef void (*audio_cb)(void *ctx, const uint8_t *pcm, size_t len);
@@ -30,6 +34,8 @@ struct hd60s_parser {
     int last_w, last_h; /* size of the last frame emitted */
     int top_first;      /* last interlaced frame was an even (F=0) field then an odd one; 0 for progressive */
     int wide;           /* source AVI InfoFrame flags 16:9; set by hd60s_stream, about once a second */
+    enum hd60s_colour colour;
+    enum hd60s_input_format input_format;
 };
 
 /* 1 for a standard SD frame size, 0 for 720p/1080p, -1 otherwise (runts while the source switches mode). */

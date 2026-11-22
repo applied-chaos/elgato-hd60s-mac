@@ -18,6 +18,28 @@ struct hd60s_usb {
     void (*sleep_ms)(void *ctx, int ms);
 };
 
+struct hd60s_colour_cfg {
+    enum hd60s_input_format input;
+    int sd;
+};
+
+/* MST3367 CSC: bank 0 reg 0x92 mode and the 12 words written from reg 0x93. */
+struct hd60s_csc {
+    uint8_t mode;
+    uint16_t m[12];
+};
+
+/* What the source's AVI InfoFrame says: pixel format (b2:0x48 Y1Y0) and colorimetry (b2:0x49 C1C0). */
+struct hd60s_source {
+    enum hd60s_input_format format;
+    enum hd60s_colour colorimetry; /* COLOUR_UNKNOWN when unspecified or extended */
+};
+
+struct hd60s_source hd60s_parse_avi(int present, uint8_t db1, uint8_t db2);
+void hd60s_csc_plan(const struct hd60s_colour_cfg *c, struct hd60s_csc *out);
+/* Matrix of the frames leaving the device: its own for RGB input, else the source's with a size fallback. */
+enum hd60s_colour hd60s_frame_colour(const struct hd60s_colour_cfg *c, enum hd60s_colour colorimetry);
+
 struct libusb_context;
 struct libusb_device_handle;
 
@@ -30,13 +52,14 @@ struct hd60s {
     uint32_t mcu_version;  /* b0<<16 | b1<<8 | b2 from MCU command 0x58 */
     uint8_t mst_saved[5];  /* MST3367 bank 1 reg 0x27 snapshot, restored on stop */
     int started;
-    int sd;                /* colour matrix applied: 1 = BT.601, 0 = BT.709 */
+    struct hd60s_colour_cfg colour;
     struct tx tx;          /* HDMI-out transmitter state */
 };
 
 /* Periodic work while streaming: aspect, colour matrix, HDMI-out mode. */
 struct hd60s_policy {
     long win_start, last_poll, aspect_at;
+    struct hd60s_source src;
     int w, h, interlaced, frames, run; /* frame size must hold for 3/4 of the window's frames */
     const struct tx_mode *mode;
     int hz, hz_seen; /* source audio rate, accepted once two polls agree */
@@ -53,6 +76,8 @@ void hd60s_policy_frame(struct hd60s_policy *s, int w, int h, int interlaced);
 void hd60s_policy_tick(struct hd60s *d, struct hd60s_parser *p, struct hd60s_policy *s, long now_ms);
 
 int mst_read(struct hd60s *d, uint8_t bank, uint8_t reg);
+/* Vsync period counter for hd60s_rate_from_vsync; 0 if unreadable. */
+unsigned hd60s_vsync_counter(struct hd60s *d);
 int i2c_read(struct hd60s *d, uint8_t addr, uint8_t sub);
 
 #endif

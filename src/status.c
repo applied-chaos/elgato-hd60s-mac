@@ -1,6 +1,8 @@
 #include "status.h"
 
 #include <libusb.h>
+#include <limits.h>
+#include <math.h>
 #include <string.h>
 
 #define WARNING_COUNT (WARN_OPEN_FAILED + 1)
@@ -187,6 +189,16 @@ static const char *colour_name(enum hd60s_colour c)
     return c == COLOUR_BT709 ? "BT.709" : c == COLOUR_BT601 ? "BT.601" : "unknown";
 }
 
+static const char *input_name(enum hd60s_input_format f)
+{
+    return f == INPUT_YCBCR444 ? "YCbCr 4:4:4" : f == INPUT_YCBCR422 ? "YCbCr 4:2:2" : "RGB";
+}
+
+static const char *input_code(enum hd60s_input_format f)
+{
+    return f == INPUT_YCBCR444 ? "ycbcr444" : f == INPUT_YCBCR422 ? "ycbcr422" : "rgb";
+}
+
 static void mode_text(const struct hd60s_status *s, char *buf, size_t n)
 {
     snprintf(buf, n, "%dx%d%s %.2f fps", s->width, s->height, s->interlaced ? "i" : "p", s->fps);
@@ -215,6 +227,7 @@ void hd60s_print_text(const struct hd60s_status *s, FILE *out)
     case SIGNAL_ACTIVE:
         mode_text(s, mode, sizeof mode);
         fprintf(out, "Signal:   %s%s\n", mode, s->field_order == FIELD_TOP_FIRST ? ", top field first" : "");
+        fprintf(out, "Input:    %s\n", input_name(s->input_format));
         fprintf(out, "Colour:   %s\n", colour_name(s->colour));
         break;
     }
@@ -279,9 +292,9 @@ void hd60s_print_json(const struct hd60s_status *s, FILE *out)
     fprintf(out, "}},\"signal\":{\"state\":\"%s\"", state[s->signal]);
     if (s->signal == SIGNAL_ACTIVE)
         fprintf(out,
-                ",\"width\":%d,\"height\":%d,\"interlaced\":%s,\"field_order\":\"%s\",\"fps\":%.2f,\"colour\":\"%s\"",
+                ",\"width\":%d,\"height\":%d,\"interlaced\":%s,\"field_order\":\"%s\",\"fps\":%.2f,\"input\":\"%s\",\"colour\":\"%s\"",
                 s->width, s->height, s->interlaced ? "true" : "false",
-                s->field_order == FIELD_TOP_FIRST ? "top_first" : "none", s->fps,
+                s->field_order == FIELD_TOP_FIRST ? "top_first" : "none", s->fps, input_code(s->input_format),
                 s->colour == COLOUR_BT709 ? "bt709" : s->colour == COLOUR_BT601 ? "bt601" : "unknown");
     fputs("},\"audio\":", out);
     if (s->audio_rate)
@@ -308,4 +321,38 @@ void hd60s_print_json(const struct hd60s_status *s, FILE *out)
         fputc('}', out);
     }
     fputs("]}\n", out);
+}
+
+#define NO_NTSC UINT_MAX
+#define EXACT_FPS_TOLERANCE 0.05
+
+static const struct {
+    int lo, hi, tenths;
+    unsigned ntsc_from;
+} rate_bands[] = {
+    {1191, 1209, 1200, 1043},   {991, 1009, 1000, NO_NTSC}, {841, 859, 850, NO_NTSC}, {741, 759, 750, NO_NTSC},
+    {711, 729, 720, NO_NTSC},   {691, 708, 700, NO_NTSC},   {591, 609, 600, 2086},    {551, 559, 560, NO_NTSC},
+    {491, 509, 500, NO_NTSC},   {241, 259, 250, NO_NTSC},   {236, 240, 240, 5217},    {291, 309, 300, 4174},
+};
+
+struct hd60s_rate hd60s_rate_from_vsync(unsigned counter)
+{
+    if (counter == 0)
+        return (struct hd60s_rate){0, 0};
+    int raw = (int)(1250000 / counter);
+    for (size_t i = 0; i < sizeof rate_bands / sizeof *rate_bands; i++)
+        if (raw >= rate_bands[i].lo && raw <= rate_bands[i].hi)
+            return (struct hd60s_rate){rate_bands[i].tenths, counter >= rate_bands[i].ntsc_from};
+    return (struct hd60s_rate){raw, 0};
+}
+
+double hd60s_rate_hz(struct hd60s_rate r)
+{
+    return r.tenths / 10.0 * (r.ntsc ? 1000.0 / 1001.0 : 1.0);
+}
+
+double hd60s_exact_fps(double measured, struct hd60s_rate r, int interlaced)
+{
+    double exact = hd60s_rate_hz(r) / (interlaced ? 2 : 1);
+    return exact > 0 && measured > 0 && fabs(exact - measured) < measured * EXACT_FPS_TOLERANCE ? exact : measured;
 }

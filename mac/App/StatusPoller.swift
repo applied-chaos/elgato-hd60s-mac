@@ -112,7 +112,7 @@ final class StatusPoller: ObservableObject {
         st.interlaced = info.interlaced
         st.field_order = counters.top_first != 0 ? FIELD_TOP_FIRST : FIELD_NONE
         st.fps = Double(delta) / span
-        st.colour = counters.sd != 0 ? COLOUR_BT601 : COLOUR_BT709
+        st.colour = info.colour == Int32(COLOUR_BT601.rawValue) ? COLOUR_BT601 : COLOUR_BT709
         st.audio_rate = 48000
         st.audio_channels = 2
     }

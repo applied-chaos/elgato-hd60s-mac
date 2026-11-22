@@ -28,7 +28,7 @@ int fr_valid(const struct fr_header *h, size_t mapped)
     return mapped >= fr_bytes() && h->magic == FR_MAGIC && h->version == FR_VERSION;
 }
 
-void fr_publish(struct fr_header *h, const uint8_t *frame, int width, int height, int interlaced, int wide)
+void fr_publish(struct fr_header *h, const uint8_t *frame, int width, int height, int interlaced, int wide, int colour)
 {
     size_t len = (size_t)width * (size_t)height * 2;
     if (width <= 0 || height <= 0 || len > FR_SLOT_BYTES)
@@ -44,6 +44,7 @@ void fr_publish(struct fr_header *h, const uint8_t *frame, int width, int height
     s->height = height;
     s->interlaced = interlaced;
     s->wide = wide;
+    s->colour = colour;
     s->len = (uint32_t)len;
     atomic_store_explicit(&s->seq, n, memory_order_release);
     atomic_store_explicit(&h->latest, n, memory_order_release);
@@ -57,7 +58,7 @@ uint32_t fr_take(const struct fr_header *h, uint32_t seen, uint8_t *out, size_t 
     const struct fr_slot *s = &h->slot[n % FR_SLOTS];
     if (atomic_load_explicit(&s->seq, memory_order_acquire) != n)
         return 0;
-    struct fr_frame f = {s->width, s->height, s->interlaced, s->wide, s->len};
+    struct fr_frame f = {s->width, s->height, s->interlaced, s->wide, s->colour, s->len};
     if (f.width <= 0 || f.height <= 0 || f.len != (size_t)f.width * (size_t)f.height * 2 || f.len > FR_SLOT_BYTES ||
         f.len > cap)
         return 0;
@@ -75,7 +76,7 @@ uint32_t fr_latest(const struct fr_header *h, struct fr_frame *info)
     if (!n)
         return 0;
     const struct fr_slot *s = &h->slot[n % FR_SLOTS];
-    struct fr_frame f = {s->width, s->height, s->interlaced, s->wide, s->len};
+    struct fr_frame f = {s->width, s->height, s->interlaced, s->wide, s->colour, s->len};
     if (atomic_load_explicit(&s->seq, memory_order_acquire) != n || f.width <= 0 || f.height <= 0)
         return 0;
     *info = f;
@@ -92,10 +93,9 @@ void fr_status(struct fr_header *h, enum link_state link, uint64_t frames, uint6
     atomic_store_explicit(&h->link, (uint32_t)link, memory_order_release);
 }
 
-void fr_device(struct fr_header *h, uint32_t mcu_version, int sd, int top_first)
+void fr_device(struct fr_header *h, uint32_t mcu_version, int top_first)
 {
     atomic_store_explicit(&h->mcu_version, mcu_version, memory_order_relaxed);
-    atomic_store_explicit(&h->sd, (uint32_t)(sd != 0), memory_order_relaxed);
     atomic_store_explicit(&h->top_first, (uint32_t)(top_first != 0), memory_order_relaxed);
 }
 
@@ -109,7 +109,6 @@ struct fr_counters fr_counters(const struct fr_header *h)
         atomic_load_explicit(&h->long_lines, memory_order_relaxed),
         atomic_load_explicit(&h->errors, memory_order_relaxed),
         atomic_load_explicit(&h->mcu_version, memory_order_relaxed),
-        atomic_load_explicit(&h->sd, memory_order_relaxed),
         atomic_load_explicit(&h->top_first, memory_order_relaxed),
     };
 }

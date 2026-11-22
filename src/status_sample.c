@@ -77,7 +77,9 @@ void hd60s_sample(struct hd60s_status *out, double seconds, volatile sig_atomic_
         if (st->signal == SIGNAL_ACTIVE) {
             double span = k.last - k.first;
             st->fps = k.standard > 1 && span > 0 ? (double)(k.standard - 1) / span : 0;
-            st->colour = d.sd ? COLOUR_BT601 : COLOUR_BT709;
+            st->fps = hd60s_exact_fps(st->fps, hd60s_rate_from_vsync(hd60s_vsync_counter(&d)), st->interlaced);
+            st->colour = parser.colour;
+            st->input_format = parser.input_format;
         }
         if (k.audio_bytes) {
             st->audio_rate = 48000;
