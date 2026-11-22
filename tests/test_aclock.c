@@ -5,25 +5,22 @@
 
 #include "../src/aclock.h"
 
-/* Host clock in nanoseconds; nominal 48 kHz = 20833.33 ns per sample. */
 #define P_NOM (1e9 / 48000)
 #define MS 1000000.0
 #define T0 1000000000000ull
 
-/* Source with its own rate: delivers 96-frame chunks; a chunk completes when its last sample has been
- * produced, plus lateness. */
 struct src {
-    double p_true; /* ns per sample */
+    double true_ns_per_sample;
     uint64_t made;
 };
 
 static void src_init(struct src *s, double ppm)
 {
-    s->p_true = P_NOM / (1 + ppm * 1e-6);
+    s->true_ns_per_sample = P_NOM / (1 + ppm * 1e-6);
     s->made = 0;
 }
 
-static double src_time(const struct src *s, uint64_t k) { return T0 + (double)k * s->p_true; }
+static double src_time(const struct src *s, uint64_t k) { return T0 + (double)k * s->true_ns_per_sample; }
 
 static double jitter(double max_ms) { return max_ms * MS * rand() / (double)RAND_MAX; }
 
@@ -68,7 +65,7 @@ static void test_steady(void)
     assert(contiguous);
     assert(c.rephases == 1);
     assert(fabs(line_err_ms(&c, &s, &r)) < 0.01);
-    assert(fabs(c.p / P_NOM - 1) < 1e-6);
+    assert(fabs(c.ticks_per_sample / P_NOM - 1) < 1e-6);
 }
 
 static void test_drift(double ppm)
@@ -82,7 +79,7 @@ static void test_drift(double ppm)
     assert(contiguous);
     assert(c.rephases == 1);
     assert(fabs(line_err_ms(&c, &s, &r)) < 0.05);
-    assert(fabs(c.p / s.p_true - 1) < 2e-6);
+    assert(fabs(c.ticks_per_sample / s.true_ns_per_sample - 1) < 2e-6);
 }
 
 /* Measured on the device: completion jitter ~0.1 ms, tail to 2.4 ms; one burst of 680 frames after a 14 ms stall. */
@@ -94,7 +91,7 @@ static void test_jitter(void)
     aclock_init(&c, P_NOM, T0);
     int contiguous = 1;
     feed(&c, &s, T0 + 5e9, 0.5, &contiguous);
-    uint64_t next = c.wr;
+    uint64_t next = c.next_sample;
     double ref = src_time(&s, s.made + 679);
     uint64_t skipped, at = aclock_arrive(&c, (uint64_t)(ref + 0.3 * MS), 680, &skipped);
     assert(at == next && skipped == 0);
@@ -104,7 +101,7 @@ static void test_jitter(void)
     assert(c.rephases == 1);
     double err = line_err_ms(&c, &s, &r);
     assert(err > 0 && err < 2.4);
-    assert(fabs(c.p / s.p_true - 1) < 20e-6);
+    assert(fabs(c.ticks_per_sample / s.true_ns_per_sample - 1) < 20e-6);
 }
 
 /* Source mode switch: ~30 ms of samples never arrive, then real time again. */
@@ -117,7 +114,7 @@ static void test_gap(void)
     int contiguous = 1;
     feed(&c, &s, T0 + 10e9, 0.2, &contiguous);
     assert(contiguous);
-    uint64_t before = c.wr, probe = c.wr + 48000;
+    uint64_t before = c.next_sample, probe = c.next_sample + 48000;
     uint64_t h_probe = aclock_host(&c, probe);
     s.made += 1440;
     struct run r = feed(&c, &s, src_time(&s, s.made + 95) + 1, 0, NULL);
@@ -131,7 +128,6 @@ static void test_gap(void)
     assert(fabs(line_err_ms(&c, &s, &r)) < 0.2);
 }
 
-/* No signal: audio stops for 8 s; the line free-runs, then resumes at the clock's position. */
 static void test_signal_loss(void)
 {
     struct aclock c;
@@ -139,21 +135,20 @@ static void test_signal_loss(void)
     src_init(&s, -10);
     aclock_init(&c, P_NOM, T0);
     feed(&c, &s, T0 + 20e9, 0.2, NULL);
-    double p = c.p;
-    uint64_t before = c.wr;
+    double p = c.ticks_per_sample;
+    uint64_t before = c.next_sample;
     s.made += 8 * 48000;
     int contiguous = 1;
     struct run r = feed(&c, &s, src_time(&s, s.made + 95) + 1, 0, NULL);
     assert(c.rephases == 2);
     assert(r.skipped == r.placed - before);
     assert(r.skipped > 8 * 48000 - 20 && r.skipped < 8 * 48000 + 20);
-    assert(c.p == p);
+    assert(c.ticks_per_sample == p);
     r = feed(&c, &s, T0 + 40e9, 0.2, &contiguous);
     assert(contiguous && c.rephases == 2);
     assert(fabs(line_err_ms(&c, &s, &r)) < 0.2);
 }
 
-/* A source far outside +-1000 ppm keeps re-phasing, but the line stays smooth. */
 static void test_rate_out_of_range(void)
 {
     struct aclock c;
@@ -167,7 +162,7 @@ static void test_rate_out_of_range(void)
         assert(i == 0 || llabs((long long)h - (long long)prev) < 0.2 * MS);
         prev = h;
     }
-    assert(c.p >= c.p_nom * (1 - 1000e-6) && c.p < c.p_nom * (1 - 500e-6));
+    assert(c.ticks_per_sample >= c.nominal_ticks_per_sample * (1 - 1000e-6) && c.ticks_per_sample < c.nominal_ticks_per_sample * (1 - 500e-6));
     assert(c.rephases > 1 && c.rephases < 600);
 }
 

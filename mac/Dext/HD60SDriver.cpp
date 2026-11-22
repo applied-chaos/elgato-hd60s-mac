@@ -115,6 +115,14 @@ void HD60SDriver::free()
     super::free();
 }
 
+// Wake after the predicted time, so the published timestamp is never in the future as the line moves.
+static constexpr uint64_t kZeroWakeSlackMs = 1;
+
+static uint64_t nextZeroWake(const HD60SDriver_IVars *iv)
+{
+    return aclock_host(&iv->clock, iv->zeroSample + kIOFrames) + kZeroWakeSlackMs * iv->msTicks;
+}
+
 static float *ioBase(HD60SDriver_IVars *iv) { return reinterpret_cast<float *>(iv->ioMap->GetAddress()); }
 
 static void zeroFrames(HD60SDriver_IVars *iv, uint64_t from, uint64_t n)
@@ -442,7 +450,7 @@ void IMPL(HD60SDriver, PolicyOccurred)
     if (static_cast<uint64_t>(now) - iv->lastAudioLog >= kAudioLogMs) {
         iv->lastAudioLog = static_cast<uint64_t>(now);
         os_log(OS_LOG_DEFAULT, "HD60S dext audio: %d ppm, %lu rephases, %llu pads, %llu late, %llu overflow, max lateness %llu us",
-               static_cast<int>((iv->clock.p_nom / iv->clock.p - 1) * 1e6), iv->clock.rephases,
+               static_cast<int>((iv->clock.nominal_ticks_per_sample / iv->clock.ticks_per_sample - 1) * 1e6), iv->clock.rephases,
                __atomic_load_n(&iv->pads, __ATOMIC_RELAXED), iv->lates, iv->overflow, iv->maxLate * 1000 / iv->msTicks);
         iv->maxLate = 0;
     }
@@ -458,7 +466,7 @@ kern_return_t HD60SDriver::StartDevice(IOUserAudioObjectID id, IOUserAudioStartS
     iv->usbQueue->DispatchSync(^{
         iv->zeroSample = aclock_sample(&iv->clock, mach_absolute_time()) / kIOFrames * kIOFrames;
         iv->device->UpdateCurrentZeroTimestamp(iv->zeroSample, aclock_host(&iv->clock, iv->zeroSample));
-        iv->zeroTimer->WakeAtTime(kIOTimerClockMachAbsoluteTime, aclock_host(&iv->clock, iv->zeroSample + kIOFrames) + iv->msTicks, 0);
+        iv->zeroTimer->WakeAtTime(kIOTimerClockMachAbsoluteTime, nextZeroWake(iv), 0);
         iv->zeroTimer->SetEnable(true);
     });
     return kIOReturnSuccess;
@@ -473,8 +481,7 @@ kern_return_t HD60SDriver::StopDevice(IOUserAudioObjectID id, IOUserAudioStartSt
 void IMPL(HD60SDriver, ZeroTimestampOccurred)
 {
     auto *iv = ivars;
-    // Woken 1 ms after the predicted time, so the published timestamp is never in the future as the line moves.
     iv->zeroSample += kIOFrames;
     iv->device->UpdateCurrentZeroTimestamp(iv->zeroSample, aclock_host(&iv->clock, iv->zeroSample));
-    iv->zeroTimer->WakeAtTime(kIOTimerClockMachAbsoluteTime, aclock_host(&iv->clock, iv->zeroSample + kIOFrames) + iv->msTicks, 0);
+    iv->zeroTimer->WakeAtTime(kIOTimerClockMachAbsoluteTime, nextZeroWake(iv), 0);
 }
