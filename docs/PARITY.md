@@ -203,7 +203,7 @@ App status messages: "No Signal", "Protected with HDCP", "USB 3 is required for 
 
 ## Count
 
-- **Missing (16):** A7, B1, B2, B3, B5, C1, D3, D4, E2, E3, E4, E5, F1, G4, G5, H1.
+- **Missing (15):** A7, B1, B2, B3, B5, C1, D3, D4, E2, E3, E4, E5, F1, G4, G5.
   - E2 is existing ticket #16. G5 folds into F1. E5 is conditional on E1.
 - **Partial (10):** A4, A5, B6, D2, D5, D7, E1, E6, G1, H2.
   - D7 maps to existing #5/#6. G1 is the app side of #14. E1 is the TV run of #13.
