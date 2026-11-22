@@ -20,8 +20,8 @@ build/libUB530.dylib:
 build/ub530_tables.h: tools/extract-tables.py build/libUB530.dylib
 	python3 -I tools/extract-tables.py build/libUB530.dylib > $@.tmp && mv $@.tmp $@
 
-build/hd60s: src/main.c src/device.c src/parser.c src/device.h src/parser.h build/ub530_tables.h
-	$(CC) $(CFLAGS) -o $@ src/main.c src/device.c src/parser.c $(LDLIBS)
+build/hd60s: src/main.c src/device.c src/parser.c src/tx.c src/status.c src/status_probe.c src/device.h src/parser.h src/tx.h src/status.h build/ub530_tables.h
+	$(CC) $(CFLAGS) -o $@ src/main.c src/device.c src/parser.c src/tx.c src/status.c src/status_probe.c $(LDLIBS) -framework IOKit -framework CoreFoundation
 
 build/test_parser: tests/test_parser.c src/parser.c src/parser.h
 	@mkdir -p build
@@ -58,6 +58,18 @@ dist-dext: DEXT_CONFIG = Release
 dist-dext: dext-dev
 	$(call dmg,build/HD60S-dext.app,build/HD60S-DriverKit-$(VERSION).dmg)
 
+build/test_deinterlace: tests/test_deinterlace.c src/deinterlace.c src/deinterlace.h
+	@mkdir -p build
+	$(CC) $(CFLAGS) -fsanitize=address,undefined -o $@ tests/test_deinterlace.c src/deinterlace.c
+
+build/test_tx: tests/test_tx.c src/tx.c src/tx.h
+	@mkdir -p build
+	$(CC) $(CFLAGS) -fsanitize=address,undefined -o $@ tests/test_tx.c src/tx.c
+
+build/test_status: tests/test_status.c src/status.c src/status.h
+	@mkdir -p build
+	$(CC) $(CFLAGS) -fsanitize=address,undefined -o $@ tests/test_status.c src/status.c
+
 build/test_ring: tests/test_ring.c src/ring.c src/ring.h
 	@mkdir -p build
 	$(CC) $(CFLAGS) -fsanitize=address,undefined -o $@ tests/test_ring.c src/ring.c
@@ -70,6 +82,10 @@ build/test_tone: tests/test_tone.c mac/Dext/Tone.h
 	@mkdir -p build
 	$(CC) $(CFLAGS) -fsanitize=address,undefined -o $@ tests/test_tone.c -lm
 
+build/test_frame_rates: tests/test_frame_rates.swift mac/Extension/FrameRate.swift
+	@mkdir -p build
+	swiftc -parse-as-library -o $@ mac/Extension/FrameRate.swift tests/test_frame_rates.swift
+
 build/test_plugin: tests/test_plugin.c mac/Audio/HD60SAudio.c
 	@mkdir -p build
 	$(CC) $(CFLAGS) -Wno-four-char-constants -fsanitize=address,undefined -o $@ tests/test_plugin.c -framework CoreFoundation
@@ -78,13 +94,17 @@ build/test_frame_fit: tests/test_frame_fit.swift mac/Extension/FrameFit.swift
 	@mkdir -p build
 	swiftc -parse-as-library -o $@ mac/Extension/FrameFit.swift tests/test_frame_fit.swift
 
-test: build/test_parser build/test_ring build/test_plugin build/test_audio_plugin build/test_tone build/test_frame_fit
+test: build/test_parser build/test_tx build/test_deinterlace build/test_ring build/test_status build/test_plugin build/test_audio_plugin build/test_tone build/test_frame_fit build/test_frame_rates
 	build/test_parser
+	build/test_tx
+	build/test_deinterlace
 	build/test_ring
+	build/test_status
 	build/test_plugin
 	build/test_audio_plugin
 	build/test_tone
 	build/test_frame_fit
+	build/test_frame_rates
 
 clean:
 	rm -rf build

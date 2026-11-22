@@ -112,7 +112,8 @@ static void test_progressive(size_t chunk)
     free(st.b);
 }
 
-static void test_interlaced(void)
+/* Even lines come from F=0, odd from F=1, whichever field the stream starts on. */
+static void test_interlaced(int first_field)
 {
     static uint8_t buf[1 << 16];
     struct sink s = {0};
@@ -120,7 +121,7 @@ static void test_interlaced(void)
     parser_init(&p, buf, sizeof buf, on_frame, on_audio, &s);
     struct stream st = {0};
     for (int i = 0; i < 12; i++) {
-        int f = i & 1;
+        int f = (i + first_field) & 1;
         field(&st, f, f, 2, H / 2);
     }
     feed_chunked(&p, &st, 7);
@@ -248,7 +249,8 @@ int main(void)
     test_progressive(1 << 20);
     test_progressive(1);
     test_progressive(5);
-    test_interlaced();
+    test_interlaced(0);
+    test_interlaced(1);
     test_audio();
     test_corrupt_eav_keeps_frame_and_stride(2);
     test_corrupt_eav_keeps_frame_and_stride(H - 1);

@@ -24,6 +24,7 @@ Pick "Elgato HD60 S" as the camera. In OBS, add it as a Video Capture Device, an
 - Consoles with HDCP on send no picture. On a PS5, turn off HDCP in Settings > System > HDMI.
 - Audio only flows while something is using the camera, and runs about 30 ms behind the picture.
 - Only one thing can use the device at a time.
+- The camera offers 59.94 and 50 fps. Frames are delivered at the source's own rate whichever you pick, so a 50 Hz source never drops or repeats frames; pick the rate that matches your source for correct nominal timing and "No signal" slate pacing.
 
 ## Build from source
 
@@ -44,6 +45,7 @@ The command-line tool captures raw video and audio:
 
 ```sh
 build/hd60s info                                  # firmware, resolution and frame rate
+build/hd60s status [--json]                        # device, USB link, owner, signal, audio, warnings
 build/hd60s capture -n 300 -o out.yuv -a out.pcm  # 300 frames of YUY2 and 48 kHz s16le
 build/hd60s capture -o - | ffplay -f rawvideo -pixel_format yuyv422 -video_size 1920x1080 -framerate 60 -
 ```
@@ -68,12 +70,12 @@ Work happens on `develop`; `main` holds releases. Pushing a `vX.Y.Z` tag builds,
 
 ## Safety
 
-The driver only sends the requests Elgato's own driver sends on every start. It never touches the firmware update, EDID write or FX3 RAM paths, which write to flash.
+The driver only sends the requests Elgato's own driver sends on every start. It never touches the firmware update, EDID write or FX3 RAM paths, which write to flash. HDMI passthrough (`src/tx.c`) writes only HDMI-out transmitter registers, behind an allow-list that `make test` exercises; it reads the TV's EDID over DDC and never writes to it.
 
 ## Not done yet
 
 - Modes other than 1080p60. SD modes also need the BT.601 matrix.
-- HDMI passthrough.
+- HDMI passthrough audio and HDCP. Video passthrough is implemented but not yet checked on a TV.
 - Rare tiny audio glitches as the HDMI and Mac clocks drift.
 
 ## Licence

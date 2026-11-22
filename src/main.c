@@ -7,6 +7,7 @@
 
 #include "device.h"
 #include "parser.h"
+#include "status.h"
 
 #define FRAME_CAP (1920 * 1440 * 2)
 
@@ -76,9 +77,88 @@ static void report(const struct capture *c)
 static int usage(void)
 {
     fprintf(stderr, "usage: hd60s info\n"
+                    "       hd60s status [--json]\n"
                     "       hd60s capture [-n frames] [-o out.uyvy|-] [-a out.pcm]\n"
                     "video: raw YUY2 (ffmpeg yuyv422); audio: 48 kHz s16le stereo\n");
     return 2;
+}
+
+struct watch {
+    struct hd60s_status st;
+    double first, last;
+    unsigned long standard;
+    size_t audio_bytes;
+};
+
+static void watch_frame(void *ctx, const uint8_t *frame, int w, int h, int interlaced)
+{
+    struct watch *k = ctx;
+    (void)frame;
+    if (!hd60s_size_standard(w, h)) {
+        k->st.runts++;
+        return;
+    }
+    k->last = now();
+    if (!k->standard++)
+        k->first = k->last;
+    k->st.width = w;
+    k->st.height = h;
+    k->st.interlaced = interlaced;
+}
+
+static void watch_audio(void *ctx, const uint8_t *pcm, size_t len)
+{
+    struct watch *k = ctx;
+    (void)pcm;
+    k->audio_bytes += len;
+}
+
+/* Reports without failing: a busy or missing device is a result, not an error. */
+static int status(int json)
+{
+    static uint8_t frame[FRAME_CAP];
+    struct watch k = {0};
+    struct hd60s_status *st = &k.st;
+    hd60s_probe_usb(st);
+    if (st->present) {
+        struct hd60s d;
+        struct hd60s_parser parser;
+        hd60s_quiet = 1;
+        int opened = hd60s_open(&d) == 0;
+        st->access = hd60s_access_from_error(d.open_err);
+        if (opened && hd60s_start(&d) == 0) {
+            st->owner = OWNER_CLI;
+            st->owner_pid = 0;
+            st->owner_name[0] = 0;
+            st->fw_valid = 1;
+            st->mcu_version = d.mcu_version;
+            parser_init(&parser, frame, sizeof frame, watch_frame, watch_audio, &k);
+            hd60s_stream(&d, &parser, &stop_requested, 2.0);
+            st->signal = k.standard ? SIGNAL_ACTIVE : SIGNAL_NONE;
+            st->frames = parser.frames;
+            st->discarded = parser.discarded;
+            st->long_lines = parser.long_total;
+        } else if (opened) {
+            st->access = ACCESS_FAILED;
+        }
+        if (st->signal == SIGNAL_ACTIVE) {
+            double span = k.last - k.first;
+            st->fps = k.standard > 1 && span > 0 ? (double)(k.standard - 1) / span : 0;
+            st->field_order = st->interlaced ? FIELD_TOP_FIRST : FIELD_NONE;
+            st->colour = COLOUR_BT709; /* colour_convert(d, 0, 0) runs for every mode */
+        }
+        if (k.audio_bytes) {
+            st->audio_rate = 48000;
+            st->audio_channels = 2;
+        }
+        hd60s_stop(&d);
+        hd60s_close(&d);
+    }
+    if (json)
+        hd60s_print_json(st, stdout);
+    else
+        hd60s_print_text(st, stdout);
+    return 0;
 }
 
 int main(int argc, char **argv)
@@ -86,6 +166,8 @@ int main(int argc, char **argv)
     static uint8_t frame[FRAME_CAP];
     if (argc < 2)
         return usage();
+    if (strcmp(argv[1], "status") == 0)
+        return status(argc > 2 && strcmp(argv[2], "--json") == 0);
     int info = strcmp(argv[1], "info") == 0;
     if (!info && strcmp(argv[1], "capture") != 0)
         return usage();
