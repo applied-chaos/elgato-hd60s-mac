@@ -85,6 +85,12 @@ int mst_read(struct hd60s *d, uint8_t bank, uint8_t reg)
     return i2c_read(d, I2C_MST3367, reg);
 }
 
+unsigned hd60s_vsync_counter(struct hd60s *d)
+{
+    int hi = mst_read(d, 0, 0x59), lo = mst_read(d, 0, 0x5a);
+    return hi == 0xff && lo == 0xff ? 0 : (unsigned)(hi << 8 | lo) & 0x3fff;
+}
+
 static void mst_update(struct hd60s *d, uint8_t bank, uint8_t reg, uint8_t keep, uint8_t set)
 {
     mst_write(d, bank, reg, (uint8_t)((mst_read(d, bank, reg) & keep) | set));

@@ -53,6 +53,8 @@ void hd60s_policy_frame(struct hd60s_policy *s, int w, int h, int interlaced);
 void hd60s_policy_tick(struct hd60s *d, struct hd60s_parser *p, struct hd60s_policy *s, long now_ms);
 
 int mst_read(struct hd60s *d, uint8_t bank, uint8_t reg);
+/* Vsync period counter for hd60s_rate_from_vsync; 0 if unreadable. */
+unsigned hd60s_vsync_counter(struct hd60s *d);
 int i2c_read(struct hd60s *d, uint8_t addr, uint8_t sub);
 
 #endif

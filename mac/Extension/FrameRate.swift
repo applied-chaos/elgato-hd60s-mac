@@ -3,12 +3,15 @@ import CoreMedia
 // Advertised camera rates. Frames are always stamped at arrival, so the choice only sets the nominal
 // duration and slate pacing; a source at the other rate still flows through without drops or repeats.
 enum FrameRate: CaseIterable {
-    case ntsc, pal
+    case ntsc, pal, p30, p25, p24
 
     var duration: CMTime {
         switch self {
         case .ntsc: CMTime(value: 1001, timescale: 60000)
         case .pal: CMTime(value: 1, timescale: 50)
+        case .p30: CMTime(value: 1, timescale: 30)
+        case .p25: CMTime(value: 1, timescale: 25)
+        case .p24: CMTime(value: 1, timescale: 24)
         }
     }
 

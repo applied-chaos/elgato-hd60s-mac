@@ -1,6 +1,7 @@
 #include "status.h"
 
 #include <libusb.h>
+#include <math.h>
 #include <string.h>
 
 #define WARNING_COUNT (WARN_FIRMWARE + 1)
@@ -294,4 +295,36 @@ void hd60s_print_json(const struct hd60s_status *s, FILE *out)
             first = 0;
         }
     fputs("]}\n", out);
+}
+
+/* First match wins. ntsc_from is the smallest counter that reads as the 1001 rate (0 = no such rate). */
+static const struct {
+    int lo, hi, tenths;
+    unsigned ntsc_from;
+} rate_bands[] = {
+    {1191, 1209, 1200, 1043}, {991, 1009, 1000, 0}, {841, 859, 850, 0}, {741, 759, 750, 0},
+    {711, 729, 720, 0},       {691, 708, 700, 0},   {591, 609, 600, 2086}, {551, 559, 560, 0},
+    {491, 509, 500, 0},       {241, 259, 250, 0},   {236, 244, 240, 5217}, {291, 309, 300, 4174},
+};
+
+struct hd60s_rate hd60s_rate_from_vsync(unsigned counter)
+{
+    if (counter == 0)
+        return (struct hd60s_rate){0, 0};
+    int raw = (int)(1250000 / counter);
+    for (size_t i = 0; i < sizeof rate_bands / sizeof *rate_bands; i++)
+        if (raw >= rate_bands[i].lo && raw <= rate_bands[i].hi)
+            return (struct hd60s_rate){rate_bands[i].tenths, rate_bands[i].ntsc_from && counter >= rate_bands[i].ntsc_from};
+    return (struct hd60s_rate){raw, 0};
+}
+
+double hd60s_rate_hz(struct hd60s_rate r)
+{
+    return r.tenths / 10.0 * (r.ntsc ? 1000.0 / 1001.0 : 1.0);
+}
+
+double hd60s_exact_fps(double measured, struct hd60s_rate r, int interlaced)
+{
+    double exact = hd60s_rate_hz(r) / (interlaced ? 2 : 1);
+    return exact > 0 && measured > 0 && fabs(exact - measured) < measured * 0.05 ? exact : measured;
 }
