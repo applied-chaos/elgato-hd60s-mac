@@ -35,7 +35,8 @@ struct hd60s_status {
     double fps; /* frame rate; interlaced counts frames, not fields */
     enum hd60s_colour colour;
     enum hd60s_input_format input_format;
-    int audio_rate, audio_channels; /* 0 = no audio */
+    int audio_rate, audio_channels; /* stream format, 0 = no audio */
+    int audio_source_rate;          /* rate the source sends before the device resamples to 48 kHz, 0 = unknown */
 
     unsigned long frames, discarded, runts, long_lines;
 };

@@ -115,7 +115,7 @@ static struct tx_bus tx_bus(struct hd60s *d)
 }
 
 /* Source sample rate from the receiver's ACR packet (b2:0x40-42 CTS, 0x43-45 N). 0 when b2:0x0b shows no audio. */
-static int source_audio_hz(struct hd60s *d, const struct tx_mode *m)
+int hd60s_source_audio_hz(struct hd60s *d, const struct tx_mode *m)
 {
     if (!m || (mst_read(d, 2, 0x0b) & 0x62) != 0x62)
         return 0;
@@ -508,7 +508,7 @@ void hd60s_policy_tick(struct hd60s *d, struct hd60s_parser *p, struct hd60s_pol
     }
     if (now_ms - s->last_poll >= TX_POLL_MS) {
         struct tx_bus tb = tx_bus(d);
-        int hz = source_audio_hz(d, s->mode);
+        int hz = hd60s_source_audio_hz(d, s->mode);
         if (hz == s->hz_seen)
             s->hz = hz;
         s->hz_seen = hz;

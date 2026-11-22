@@ -169,6 +169,8 @@ static int status(int json)
         if (k.audio_bytes) {
             st->audio_rate = 48000;
             st->audio_channels = 2;
+            st->audio_source_rate =
+                hd60s_source_audio_hz(&d, tx_mode_find(st->width, st->height, st->interlaced, st->interlaced ? st->fps * 2 : st->fps));
         }
         hd60s_stop(&d);
         hd60s_close(&d);
