@@ -140,7 +140,7 @@ static void avi_parse_covers_each_format_and_colorimetry(void)
     assert(s.format == INPUT_YCBCR444 && s.colorimetry == COLOUR_UNKNOWN);
     s = hd60s_parse_avi(1, 0x60, 0x80, 0); /* reserved Y1Y0: Elgato treats it as RGB */
     assert(s.format == INPUT_RGB);
-    s = hd60s_parse_avi(1, 0x1f, 0x3f, 0); /* other bits ignored */
+    s = hd60s_parse_avi(1, 0x1f, 0x3f, 0);
     assert(s.format == INPUT_RGB && s.colorimetry == COLOUR_UNKNOWN);
     s = hd60s_parse_avi(0, 0x40, 0x80, 0); /* no InfoFrame (DVI): RGB, no colorimetry */
     assert(s.format == INPUT_RGB && s.colorimetry == COLOUR_UNKNOWN);
@@ -333,9 +333,9 @@ static void auto_range_follows_source_quantisation(void)
     struct hd60s_csc std = plan(INPUT_RGB, 0, RANGE_STANDARD, 0), full = plan(INPUT_RGB, 0, RANGE_EXPANDED, 0);
     for (int q = 0; q < 4; q++) {
         struct hd60s_csc a = plan(INPUT_RGB, 0, RANGE_AUTO, q);
-        assert(memcmp(&a, q == 2 ? &full : &std, sizeof a) == 0); /* only Q=2 (full range) is compressed */
+        assert(memcmp(&a, q == 2 ? &full : &std, sizeof a) == 0);
         struct hd60s_csc s = plan(INPUT_RGB, 0, RANGE_STANDARD, q), e = plan(INPUT_RGB, 0, RANGE_EXPANDED, q);
-        assert(memcmp(&s, &std, sizeof s) == 0 && memcmp(&e, &full, sizeof e) == 0); /* overrides ignore Q */
+        assert(memcmp(&s, &std, sizeof s) == 0 && memcmp(&e, &full, sizeof e) == 0);
     }
 }
 
@@ -365,7 +365,7 @@ static void range_scaling_reaches_hardware_and_follows_the_source(void)
     hd60s_policy_tick(&d, &p, &pol, 2000);
     assert((uint16_t)(fk.mst[0][0x93] << 8 | fk.mst[0][0x94]) == std0);
 
-    d.settings.range = RANGE_EXPANDED; /* live change from the app */
+    d.settings.range = RANGE_EXPANDED;
     hd60s_policy_tick(&d, &p, &pol, 3000);
     assert((uint16_t)(fk.mst[0][0x93] << 8 | fk.mst[0][0x94]) == full0);
 }
