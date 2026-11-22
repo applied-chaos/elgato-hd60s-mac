@@ -87,8 +87,8 @@ struct watch {
     struct hd60s_status st;
     double first, last;
     unsigned long standard;
-    int unknown_w, unknown_h, unknown_interlaced; /* last size that is not a known mode */
-    unsigned long unknown_run;            /* consecutive frames of that size: a real timing, not mode-switch runts */
+    int unknown_w, unknown_h, unknown_interlaced;
+    unsigned long unknown_run;            /* same-size run: a real timing, not mode-switch runts */
     size_t audio_bytes;
 };
 
