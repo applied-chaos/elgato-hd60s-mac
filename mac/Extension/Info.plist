@@ -25,6 +25,8 @@
 		<key>CMIOExtensionMachServiceName</key>
 		<string>$(TeamIdentifierPrefix)net.mintopia.hd60s.camera</string>
 	</dict>
+	<key>HD60SGroup</key>
+	<string>$(TeamIdentifierPrefix)net.mintopia.hd60s</string>
 	<key>NSSystemExtensionUsageDescription</key>
 	<string>Makes the Elgato HD60 S available as a camera.</string>
 </dict>

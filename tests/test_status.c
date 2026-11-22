@@ -58,7 +58,7 @@ int main(void)
     s = healthy();
     s.access = hd60s_access_from_error(-6 /* LIBUSB_ERROR_BUSY */);
     s.owner = OWNER_CAMERA;
-    assert(has(&s, WARN_BUSY) && !has(&s, WARN_OPEN_FAILED) && !has(&s, WARN_FIRMWARE));
+    assert(has(&s, WARN_BUSY) && !has(&s, WARN_OPEN_FAILED) );
     hd60s_warning_message(WARN_BUSY, &s, msg, sizeof msg);
     assert(strstr(msg, "camera extension"));
     assert(hd60s_access_from_error(-3 /* ACCESS */) == ACCESS_BUSY);
@@ -70,9 +70,15 @@ int main(void)
     /* Firmware only judged when read. */
     s = healthy();
     s.mcu_version = 0x010203;
-    assert(has(&s, WARN_FIRMWARE));
+    assert(hd60s_warnings(&s) == 0 && hd60s_firmware_untested(&s)); /* a note, not a warning */
     s.fw_valid = 0;
-    assert(!has(&s, WARN_FIRMWARE));
+    assert(!hd60s_firmware_untested(&s));
+    s = healthy();
+    assert(!hd60s_firmware_untested(&s));
+    s.mcu_version = 0x010203;
+    char *j0 = render(hd60s_print_json, &s);
+    assert(strstr(j0, "\"warnings\":[]") && strstr(j0, "\"notes\":[{\"code\":\"untested_firmware\""));
+    assert(strstr(render(hd60s_print_text, &s), "Note:     Untested firmware 01.02.03"));
 
     /* Owner classification from the owning process's executable path. */
     assert(hd60s_owner_from_path("/Library/SystemExtensions/X/net.mintopia.hd60s.camera.systemextension/Contents/MacOS/net.mintopia.hd60s.camera") == OWNER_CAMERA);

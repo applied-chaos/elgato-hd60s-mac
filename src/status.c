@@ -7,7 +7,7 @@
 #include <math.h>
 #include <string.h>
 
-#define WARNING_COUNT (WARN_FIRMWARE + 1)
+#define WARNING_COUNT (WARN_OPEN_FAILED + 1)
 
 const uint32_t HD60S_KNOWN_MCU[] = {0x110311}; /* observed on the dev unit */
 const int HD60S_KNOWN_MCU_COUNT = 1;
@@ -68,6 +68,11 @@ static int fw_known(uint32_t v)
     return 0;
 }
 
+int hd60s_firmware_untested(const struct hd60s_status *s)
+{
+    return s->fw_valid && !fw_known(s->mcu_version);
+}
+
 uint32_t hd60s_warnings(const struct hd60s_status *s)
 {
     if (!s->present)
@@ -79,8 +84,6 @@ uint32_t hd60s_warnings(const struct hd60s_status *s)
         w |= 1u << WARN_BUSY;
     if (s->access == ACCESS_FAILED)
         w |= 1u << WARN_OPEN_FAILED;
-    if (s->fw_valid && !fw_known(s->mcu_version))
-        w |= 1u << WARN_FIRMWARE;
     return w;
 }
 
@@ -95,8 +98,6 @@ const char *hd60s_warning_code(enum hd60s_warning w)
         return "busy";
     case WARN_OPEN_FAILED:
         return "open_failed";
-    case WARN_FIRMWARE:
-        return "unexpected_firmware";
     }
     return "";
 }
@@ -172,11 +173,13 @@ void hd60s_warning_message(enum hd60s_warning w, const struct hd60s_status *s, c
     case WARN_OPEN_FAILED:
         snprintf(buf, n, "Could not open the device. Unplug and replug it.");
         break;
-    case WARN_FIRMWARE:
-        snprintf(buf, n, "Unexpected MCU firmware %02x.%02x.%02x. Capture may misbehave.",
-                 s->mcu_version >> 16 & 0xff, s->mcu_version >> 8 & 0xff, s->mcu_version & 0xff);
-        break;
     }
+}
+
+static void untested_message(const struct hd60s_status *s, char *buf, size_t n)
+{
+    snprintf(buf, n, "Untested firmware %02x.%02x.%02x.", s->mcu_version >> 16 & 0xff, s->mcu_version >> 8 & 0xff,
+             s->mcu_version & 0xff);
 }
 
 static const char *colour_name(enum hd60s_colour c)
@@ -241,6 +244,10 @@ void hd60s_print_text(const struct hd60s_status *s, FILE *out)
     uint32_t w = hd60s_warnings(s);
     if (!w)
         fprintf(out, "Warnings: none\n");
+    if (hd60s_firmware_untested(s)) {
+        untested_message(s, line, sizeof line);
+        fprintf(out, "Note:     %s\n", line);
+    }
     for (int i = 0; i < WARNING_COUNT; i++)
         if (w >> i & 1) {
             hd60s_warning_message((enum hd60s_warning)i, s, line, sizeof line);
@@ -316,6 +323,13 @@ void hd60s_print_json(const struct hd60s_status *s, FILE *out)
             fputc('}', out);
             first = 0;
         }
+    fputs("],\"notes\":[", out);
+    if (hd60s_firmware_untested(s)) {
+        untested_message(s, msg, sizeof msg);
+        fputs("{\"code\":\"untested_firmware\",\"message\":", out);
+        json_str(out, msg);
+        fputc('}', out);
+    }
     fputs("]}\n", out);
 }
 

@@ -109,6 +109,7 @@ static void test_progressive(size_t chunk)
     assert(s.frames >= 2);
     assert(s.last_w == W && s.last_h == H && !s.last_interlaced);
     check_progressive_frame(s.last);
+    assert(!p.top_first);
     free(st.b);
 }
 
@@ -128,6 +129,7 @@ static void test_interlaced(int first_field)
     assert(s.frames >= 1);
     assert(s.last_w == W && s.last_h == H && s.last_interlaced);
     check_progressive_frame(s.last);
+    assert(p.top_first);
     free(st.b);
 }
 

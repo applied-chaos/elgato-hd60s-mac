@@ -26,6 +26,30 @@ Pick "Elgato HD60 S" as the camera. In OBS, add it as a Video Capture Device, an
 - Only one thing can use the device at a time.
 - The camera offers 59.94, 50, 30, 25 and 24 fps. Frames are delivered at the source's own rate whichever you pick, so a 50 Hz source never drops or repeats frames; pick the rate that matches your source for correct nominal timing and "No signal" slate pacing.
 
+## Check the input
+
+The app's Status tab shows whether the HDMI source is coming through (resolution, frame rate, scan, colour, audio), the USB link (a USB 2 port or hub is flagged) and how many frames were dropped. It also works while another app is using the camera.
+
+`hd60s status` prints the same facts in a terminal. It opens the device for about two seconds, so it reports "in use" if the camera or another tool has it.
+
+```sh
+build/hd60s status
+build/hd60s status --json    # one line, for scripts
+```
+
+```
+Device:   present, USB 3.0 SuperSpeed (5 Gb/s), port 2-2
+Firmware: MCU 11.03.11
+Owner:    this tool
+Signal:   1920x1080p 59.95 fps
+Colour:   BT.709
+Audio:    48000 Hz, 2 channels
+Parser:   118 frames, 0 discarded, 0 runts, 0 long lines
+Warnings: none
+```
+
+The JSON has `device` (`present`, `port`, `speed`, `access`, `firmware`, `owner`), `signal` (`state` of `unknown`, `none` or `active`, plus `width`, `height`, `interlaced`, `field_order`, `fps` and `colour` when active), `audio`, `parser`, `warnings` (problems such as `not_superspeed` or `busy`) and `notes` (information such as `untested_firmware`).
+
 ## Build from source
 
 Needs Xcode 26 and Homebrew.

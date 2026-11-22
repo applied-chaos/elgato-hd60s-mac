@@ -3,8 +3,14 @@ name: HD60SDev
 include: [project.yml]
 targets:
   HD60S:
+    sources:
+      - ExtensionDext/DextFeed.c
+      - path: ../src/framering.c
+      - path: ../src/link.c
     settings:
       HD60S_FLAVOUR: driverkit
+      SWIFT_ACTIVE_COMPILATION_CONDITIONS: DEXT
+      GCC_PREPROCESSOR_DEFINITIONS: [HD60S_DEXT=1]
     dependencies:REPLACE:
       - target: net.mintopia.hd60s.camera
       - target: net.mintopia.hd60s.dext
@@ -13,6 +19,8 @@ targets:
       - path: Extension
         excludes: [AudioFeed.c, AudioFeed.h, Bridging.h]
       - ExtensionDext
+      - Shared
+      - path: ../src/status.c
       - path: ../src/device.c
       - path: ../src/device_libusb.c
       - path: ../src/parser.c
