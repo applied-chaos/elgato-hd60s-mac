@@ -45,6 +45,7 @@ The command-line tool captures raw video and audio:
 
 ```sh
 build/hd60s info                                  # firmware, resolution and frame rate
+build/hd60s status [--json]                        # device, USB link, owner, signal, audio, warnings
 build/hd60s capture -n 300 -o out.yuv -a out.pcm  # 300 frames of YUY2 and 48 kHz s16le
 build/hd60s capture -o - | ffplay -f rawvideo -pixel_format yuyv422 -video_size 1920x1080 -framerate 60 -
 ```
