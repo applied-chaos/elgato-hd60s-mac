@@ -43,6 +43,7 @@ targets:
       - path: ../src/device.c
       - path: ../src/parser.c
       - path: ../src/ring.c
+      - path: ../src/tx.c
     info:
       path: Extension/Info.plist
       properties:

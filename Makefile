@@ -20,8 +20,8 @@ build/libUB530.dylib:
 build/ub530_tables.h: tools/extract-tables.py build/libUB530.dylib
 	python3 -I tools/extract-tables.py build/libUB530.dylib > $@.tmp && mv $@.tmp $@
 
-build/hd60s: src/main.c src/device.c src/parser.c src/device.h src/parser.h build/ub530_tables.h
-	$(CC) $(CFLAGS) -o $@ src/main.c src/device.c src/parser.c $(LDLIBS)
+build/hd60s: src/main.c src/device.c src/parser.c src/tx.c src/device.h src/parser.h src/tx.h build/ub530_tables.h
+	$(CC) $(CFLAGS) -o $@ src/main.c src/device.c src/parser.c src/tx.c $(LDLIBS)
 
 build/test_parser: tests/test_parser.c src/parser.c src/parser.h
 	@mkdir -p build
@@ -42,6 +42,10 @@ dist: app
 	cp -R build/HD60S.app build/dist/
 	hdiutil create -quiet -volname "HD60S $(VERSION)" -srcfolder build/dist -ov -format UDZO build/HD60S-$(VERSION).dmg
 
+build/test_tx: tests/test_tx.c src/tx.c src/tx.h
+	@mkdir -p build
+	$(CC) $(CFLAGS) -fsanitize=address,undefined -o $@ tests/test_tx.c src/tx.c
+
 build/test_ring: tests/test_ring.c src/ring.c src/ring.h
 	@mkdir -p build
 	$(CC) $(CFLAGS) -fsanitize=address,undefined -o $@ tests/test_ring.c src/ring.c
@@ -54,8 +58,9 @@ build/test_plugin: tests/test_plugin.c mac/Audio/HD60SAudio.c
 	@mkdir -p build
 	$(CC) $(CFLAGS) -Wno-four-char-constants -fsanitize=address,undefined -o $@ tests/test_plugin.c -framework CoreFoundation
 
-test: build/test_parser build/test_ring build/test_plugin build/test_audio_plugin
+test: build/test_parser build/test_tx build/test_ring build/test_plugin build/test_audio_plugin
 	build/test_parser
+	build/test_tx
 	build/test_ring
 	build/test_plugin
 	build/test_audio_plugin

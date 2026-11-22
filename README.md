@@ -62,12 +62,12 @@ Work happens on `develop`; `main` holds releases. Pushing a `vX.Y.Z` tag builds,
 
 ## Safety
 
-The driver only sends the requests Elgato's own driver sends on every start. It never touches the firmware update, EDID write or FX3 RAM paths, which write to flash.
+The driver only sends the requests Elgato's own driver sends on every start. It never touches the firmware update, EDID write or FX3 RAM paths, which write to flash. HDMI passthrough (`src/tx.c`) writes only HDMI-out transmitter registers, behind an allow-list that `make test` exercises; it reads the TV's EDID over DDC and never writes to it.
 
 ## Not done yet
 
 - Modes other than 1080p60. SD modes also need the BT.601 matrix.
-- HDMI passthrough.
+- HDMI passthrough audio and HDCP. Video passthrough is implemented but not yet checked on a TV.
 - Rare tiny audio glitches as the HDMI and Mac clocks drift.
 
 ## Licence
