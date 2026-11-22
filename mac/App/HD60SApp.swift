@@ -111,11 +111,13 @@ final class Installer: NSObject, ObservableObject, OSSystemExtensionRequestDeleg
     @Published var status = Status.working
     @Published var audio = AudioStatus.notInstalled
 
+    let dext = DextInstaller()
     private var installing = true
     private var query: OSSystemExtensionRequest?
 
     func refresh() {
         refreshAudio()
+        dext.refresh()
         let request = OSSystemExtensionRequest.propertiesRequest(forExtensionWithIdentifier: extensionID, queue: .main)
         query = request
         submit(request)
@@ -146,6 +148,7 @@ final class Installer: NSObject, ObservableObject, OSSystemExtensionRequestDeleg
         installing = true
         guard let source = bundledAudio?.path else { return status = .failed("The audio plug-in is missing from the app.") }
         runAsAdmin(AudioPlugin.installScript(source: source)) {
+            self.dext.activate()
             self.submit(.activationRequest(forExtensionWithIdentifier: extensionID, queue: .main))
         }
     }
@@ -153,6 +156,7 @@ final class Installer: NSObject, ObservableObject, OSSystemExtensionRequestDeleg
     func uninstall() {
         installing = false
         runAsAdmin(AudioPlugin.uninstallScript()) {
+            self.dext.deactivate()
             self.submit(.deactivationRequest(forExtensionWithIdentifier: extensionID, queue: .main))
         }
     }
@@ -209,6 +213,7 @@ final class Installer: NSObject, ObservableObject, OSSystemExtensionRequestDeleg
 @main
 struct HD60SApp: App {
     @StateObject private var installer = Installer.shared
+    @StateObject private var dext = Installer.shared.dext
 
     init() {
         let args = CommandLine.arguments
@@ -253,6 +258,9 @@ struct HD60SApp: App {
                         Text(status.detail).font(.text(13)).foregroundStyle(Color.neutral)
                             .lineLimit(3)
                         Text("Audio plug-in: \(installer.audio.label)").font(.text(13)).foregroundStyle(Color.neutral)
+                        if let label = dext.status.label {
+                            Text("Driver extension: \(label)").font(.text(13)).foregroundStyle(Color.neutral)
+                        }
                     }
                     Spacer(minLength: 0)
                 }
