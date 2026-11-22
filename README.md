@@ -66,7 +66,7 @@ Work happens on `develop`; `main` holds releases. Pushing a `vX.Y.Z` tag builds,
 
 ### DriverKit DMG
 
-`make dist-dext` builds a DMG with the audio driver extension. It is built locally with Xcode automatic signing, never by CI, and isn't published. It runs only on Macs in the team's development provisioning profile.
+`make dist-dext` builds a DMG where a driver extension owns the device: it runs the capture core over USB, is the "Elgato HD60 S" audio input whenever the device is plugged in, and hands video to the camera extension through shared memory. No libusb or HAL plug-in in this flavour. It is built locally with Xcode automatic signing, never by CI, and isn't published. It runs only on Macs in the team's development provisioning profile.
 
 ## Safety
 

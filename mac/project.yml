@@ -41,6 +41,7 @@ targets:
     sources:
       - Extension
       - path: ../src/device.c
+      - path: ../src/device_libusb.c
       - path: ../src/parser.c
       - path: ../src/deinterlace.c
       - path: ../src/ring.c

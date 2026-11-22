@@ -4,7 +4,7 @@
 #include <libusb.h>
 #include <string.h>
 
-#include "device.h"
+#include "device_libusb.h"
 #include "status.h"
 
 static void probe_port(libusb_device *dev, struct hd60s_status *s)
