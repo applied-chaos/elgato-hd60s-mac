@@ -507,6 +507,13 @@ Raw EDID (256 bytes, base block then CTA block):
 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 14
 ```
 
+## Audio arrival timing (Pi 4 at 1080p60, libusb CLI, 16 x 512 KiB bulk reads)
+- Audio packets carry 2 frames each. A 512 KiB completion holds about 96 frames, one every 2.018 ms (p99 2.15 ms).
+- Against the Mac host clock the stream runs at 47999.52 Hz (-10 ppm), with or without source audio. Chunk-end arrivals sit within -0.19 / +2.4 ms of a straight line (std 0.07 ms).
+- A sample waits in the device for the rest of its chunk: first-sample lateness is 2.0 ms p50, 2.3 ms p99, 2.75 ms p99.9. The tail to 14 ms is host-side callback stalls (data then arrives in one burst of up to 1358 frames).
+- A source mode change loses about 30 ms of samples, then audio resumes in real time with no backlog. With no signal, audio stops completely and resumes with the signal.
+- The DriverKit flavour clocks its audio device from this (`src/aclock.c`): zero timestamps follow a line fitted to completion times (second-order loop, ~4 s, clamped to +-1000 ppm), and samples are written into the IO buffer as they arrive, with no jitter buffer. A hole of more than 20 ms re-phases the samples onto the clock and leaves silence. The device reports 0 latency and a 192-frame (4 ms) input safety offset, so audio input latency is 4 ms plus the client's IO buffer (the userspace flavour's ring holds 30 ms). Measured end-to-end latency and A/V offset in the dext: not yet (needs install).
+
 ## Unknown / unverified
 - Audio channel order (left first) is assumed from I2S convention, not tested with a one-sided signal.
 - 0xEC padding bytes and the meaning of 0xEC, 0xC2 and 0xC7. Possibly LED/clock/enable.

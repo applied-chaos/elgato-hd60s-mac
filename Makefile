@@ -82,6 +82,10 @@ build/test_status: tests/test_status.c src/status.c src/status.h
 	@mkdir -p build
 	$(CC) $(CFLAGS) -fsanitize=address,undefined -o $@ tests/test_status.c src/status.c
 
+build/test_aclock: tests/test_aclock.c src/aclock.c src/aclock.h
+	@mkdir -p build
+	$(CC) $(CFLAGS) -fsanitize=address,undefined -o $@ tests/test_aclock.c src/aclock.c
+
 build/test_ring: tests/test_ring.c src/ring.c src/ring.h
 	@mkdir -p build
 	$(CC) $(CFLAGS) -fsanitize=address,undefined -o $@ tests/test_ring.c src/ring.c
@@ -102,7 +106,7 @@ build/test_frame_fit: tests/test_frame_fit.swift mac/Extension/FrameFit.swift
 	@mkdir -p build
 	swiftc -parse-as-library -o $@ mac/Extension/FrameFit.swift tests/test_frame_fit.swift
 
-test: build/test_parser build/test_device build/test_framering build/test_link build/test_tx build/test_deinterlace build/test_ring build/test_status build/test_plugin build/test_audio_plugin build/test_frame_fit build/test_frame_rates
+test: build/test_parser build/test_device build/test_framering build/test_link build/test_tx build/test_deinterlace build/test_ring build/test_aclock build/test_status build/test_plugin build/test_audio_plugin build/test_frame_fit build/test_frame_rates
 	build/test_parser
 	build/test_device
 	build/test_framering
@@ -110,6 +114,7 @@ test: build/test_parser build/test_device build/test_framering build/test_link b
 	build/test_tx
 	build/test_deinterlace
 	build/test_ring
+	build/test_aclock
 	build/test_status
 	build/test_plugin
 	build/test_audio_plugin
