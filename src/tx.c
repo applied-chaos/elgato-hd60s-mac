@@ -77,7 +77,10 @@ enum tx_state tx_next(enum tx_state s, struct tx_in in)
     case TX_IDLE: return TX_EDID;
     case TX_EDID: return in.edid_ok ? TX_PICK : TX_IDLE;
     case TX_PICK: return in.blank ? TX_PICK : TX_VIDEO;
-    case TX_UNSTABLE: return in.blank || !in.stable ? TX_UNSTABLE : TX_VIDEO;
+    case TX_UNSTABLE:
+        if (in.blank || !in.stable)
+            return TX_UNSTABLE;
+        return in.mode_changed ? TX_VIDEO : TX_ENABLE;
     case TX_VIDEO: return in.stable ? TX_ENABLE : TX_UNSTABLE;
     case TX_ENABLE: return TX_RUNNING;
     case TX_RUNNING:
@@ -281,11 +284,16 @@ static struct tx_in act(struct tx *t, const struct tx_bus *b, struct tx_in in)
         break;
     case TX_VIDEO:
         program_video(t, b);
+        for (int i = 0; i < 50 && !(rd(b, 0x0e) & 0x10); i++)
+            b->sleep_ms(b->ctx, 10);
         in.stable = !!(rd(b, 0x0e) & 0x10);
         break;
     case TX_ENABLE: enable_output(b); break;
-    case TX_UNSTABLE:
-    case TX_RUNNING: break;
+    case TX_RUNNING:
+        if (!in.stable && !in.blank)
+            mute(b);
+        break;
+    case TX_UNSTABLE: break;
     }
     return in;
 }

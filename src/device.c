@@ -455,21 +455,20 @@ void hd60s_close(struct hd60s *d)
 #define TX_POLL_MS 250
 #define MODE_WINDOW_MS 2000
 
-/* Frame-size and rate measurement over a window; any size change in the window means no usable mode. */
+/* Frame size and rate over a window. The size must hold for the last 3/4 of the window's frames (startup runts and mode switches fail this). */
 struct stream_ctx {
     struct hd60s_parser *parser;
     volatile sig_atomic_t *stop;
     int active;
     frame_cb frame_cb;
     void *frame_ctx;
-    int w, h, interlaced, frames, mixed;
+    int w, h, interlaced, frames, run;
 };
 
 static void on_frame_probe(void *ctx, const uint8_t *f, int w, int h, int interlaced)
 {
     struct stream_ctx *s = ctx;
-    if (s->frames && (w != s->w || h != s->h || interlaced != s->interlaced))
-        s->mixed = 1;
+    s->run = s->frames && w == s->w && h == s->h && interlaced == s->interlaced ? s->run + 1 : 1;
     s->w = w;
     s->h = h;
     s->interlaced = interlaced;
@@ -533,8 +532,8 @@ int hd60s_stream(struct hd60s *d, struct hd60s_parser *p, volatile sig_atomic_t 
         long now = now_ms();
         if (now - win_start >= MODE_WINDOW_MS) {
             double fps = s.frames * (s.interlaced ? 2000.0 : 1000.0) / (double)(now - win_start);
-            mode = s.frames && !s.mixed ? tx_mode_find(s.w, s.h, s.interlaced, fps) : NULL;
-            s.frames = s.mixed = 0;
+            mode = s.frames && s.run * 4 >= s.frames * 3 ? tx_mode_find(s.w, s.h, s.interlaced, fps) : NULL;
+            s.frames = 0;
             win_start = now;
         }
         if (!*stop && now - last_poll >= TX_POLL_MS) {

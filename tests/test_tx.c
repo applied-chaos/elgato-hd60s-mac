@@ -164,7 +164,8 @@ static void test_transitions(void)
     assert(tx_next(TX_VIDEO, on) == TX_ENABLE);
     assert(tx_next(TX_VIDEO, (struct tx_in){.hpd = 1}) == TX_UNSTABLE);
     assert(tx_next(TX_UNSTABLE, (struct tx_in){.hpd = 1}) == TX_UNSTABLE);
-    assert(tx_next(TX_UNSTABLE, on) == TX_VIDEO);
+    assert(tx_next(TX_UNSTABLE, on) == TX_ENABLE);
+    assert(tx_next(TX_UNSTABLE, (struct tx_in){.hpd = 1, .stable = 1, .mode_changed = 1}) == TX_VIDEO);
     assert(tx_next(TX_ENABLE, on) == TX_RUNNING);
     assert(tx_next(TX_RUNNING, on) == TX_RUNNING);
     assert(tx_next(TX_RUNNING, (struct tx_in){.hpd = 1, .stable = 1, .mode_changed = 1}) == TX_VIDEO);
@@ -324,7 +325,11 @@ static void test_unstable_source(void)
     assert(t.state == TX_RUNNING);
     f.stable = 0;
     tx_poll(&t, &b, m1080p60());
-    assert(t.state == TX_UNSTABLE);
+    assert(t.state == TX_UNSTABLE && f.reg[0][0xc1] == 1);
+    f.nlog = 0;
+    f.stable = 1;
+    tx_poll(&t, &b, m1080p60());
+    assert(t.state == TX_RUNNING && f.reg[0][0xc1] == 0 && !saw(&f, 0x04, 0x1d));
 }
 
 static void test_edid_failure_backs_off(void)
