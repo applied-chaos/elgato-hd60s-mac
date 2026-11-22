@@ -353,8 +353,8 @@ HDCP off (`FUN_2109e`): 0x22 = 0, 0x20 = 0, 0x04 \|= 1, 0x10 = 1, clear interrup
   - every byte is read back with no EEPROM write-cycle delay;
   - the whole table is rewritten on every Initialize and transmitter re-init;
   - registers are rewritten on every mode change.
-- Hardware read, 2026-11-22: see the notes on issue #12.
-- The capture driver has never written 0xD4 and capture audio works, so 0xD4 is only needed for passthrough audio (and perhaps non-48 kHz sources).
+- Hardware read (2026-11-22): every 0xD4 read returns `FF FF`, the same as the unfitted 0x88. 0xD4 is probably not fitted on this unit. Elgato's verify would then fail (`tx+0x1bc = 0`), so it never writes 0xD4 again and never forces 48 kHz.
+- A driver can skip 0xD4.
 
 ### 6.9 Safety
 Census of every call made from the transmitter code (0x1caf4–0x21b1e, from the disassembly):
@@ -373,7 +373,7 @@ Census of every call made from the transmitter code (0x1caf4–0x21b1e, from the
 4. Does a TV without YCbCr support (RGB out, BT.601/709 matrix) show correct colour?
 5. 148.5 MHz detection uses the table row, so PC modes with a high pixel clock (1680x1050 etc., VIC 32 default) get low-speed AFE settings. Do they work?
 6. HDCP sources (PS5 with HDCP on): does the TV authenticate, and does capture still work? (Capture of HDCP content is expected to fail regardless.)
-7. Does the transmitter keep its init across `hd60s_stop` / power-down (GPIO 52 low)? Reg 0x09 ≠ 0xB2 is the check.
+7. Who initialised the transmitter on this unit? (See "Confirmed on hardware": it is set up before the driver touches it.) Unplug and replug the HD60 S, run only the power-up, then read reg 0x09. A driver should not depend on the answer: run §6.3 whenever reg 0x09 ≠ 0xB2, as Elgato does.
 8. Elgato's transient 0xC0 writes (§6.6): harmless to skip?
 
 ## Confirmed on hardware (0fd9:0074, PS5 at 1080p60, `src/` driver)
@@ -381,6 +381,17 @@ Census of every call made from the transmitter code (0x1caf4–0x21b1e, from the
 - Streaming starts when iface 0 alt 4 is selected after the MST3367 start sequence; no extra request is needed. About 260 MB/s on bulk EP 0x83.
 - One timing code per line, then exactly `width*2` bytes of active video. 1080p60 measures 1920x1080 at 59.94 fps from the stream itself, without porting `FUN_12a2f`.
 - 0x9A is an ITE IT66121 HDMI **transmitter** (regs 1-3 = `49 12 16`), i.e. the passthrough output, not the receiver. The `FUN_1d10a` state machine drives passthrough and is not needed for 1080p60 capture, though it also carries Elgato's per-mode MST3367 writes (§6.4).
+- IT66121 read-only probe (2026-11-22, no TV on HDMI out; the driver had never written 0x9A):
+  - Regs 0x00–0x03 = `54 49 12 16`.
+  - The chip is already set up the way Elgato's init and video setup leave it with no TV:
+    - 0x09–0x0B = `B2 F8 37`;
+    - 0x04 = 0x05, 0x61 = 0x10 (AFE held in reset), 0x70 = 0x40, 0x72 = 0x00;
+    - 0x90 = 0x00, 0x91–0xA3 = 0xFF;
+    - 0xC0 = 0x00 (DVI), 0xC1 = 0x02, 0xC6 = 0x00, 0x71 = 0x1C;
+    - 0x62/0x64 set for high speed.
+  - 0x0E = 0x1C: no HPD, no Rx sense, video stable. This holds straight after power-up, before any MST3367 setup, survives the GPIO 52 power-down, and nothing changes it over 4.5 s idle.
+  - Either the MCU firmware initialises the transmitter, or the state is left over from an earlier Elgato session.
+- I2C 0xD4 and 0x88 both read `FF`: neither is fitted on this unit.
 - 0xC2 stalls on alternate opens; ignoring it (as Elgato does) is harmless.
 - On this unit MST3367 b1:01 bit 2 is set, so `FUN_1caf4` takes its b2:27=0 / ADC reg 3=0xA0 / MCU `90 05 00` branch.
 - Audio source (`FUN_1ce00` arg, stored at `+0x1114`) picks which 0x94 codec input pairs are muted (bit 7). Measured with PS5 game audio: source 0 = HDMI (mute 0x0e/0x0f, unmute 0x10/0x11), RMS -26 dBFS; source 1 = analogue line-in only (unmute 0x0e/0x0f, mute 0x10/0x11), the ±2 LSB ADC noise floor; 3 = both mixed; 2 and 4 also set reg 4 bit 0 and reg 7 = 0xF0 and add a DC offset. The driver uses 0.
