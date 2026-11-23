@@ -62,6 +62,16 @@ enum AudioPlugin {
     static let halDirectory = "/Library/Audio/Plug-Ins/HAL"
     static let restartCoreAudio = "killall coreaudiod"
 
+    // macOS only activates a system extension from an app in /Applications.
+    static func notInstalledHint(appPath: String) -> String {
+        appPath.hasPrefix("/Applications/") ? "Click Install." : "Move the app to Applications, then click Install."
+    }
+
+    // Not Bundle(path:): it caches Info.plist per path, so a removed or replaced plug-in reads as before.
+    static func installedVersion(directory: String = halDirectory) -> String? {
+        NSDictionary(contentsOfFile: directory + "/" + name + "/Contents/Info.plist")?["CFBundleVersion"] as? String
+    }
+
     static func status(installed: String?, bundled: String) -> AudioStatus {
         guard let installed else { return .notInstalled }
         var (a, b) = (components(installed), components(bundled))

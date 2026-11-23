@@ -26,7 +26,7 @@ enum Status: Equatable {
 
     var detail: String {
         switch self {
-        case .notInstalled: "Run from /Applications, then click Install."
+        case .notInstalled: AudioPlugin.notInstalledHint(appPath: Bundle.main.bundlePath)
         case .working: "Waiting for macOS to finish the request."
         case .needsApproval: "Approve it in System Settings > General > Login Items & Extensions > Camera Extensions."
         case .installed: "The HD60 S now appears as a camera and microphone in your apps."
@@ -143,9 +143,8 @@ final class Installer: NSObject, ObservableObject, OSSystemExtensionRequestDeleg
     }
 
     func refreshAudio() {
-        let installed = Bundle(path: AudioPlugin.halDirectory + "/" + AudioPlugin.name)?.object(forInfoDictionaryKey: "CFBundleVersion") as? String
         let bundled = bundledAudio.flatMap { Bundle(url: $0)?.object(forInfoDictionaryKey: "CFBundleVersion") as? String } ?? "0"
-        audio = AudioPlugin.status(installed: installed, bundled: bundled)
+        audio = AudioPlugin.status(installed: AudioPlugin.installedVersion(), bundled: bundled)
     }
 
     private var bundledAudio: URL? { Bundle.main.builtInPlugInsURL?.appendingPathComponent(AudioPlugin.name) }
@@ -488,6 +487,11 @@ struct MainWindow: View {
             CameraLink.watchDevices(queue: .main) { [settings] in settings.sendToCamera() }
         }
         .onDisappear { poller.stop() }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            guard HD60SApp.launchArguments.value(after: "--preview-state") == nil,
+                  installer.status != .working, dext.status != .working else { return }
+            installer.refresh()
+        }
         .onChange(of: tab) { _, new in new == .status ? poller.start() : poller.stop() }
         .onChange(of: installer.status) { _, new in
             if !chosen, new != .working { tab = new == .installed ? .status : .install }

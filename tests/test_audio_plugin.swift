@@ -61,6 +61,19 @@ func check(_ ok: Bool, _ what: String, line: UInt = #line) {
         check(ran(AudioPlugin.uninstallScript(directory: hal, restart: "true")) == 0, "uninstall runs")
         check(!fm.fileExists(atPath: hal + "/HD60SAudio.driver"), "removed")
         check(ran(AudioPlugin.uninstallScript(directory: hal, restart: "true")) == 0, "uninstall idempotent")
+        check(AudioPlugin.notInstalledHint(appPath: "/Applications/HD60S.app") == "Click Install.", "in Applications")
+        check(AudioPlugin.notInstalledHint(appPath: "/Users/x/Downloads/HD60S.app") == "Move the app to Applications, then click Install.", "elsewhere")
+        // Bundle(path:) caches Info.plist per path, so a removed or replaced plug-in would still read as before.
+        let plist = { (v: String) in
+            try! fm.createDirectory(atPath: hal + "/HD60SAudio.driver/Contents", withIntermediateDirectories: true)
+            (["CFBundleVersion": v] as NSDictionary).write(toFile: hal + "/HD60SAudio.driver/Contents/Info.plist", atomically: true)
+        }
+        plist("188")
+        check(AudioPlugin.installedVersion(directory: hal) == "188", "reads installed version")
+        try! fm.removeItem(atPath: hal + "/HD60SAudio.driver")
+        check(AudioPlugin.installedVersion(directory: hal) == nil, "removed plug-in reads as absent")
+        plist("191")
+        check(AudioPlugin.installedVersion(directory: hal) == "191", "replaced plug-in reads its new version")
         try? fm.removeItem(atPath: tmp)
 
         check(AudioPlugin.appleScript(for: #"echo "a\b""#) == #"do shell script "echo \"a\\b\"" with administrator privileges"#, "applescript escaping")
