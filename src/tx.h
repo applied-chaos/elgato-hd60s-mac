@@ -8,13 +8,8 @@
 
 enum tx_state { TX_IDLE, TX_EDID, TX_PICK, TX_UNSTABLE, TX_VIDEO, TX_ENABLE, TX_RUNNING };
 enum tx_colour { TX_RGB, TX_YCC422, TX_YCC444 };
-/* HDCP engine: off, authenticated with the TV, or failed and waiting to retry. */
-enum tx_hdcp { HDCP_OFF, HDCP_ON, HDCP_RETRY };
+enum tx_hdcp { HDCP_OFF, HDCP_ON, HDCP_BACKOFF };
 enum tx_hdcp_op { HDCP_NOP, HDCP_AUTH, HDCP_STOP };
-struct tx_hdcp_step {
-    enum tx_hdcp next; /* after HDCP_AUTH the outcome decides: HDCP_ON or HDCP_RETRY */
-    enum tx_hdcp_op op;
-};
 
 struct tx_sink {
     int valid, hdmi, ycc444, ycc422, basic_audio;
@@ -47,9 +42,9 @@ struct tx {
     int edid_wait;
     int audio_hz;  /* programmed rate, 0 = audio off */
     int want_hz;   /* source rate from the caller, 0 = none */
-    int src_hdcp;  /* source is encrypted, from the caller */
+    int src_hdcp;
     enum tx_hdcp hdcp;
-    int hdcp_wait; /* polls before the next attempt */
+    int hdcp_retry_polls_left;
 };
 
 /* NULL if the timing has no VIC. fps is the frame rate, fields counted for interlaced. */
@@ -63,14 +58,13 @@ int tx_audio_fs_code(int hz);
 /* Source rate from the receiver's ACR packet (fs = pclk * N / (128 * CTS)), snapped to a standard rate; 0 if none. */
 int tx_audio_rate(uint32_t pclk_khz, uint32_t n, uint32_t cts);
 enum tx_state tx_next(enum tx_state s, struct tx_in in);
-/* want: output running with an encrypted source and an HDMI TV. wait: polls left before a retry. */
-struct tx_hdcp_step tx_hdcp_next(enum tx_hdcp s, int want, int wait);
+/* want: output running with an encrypted source and an HDMI TV. HDCP_STOP leaves HDCP_OFF; HDCP_AUTH leaves HDCP_ON or HDCP_BACKOFF by its result. */
+enum tx_hdcp_op tx_hdcp_next(enum tx_hdcp s, int want, int retry_polls_left);
 /* Only these writes ever reach the bus. */
 int tx_writable(uint8_t reg, uint8_t val);
 int tx_write(const struct tx_bus *b, uint8_t reg, uint8_t val);
 
 void tx_start(struct tx *t, const struct tx_bus *b);
-/* src_hdcp: the source is encrypted. Output stays muted until the TV authenticates. */
 void tx_poll(struct tx *t, const struct tx_bus *b, const struct tx_mode *mode, int audio_hz, int src_hdcp);
 void tx_blank(struct tx *t, const struct tx_bus *b);
 

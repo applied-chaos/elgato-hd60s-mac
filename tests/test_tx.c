@@ -9,9 +9,11 @@
 struct fake {
     uint8_t reg[2][256];
     int bank, hpd, stable, present, ddc_fail, writes, rejected;
-    int hdcp_ddc_fail, auth_ok, auth_fail; /* TV side of HDCP */
-    uint8_t bksv[5], bcaps;
-    uint16_t bstatus;
+    struct fake_tv_hdcp {
+        int ddc_fail, auth_ok, auth_fail;
+        uint8_t bksv[5], bcaps;
+        uint16_t bstatus;
+    } hdcp;
     uint8_t edid[640];
     uint8_t fifo[32];
     uint8_t wlog[4096][3]; /* reg, val, bank in effect */
@@ -25,9 +27,9 @@ static int f_read(void *c, uint8_t r)
     if (r == 0x02) return f->present ? 0x12 : 0xff;
     if (r == 0x03) return f->present ? 0x16 : 0xff;
     if (r == 0x0e) return (f->hpd ? 0x40 : 0) | (f->stable ? 0x10 : 0);
-    if (r == 0x16) return f->ddc_fail || (f->hdcp_ddc_fail && f->reg[0][0x11] == 0x74) ? 0x20 : 0x80;
-    if (r == 0x46) return f->auth_ok && f->reg[0][0x21] == 1 ? 0x80 : 0;
-    if (r == 0x07) return f->auth_fail && f->reg[0][0x21] == 1 ? 1 : 0;
+    if (r == 0x16) return f->ddc_fail || (f->hdcp.ddc_fail && f->reg[0][0x11] == 0x74) ? 0x20 : 0x80;
+    if (r == 0x46) return f->hdcp.auth_ok && f->reg[0][0x21] == 1 ? 0x80 : 0;
+    if (r == 0x07) return f->hdcp.auth_fail && f->reg[0][0x21] == 1 ? 1 : 0;
     return f->reg[f->bank][r];
 }
 
@@ -45,11 +47,11 @@ static void f_write(void *c, uint8_t r, uint8_t v)
     }
     if (r == 0x15 && v == 0x00 && f->reg[0][0x11] == 0x74) {
         if (f->reg[0][0x12] == 0x40) {
-            f->reg[0][0x43] = f->bcaps;
-            f->reg[0][0x44] = (uint8_t)f->bstatus;
-            f->reg[0][0x45] = (uint8_t)(f->bstatus >> 8);
+            f->reg[0][0x43] = f->hdcp.bcaps;
+            f->reg[0][0x44] = (uint8_t)f->hdcp.bstatus;
+            f->reg[0][0x45] = (uint8_t)(f->hdcp.bstatus >> 8);
         } else {
-            memcpy(&f->reg[0][0x3b], f->bksv, 5);
+            memcpy(&f->reg[0][0x3b], f->hdcp.bksv, 5);
         }
     }
 }
@@ -234,7 +236,6 @@ static void test_write_guard(void)
     struct tx_bus b;
     setup(&f, &t, &b);
     assert(!tx_writable(0x01, 0));
-    /* HDCP: only the registers and values Elgato writes; 0x23-0x27 and the read-only 0x30-0x46 (bar the audio N at 0x33-0x35) stay shut */
     assert(tx_writable(0x1f, 0) && tx_writable(0x1f, 1) && !tx_writable(0x1f, 2));
     assert(tx_writable(0x20, 0) && tx_writable(0x20, 1) && !tx_writable(0x20, 2) && !tx_writable(0x20, 0x03));
     assert(tx_writable(0x21, 1) && !tx_writable(0x21, 0) && !tx_writable(0x21, 3));
@@ -607,8 +608,7 @@ static void test_absent(void)
     assert(!t.present && f.nlog == 0);
 }
 
-/* Every write passes the allow-list, and DDC only ever reads: slave 0x74 burst reads of BCaps/BStatus and BKSV. */
-static void check_hdcp_writes(const struct fake *f)
+static void assert_hdcp_write_allowlist(const struct fake *f)
 {
     unsigned r11 = 0, r12 = 0, r13 = 0;
     for (int i = 0; i < f->nlog; i++) {
@@ -640,35 +640,41 @@ static int touched_hdcp(const struct fake *f)
     return 0;
 }
 
+static const uint8_t BKSV_20_ONES[5] = {0xf0, 0xf0, 0xf0, 0xf0, 0xf0};
+static const uint8_t BKSV_19_ONES[5] = {0xe0, 0xf0, 0xf0, 0xf0, 0xf0};
+static const uint8_t AN_SAMPLE[8] = {0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88};
+
+static int muted(const struct fake *f) { return f->reg[0][0xc1] == 1; }
+static int unmuted(const struct fake *f) { return f->reg[0][0xc1] == 0; }
+static int no_traffic_since(const struct fake *f, int n) { return f->nlog == n; }
+static void tv_without_hdcp_port(struct fake *f) { f->hdcp.ddc_fail = 1; }
+static void tv_auth_never_completes(struct fake *f) { f->hdcp.auth_ok = 0; }
+static void tv_reports_dvi_mode(struct fake *f) { f->hdcp.bstatus = 0; }
+static void poll_source_clear(struct tx *t, const struct tx_bus *b) { tx_poll(t, b, m1080p60(), 0, 0); }
+static void poll_no_signal(struct tx *t, const struct tx_bus *b) { tx_poll(t, b, NULL, 0, 1); }
+
 static void hdcp_tv(struct fake *f, int hdmi)
 {
     tv(f, hdmi, 1, 1);
-    memcpy(f->bksv, "\xf0\xf0\xf0\xf0\xf0", 5); /* 20 one bits */
-    f->bcaps = 0x80;
-    f->bstatus = hdmi ? 0x1000 : 0;
-    f->auth_ok = 1;
-    for (uint8_t i = 0; i < 8; i++) f->reg[0][0x30 + i] = (uint8_t)(0x11 * (i + 1));
+    memcpy(f->hdcp.bksv, BKSV_20_ONES, 5);
+    f->hdcp.bcaps = 0x80;
+    f->hdcp.bstatus = hdmi ? 0x1000 : 0;
+    f->hdcp.auth_ok = 1;
+    for (uint8_t i = 0; i < 8; i++) f->reg[0][0x30 + i] = AN_SAMPLE[i];
 }
 
 static void test_hdcp_table(void)
 {
-    struct tx_hdcp_step s = tx_hdcp_next(HDCP_OFF, 0, 0);
-    assert(s.next == HDCP_OFF && s.op == HDCP_NOP);
-    s = tx_hdcp_next(HDCP_OFF, 1, 0);
-    assert(s.op == HDCP_AUTH);
-    s = tx_hdcp_next(HDCP_ON, 1, 0);
-    assert(s.next == HDCP_ON && s.op == HDCP_NOP);
-    s = tx_hdcp_next(HDCP_ON, 0, 0);
-    assert(s.next == HDCP_OFF && s.op == HDCP_STOP);
-    s = tx_hdcp_next(HDCP_RETRY, 1, 3);
-    assert(s.next == HDCP_RETRY && s.op == HDCP_NOP);
-    s = tx_hdcp_next(HDCP_RETRY, 1, 0);
-    assert(s.next == HDCP_RETRY && s.op == HDCP_AUTH);
-    s = tx_hdcp_next(HDCP_RETRY, 0, 3);
-    assert(s.next == HDCP_OFF && s.op == HDCP_STOP);
+    assert(tx_hdcp_next(HDCP_OFF, 0, 0) == HDCP_NOP);
+    assert(tx_hdcp_next(HDCP_OFF, 1, 0) == HDCP_AUTH);
+    assert(tx_hdcp_next(HDCP_ON, 1, 0) == HDCP_NOP);
+    assert(tx_hdcp_next(HDCP_ON, 0, 0) == HDCP_STOP);
+    assert(tx_hdcp_next(HDCP_BACKOFF, 1, 3) == HDCP_NOP);
+    assert(tx_hdcp_next(HDCP_BACKOFF, 1, 0) == HDCP_AUTH);
+    assert(tx_hdcp_next(HDCP_BACKOFF, 0, 3) == HDCP_STOP);
 }
 
-static void test_hdcp_success(void)
+static void test_hdcp_writes_allowed_and_ddc_read_only(void)
 {
     struct fake f;
     struct tx t;
@@ -678,18 +684,16 @@ static void test_hdcp_success(void)
     tx_start(&t, &b);
     tx_poll(&t, &b, m1080p60(), 0, 1);
     assert(t.state == TX_RUNNING && t.hdcp == HDCP_ON);
-    assert(!memcmp(&f.reg[0][0x28], "\x11\x22\x33\x44\x55\x66\x77\x88", 8)); /* An copied from 0x30 */
+    assert(!memcmp(&f.reg[0][0x28], AN_SAMPLE, 8));
     assert(f.reg[0][0x20] == 1 && f.reg[0][0x21] == 1 && f.reg[0][0x22] == 0 && f.reg[0][0x10] == 0);
     assert(!(f.reg[0][0x04] & 1));
     assert(count(&f, 0x21, 1) == 1);
-    /* muted until authenticated, unmuted after */
     assert(idx(&f, 0x21, 1, 0) < last(&f, 0xc1, 0));
-    assert(f.reg[0][0xc1] == 0);
-    check_hdcp_writes(&f);
-    /* steady state: no more HDCP traffic */
+    assert(unmuted(&f));
+    assert_hdcp_write_allowlist(&f);
     int n = f.nlog;
     tx_poll(&t, &b, m1080p60(), 0, 1);
-    assert(f.nlog == n && t.hdcp == HDCP_ON);
+    assert(no_traffic_since(&f, n) && t.hdcp == HDCP_ON);
 }
 
 static void test_hdcp_bad_bksv_retries(void)
@@ -699,19 +703,19 @@ static void test_hdcp_bad_bksv_retries(void)
     struct tx_bus b;
     setup(&f, &t, &b);
     hdcp_tv(&f, 1);
-    f.bksv[0] = 0xe0; /* 19 one bits */
+    memcpy(f.hdcp.bksv, BKSV_19_ONES, 5);
     tx_start(&t, &b);
     tx_poll(&t, &b, m1080p60(), 0, 1);
-    assert(t.state == TX_RUNNING && t.hdcp == HDCP_RETRY);
+    assert(t.state == TX_RUNNING && t.hdcp == HDCP_BACKOFF);
     assert(count(&f, 0x21, 1) == 0 && count(&f, 0x1f, 1) == 0);
-    assert(f.reg[0][0x20] == 0 && f.reg[0][0xc1] == 1); /* HDCP off, stays muted */
+    assert(f.reg[0][0x20] == 0 && muted(&f));
     int n = f.nlog;
     for (int i = 0; i < 7; i++) tx_poll(&t, &b, m1080p60(), 0, 1);
-    assert(f.nlog == n); /* backing off */
-    f.bksv[0] = 0xf0;
+    assert(no_traffic_since(&f, n));
+    f.hdcp.bksv[0] = 0xf0;
     tx_poll(&t, &b, m1080p60(), 0, 1);
-    assert(t.hdcp == HDCP_ON && f.reg[0][0xc1] == 0 && count(&f, 0x21, 1) == 1);
-    check_hdcp_writes(&f);
+    assert(t.hdcp == HDCP_ON && unmuted(&f) && count(&f, 0x21, 1) == 1);
+    assert_hdcp_write_allowlist(&f);
 }
 
 static void test_hdcp_failures(void)
@@ -721,32 +725,32 @@ static void test_hdcp_failures(void)
     struct tx_bus b;
     setup(&f, &t, &b);
     hdcp_tv(&f, 1);
-    f.auth_ok = 0;
-    f.auth_fail = 1;
+    f.hdcp.auth_ok = 0;
+    f.hdcp.auth_fail = 1;
     tx_start(&t, &b);
     tx_poll(&t, &b, m1080p60(), 0, 1);
-    assert(t.hdcp == HDCP_RETRY && count(&f, 0x21, 1) == 1 && f.reg[0][0x20] == 0 && f.reg[0][0xc1] == 1);
+    assert(t.hdcp == HDCP_BACKOFF && count(&f, 0x21, 1) == 1 && f.reg[0][0x20] == 0 && muted(&f));
     assert(count(&f, 0x0c, 4) == 1);
-    check_hdcp_writes(&f);
+    assert_hdcp_write_allowlist(&f);
 
     setup(&f, &t, &b);
     hdcp_tv(&f, 1);
-    f.hdcp_ddc_fail = 1; /* TV has no HDCP port */
+    tv_without_hdcp_port(&f);
     tx_start(&t, &b);
     tx_poll(&t, &b, m1080p60(), 0, 1);
-    assert(t.state == TX_RUNNING && t.hdcp == HDCP_RETRY && count(&f, 0x21, 1) == 0 && f.reg[0][0xc1] == 1);
-    check_hdcp_writes(&f);
+    assert(t.state == TX_RUNNING && t.hdcp == HDCP_BACKOFF && count(&f, 0x21, 1) == 0 && muted(&f));
+    assert_hdcp_write_allowlist(&f);
 
     setup(&f, &t, &b);
     hdcp_tv(&f, 1);
-    f.auth_ok = 0; /* neither done nor failed: times out */
+    tv_auth_never_completes(&f);
     tx_start(&t, &b);
     tx_poll(&t, &b, m1080p60(), 0, 1);
-    assert(t.hdcp == HDCP_RETRY && f.reg[0][0x20] == 0 && f.reg[0][0xc1] == 1);
+    assert(t.hdcp == HDCP_BACKOFF && f.reg[0][0x20] == 0 && muted(&f));
 
     setup(&f, &t, &b);
     hdcp_tv(&f, 1);
-    f.bstatus = 0; /* TV says DVI, we send HDMI: gives up waiting, still authenticates as Elgato does */
+    tv_reports_dvi_mode(&f);
     tx_start(&t, &b);
     tx_poll(&t, &b, m1080p60(), 0, 1);
     assert(t.hdcp == HDCP_ON);
@@ -768,8 +772,8 @@ static void test_hdcp_reauth_after_hotplug(void)
     f.hpd = 1;
     f.reg[0][0x21] = 0;
     tx_poll(&t, &b, m1080p60(), 0, 1);
-    assert(t.state == TX_RUNNING && t.hdcp == HDCP_ON && count(&f, 0x21, 1) == 2 && f.reg[0][0xc1] == 0);
-    check_hdcp_writes(&f);
+    assert(t.state == TX_RUNNING && t.hdcp == HDCP_ON && count(&f, 0x21, 1) == 2 && unmuted(&f));
+    assert_hdcp_write_allowlist(&f);
 }
 
 static void test_hdcp_source_drops_or_blanks(void)
@@ -782,17 +786,17 @@ static void test_hdcp_source_drops_or_blanks(void)
     tx_start(&t, &b);
     tx_poll(&t, &b, m1080p60(), 0, 1);
     assert(t.hdcp == HDCP_ON);
-    tx_poll(&t, &b, m1080p60(), 0, 0); /* source stopped encrypting */
-    assert(t.hdcp == HDCP_OFF && f.reg[0][0x20] == 0 && f.reg[0][0xc1] == 0);
+    poll_source_clear(&t, &b);
+    assert(t.hdcp == HDCP_OFF && f.reg[0][0x20] == 0 && unmuted(&f));
     tx_poll(&t, &b, m1080p60(), 0, 1);
     assert(t.hdcp == HDCP_ON);
-    tx_poll(&t, &b, NULL, 0, 1); /* signal lost: HDCP off and muted */
-    assert(t.hdcp == HDCP_OFF && f.reg[0][0x20] == 0 && f.reg[0][0xc1] == 1);
+    poll_no_signal(&t, &b);
+    assert(t.hdcp == HDCP_OFF && f.reg[0][0x20] == 0 && muted(&f));
     tx_poll(&t, &b, m1080p60(), 0, 1);
-    assert(t.hdcp == HDCP_ON && f.reg[0][0xc1] == 0);
+    assert(t.hdcp == HDCP_ON && unmuted(&f));
     tx_blank(&t, &b);
-    assert(t.hdcp == HDCP_OFF && f.reg[0][0x20] == 0 && f.reg[0][0xc1] == 1);
-    check_hdcp_writes(&f);
+    assert(t.hdcp == HDCP_OFF && f.reg[0][0x20] == 0 && muted(&f));
+    assert_hdcp_write_allowlist(&f);
 }
 
 static void test_hdcp_failed_then_source_clear_unmutes(void)
@@ -802,12 +806,12 @@ static void test_hdcp_failed_then_source_clear_unmutes(void)
     struct tx_bus b;
     setup(&f, &t, &b);
     hdcp_tv(&f, 1);
-    f.hdcp_ddc_fail = 1;
+    tv_without_hdcp_port(&f);
     tx_start(&t, &b);
     tx_poll(&t, &b, m1080p60(), 0, 1);
-    assert(t.hdcp == HDCP_RETRY && f.reg[0][0xc1] == 1);
+    assert(t.hdcp == HDCP_BACKOFF && muted(&f));
     tx_poll(&t, &b, m1080p60(), 0, 0);
-    assert(t.hdcp == HDCP_OFF && f.reg[0][0xc1] == 0);
+    assert(t.hdcp == HDCP_OFF && unmuted(&f));
 }
 
 static void test_hdcp_not_for_dvi_sink(void)
@@ -819,7 +823,7 @@ static void test_hdcp_not_for_dvi_sink(void)
     hdcp_tv(&f, 0);
     tx_start(&t, &b);
     tx_poll(&t, &b, m1080p60(), 0, 1);
-    assert(t.state == TX_RUNNING && t.hdcp == HDCP_OFF && !touched_hdcp(&f) && f.reg[0][0xc1] == 0);
+    assert(t.state == TX_RUNNING && t.hdcp == HDCP_OFF && !touched_hdcp(&f) && unmuted(&f));
     check_only_allowed(&f);
 }
 
@@ -832,7 +836,7 @@ static void test_non_hdcp_path_unchanged(void)
     hdcp_tv(&f, 1);
     tx_start(&t, &b);
     tx_poll(&t, &b, m1080p60(), 48000, 0);
-    assert(t.state == TX_RUNNING && t.hdcp == HDCP_OFF && !touched_hdcp(&f) && f.reg[0][0xc1] == 0);
+    assert(t.state == TX_RUNNING && t.hdcp == HDCP_OFF && !touched_hdcp(&f) && unmuted(&f));
     check_only_allowed(&f);
     f.hpd = 0;
     tx_poll(&t, &b, m1080p60(), 0, 0);
@@ -848,11 +852,11 @@ static void test_hdcp_audio_change_stays_muted(void)
     struct tx_bus b;
     setup(&f, &t, &b);
     hdcp_tv(&f, 1);
-    f.hdcp_ddc_fail = 1;
+    tv_without_hdcp_port(&f);
     tx_start(&t, &b);
     tx_poll(&t, &b, m1080p60(), 0, 1);
     tx_poll(&t, &b, m1080p60(), 48000, 1);
-    assert(t.audio_hz == 48000 && f.reg[0][0xc1] == 1);
+    assert(t.audio_hz == 48000 && muted(&f));
 }
 
 int main(void)
@@ -879,7 +883,7 @@ int main(void)
     test_init_when_lost();
     test_absent();
     test_hdcp_table();
-    test_hdcp_success();
+    test_hdcp_writes_allowed_and_ddc_read_only();
     test_hdcp_bad_bksv_retries();
     test_hdcp_failures();
     test_hdcp_reauth_after_hotplug();

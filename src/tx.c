@@ -2,7 +2,7 @@
 
 #include <string.h>
 
-enum { INIT_MARK = 0xb2, EDID_RETRY_POLLS = 8, HDCP_RETRY_POLLS = 8, HDCP_KSV_ONES = 20, HD_MIN_PCLK_KHZ = 74250, AVI_C1C0_BT601 = 0x48, AVI_C1C0_BT709 = 0x88 };
+enum { INIT_MARK = 0xb2, EDID_RETRY_POLLS = 8, HDCP_BACKOFF_POLLS = 8, HDCP_KSV_ONES = 20, DDC_POLLS = 200, DDC_DONE = 0x80, DDC_ERR_MASK = 0x38, HD_MIN_PCLK_KHZ = 74250, AVI_C1C0_BT601 = 0x48, AVI_C1C0_BT709 = 0x88 };
 
 static const struct {
     int w, h, interlaced, fps;
@@ -120,16 +120,16 @@ enum tx_state tx_next(enum tx_state s, struct tx_in in)
     return TX_IDLE;
 }
 
-struct tx_hdcp_step tx_hdcp_next(enum tx_hdcp s, int want, int wait)
+enum tx_hdcp_op tx_hdcp_next(enum tx_hdcp s, int want, int retry_polls_left)
 {
-    static const struct tx_hdcp_step t[3][2] = {
-        [HDCP_OFF] = {{HDCP_OFF, HDCP_NOP}, {HDCP_OFF, HDCP_AUTH}},
-        [HDCP_ON] = {{HDCP_OFF, HDCP_STOP}, {HDCP_ON, HDCP_NOP}},
-        [HDCP_RETRY] = {{HDCP_OFF, HDCP_STOP}, {HDCP_RETRY, HDCP_AUTH}},
+    static const enum tx_hdcp_op ops[3][2] = {
+        [HDCP_OFF] = {HDCP_NOP, HDCP_AUTH},
+        [HDCP_ON] = {HDCP_STOP, HDCP_NOP},
+        [HDCP_BACKOFF] = {HDCP_STOP, HDCP_AUTH},
     };
-    if (s == HDCP_RETRY && want && wait)
-        return (struct tx_hdcp_step){HDCP_RETRY, HDCP_NOP};
-    return t[s][!!want];
+    if (s == HDCP_BACKOFF && want && retry_polls_left)
+        return HDCP_NOP;
+    return ops[s][!!want];
 }
 
 /* Write allow-list: transmitter video, audio, DDC read, mute and HDCP registers only. DDC is read-only: slaves 0xA0 and 0x74. */
@@ -188,8 +188,7 @@ static void unmute(const struct tx_bus *b)
     w(b, 0xc6, 3);
 }
 
-/* Protected content never leaves unencrypted: muted until the TV authenticates. */
-static int gated(const struct tx *t) { return t->src_hdcp && t->sink.hdmi && t->hdcp != HDCP_ON; }
+static int muted_pending_hdcp(const struct tx *t) { return t->src_hdcp && t->sink.hdmi && t->hdcp != HDCP_ON; }
 
 static void audio_off(struct tx *t, const struct tx_bus *b)
 {
@@ -254,7 +253,7 @@ static void afe_off(struct tx *t, const struct tx_bus *b)
     w(b, 0x61, 0x30);
     t->sent_vic = 0;
     t->hdcp = HDCP_OFF;
-    t->hdcp_wait = 0;
+    t->hdcp_retry_polls_left = 0;
     memset(&t->sink, 0, sizeof t->sink);
 }
 
@@ -312,21 +311,19 @@ static int read_edid(const struct tx_bus *b, struct tx_sink *sink)
     return tx_edid_parse(e, n * 128, sink);
 }
 
-/* Wait for the DDC master. 0 when done without error. */
 static int ddc_wait(const struct tx_bus *b)
 {
-    for (int i = 0; i < 200; i++) {
+    for (int i = 0; i < DDC_POLLS; i++) {
         int s = rd(b, 0x16);
-        if (s & 0x38)
+        if (s & DDC_ERR_MASK)
             return -1;
-        if (s & 0x80)
+        if (s & DDC_DONE)
             return 0;
         b->sleep_ms(b->ctx, 1);
     }
     return -1;
 }
 
-/* Read-only burst read from the TV's HDCP port (slave 0x74) into regs 0x3b-0x45. */
 static int hdcp_read(const struct tx_bus *b, uint8_t off, uint8_t n)
 {
     w(b, 0x10, 1);
@@ -368,7 +365,6 @@ static void hdcp_stop(const struct tx_bus *b)
     ddc_abort(b);
 }
 
-/* FUN_20dc0. 1 when the TV authenticated. */
 static int hdcp_auth(const struct tx_bus *b)
 {
     uint8_t ksv[5], an[8];
@@ -431,23 +427,24 @@ static int hdcp_auth(const struct tx_bus *b)
 static void hdcp_sync(struct tx *t, const struct tx_bus *b)
 {
     int want = t->state == TX_RUNNING && t->want && t->sink.hdmi && t->src_hdcp;
-    if (t->hdcp_wait)
-        t->hdcp_wait--;
-    struct tx_hdcp_step st = tx_hdcp_next(t->hdcp, want, t->hdcp_wait);
-    t->hdcp = st.next;
-    if (st.op == HDCP_AUTH) {
+    if (t->hdcp_retry_polls_left)
+        t->hdcp_retry_polls_left--;
+    enum tx_hdcp_op op = tx_hdcp_next(t->hdcp, want, t->hdcp_retry_polls_left);
+    if (op == HDCP_STOP)
+        t->hdcp = HDCP_OFF;
+    if (op == HDCP_AUTH) {
         mute(b);
         if (hdcp_auth(b)) {
             t->hdcp = HDCP_ON;
             unmute(b);
         } else {
             hdcp_stop(b);
-            t->hdcp = HDCP_RETRY;
-            t->hdcp_wait = HDCP_RETRY_POLLS;
+            t->hdcp = HDCP_BACKOFF;
+            t->hdcp_retry_polls_left = HDCP_BACKOFF_POLLS;
         }
-    } else if (st.op == HDCP_STOP) {
+    } else if (op == HDCP_STOP) {
         hdcp_stop(b);
-        if (t->state == TX_RUNNING && t->want && !gated(t))
+        if (t->state == TX_RUNNING && t->want && !muted_pending_hdcp(t))
             unmute(b);
     }
 }
@@ -513,7 +510,7 @@ static void enable_output(struct tx *t, const struct tx_bus *b)
     w(b, 0x0f, 0);
     w(b, 0x61, 0x00);
     audio_sync(t, b);
-    if (!gated(t))
+    if (!muted_pending_hdcp(t))
         unmute(b);
 }
 
@@ -571,7 +568,7 @@ void tx_poll(struct tx *t, const struct tx_bus *b, const struct tx_mode *mode, i
         t->state = TX_IDLE;
         t->sent_vic = 0;
         t->hdcp = HDCP_OFF;
-        t->hdcp_wait = 0;
+        t->hdcp_retry_polls_left = 0;
     }
     t->want = mode;
     t->want_hz = audio_hz;
@@ -599,7 +596,7 @@ void tx_poll(struct tx *t, const struct tx_bus *b, const struct tx_mode *mode, i
     if (t->state == TX_RUNNING && mode && audio_wanted(t) != t->audio_hz) {
         mute(b);
         audio_sync(t, b);
-        if (!gated(t))
+        if (!muted_pending_hdcp(t))
             unmute(b);
     }
 }
@@ -612,6 +609,6 @@ void tx_blank(struct tx *t, const struct tx_bus *b)
             hdcp_stop(b);
     }
     t->hdcp = HDCP_OFF;
-    t->hdcp_wait = 0;
+    t->hdcp_retry_polls_left = 0;
     t->sent_vic = 0;
 }
