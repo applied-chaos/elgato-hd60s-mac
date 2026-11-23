@@ -57,6 +57,14 @@ int audio_source_parse(const char *name, enum audio_source *out)
     return 0;
 }
 
+int audio_source_valid(int source)
+{
+    for (size_t i = 0; i < sizeof source_names / sizeof *source_names; i++)
+        if ((int)source_names[i].source == source)
+            return 1;
+    return 0;
+}
+
 void audio_plan(const struct audio_settings *s, int hdmi, const struct audio_regs *cur, struct audio_regs *out)
 {
     int steps = audio_gain_clamp(s->gain_half_db);

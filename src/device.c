@@ -398,7 +398,8 @@ int hd60s_start(struct hd60s *d)
             break;
         msleep(d, 5);
     }
-    d->colour = (struct hd60s_colour_cfg){INPUT_RGB, 0, d->settings.range, 0, d->settings.picture};
+    struct hd60s_settings settings = hd60s_settings_snapshot(d);
+    d->colour = (struct hd60s_colour_cfg){INPUT_RGB, 0, settings.range, 0, settings.picture};
     colour_convert(d, &d->colour);
     struct tx_bus tb = tx_bus(d);
     tx_start(&d->tx, &tb);
@@ -441,7 +442,8 @@ void hd60s_policy_frame(struct hd60s_policy *s, int w, int h, int interlaced)
 
 void hd60s_policy_tick(struct hd60s *d, struct hd60s_parser *p, struct hd60s_policy *s, long now_ms)
 {
-    struct audio_settings audio = audio_from_pref(d->settings.audio);
+    struct hd60s_settings settings = hd60s_settings_snapshot(d);
+    struct audio_settings audio = audio_from_pref(settings.audio);
     if (memcmp(&audio, &d->audio, sizeof audio))
         hd60s_set_audio(d, &audio);
     if (now_ms - s->aspect_at >= ASPECT_POLL_MS) {
@@ -460,9 +462,9 @@ void hd60s_policy_tick(struct hd60s *d, struct hd60s_parser *p, struct hd60s_pol
     if (sd >= 0)
         want.sd = sd;
     want.input = s->src.format;
-    want.range = d->settings.range;
+    want.range = settings.range;
     want.quant = s->src.quant;
-    want.picture = d->settings.picture;
+    want.picture = settings.picture;
     if (memcmp(&want, &d->colour, sizeof want)) {
         colour_convert(d, &want);
         d->colour = want;
@@ -488,6 +490,48 @@ void hd60s_policy_tick(struct hd60s *d, struct hd60s_parser *p, struct hd60s_pol
         tx_poll(&d->tx, &tb, s->mode, s->hz, d->link.hdcp);
         s->last_poll = now_ms;
     }
+}
+
+void hd60s_settings_publish(struct hd60s *d, const struct hd60s_settings *s)
+{
+    while (atomic_exchange_explicit(&d->settings_lock, 1, memory_order_acquire))
+        ;
+    d->settings = *s;
+    atomic_store_explicit(&d->settings_lock, 0, memory_order_release);
+}
+
+struct hd60s_settings hd60s_settings_snapshot(struct hd60s *d)
+{
+    while (atomic_exchange_explicit(&d->settings_lock, 1, memory_order_acquire))
+        ;
+    struct hd60s_settings s = d->settings;
+    atomic_store_explicit(&d->settings_lock, 0, memory_order_release);
+    return s;
+}
+
+int hd60s_settings_equal(const struct hd60s_settings *a, const struct hd60s_settings *b)
+{
+    return a->range == b->range && a->picture.brightness == b->picture.brightness && a->picture.contrast == b->picture.contrast &&
+           a->picture.saturation == b->picture.saturation && a->picture.hue == b->picture.hue && a->audio.source == b->audio.source &&
+           a->audio.gain_offset == b->audio.gain_offset && !a->audio.mute == !b->audio.mute;
+}
+
+void hd60s_settings_to_wire(const struct hd60s_settings *s, struct hd60s_settings_wire *w)
+{
+    *w = (struct hd60s_settings_wire){HD60S_SETTINGS_WIRE_VERSION, (uint8_t)s->range, (uint8_t)s->audio.source, s->audio.mute != 0,
+                                      s->picture.brightness, s->picture.contrast, s->picture.saturation, s->picture.hue,
+                                      s->audio.gain_offset, {0, 0}};
+}
+
+int hd60s_settings_from_wire(const struct hd60s_settings_wire *w, size_t len, struct hd60s_settings *out)
+{
+    if (!w || len != sizeof *w || w->version != HD60S_SETTINGS_WIRE_VERSION || w->range >= RANGE_COUNT ||
+        !audio_source_valid(w->audio_source) || w->mute > 1 || w->reserved[0] || w->reserved[1])
+        return -1;
+    *out = (struct hd60s_settings){(enum hd60s_range)w->range,
+                                   {w->brightness, w->contrast, w->saturation, w->hue},
+                                   {(enum audio_source)w->audio_source, w->gain_offset, (int8_t)w->mute}};
+    return 0;
 }
 
 int hd60s_range_from_name(const char *name)

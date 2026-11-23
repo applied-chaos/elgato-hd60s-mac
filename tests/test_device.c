@@ -1,4 +1,5 @@
 #include <assert.h>
+#include <pthread.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -582,6 +583,63 @@ static void policy_tracks_the_source_link(void)
     assert(!d.link.hdcp && d.link.dvi);
 }
 
+static void settings_wire_round_trips_and_validates(void)
+{
+    assert(sizeof(struct hd60s_settings_wire) == 12);
+    struct hd60s_settings in = {RANGE_EXPANDED, {-128, 5, 127, -1}, {AUDIO_MIX, -7, 1}}, out = {0};
+    struct hd60s_settings_wire w;
+    hd60s_settings_to_wire(&in, &w);
+    assert(w.version == HD60S_SETTINGS_WIRE_VERSION && !w.reserved[0] && !w.reserved[1]);
+    assert(hd60s_settings_from_wire(&w, sizeof w, &out) == 0 && hd60s_settings_equal(&in, &out));
+    struct hd60s_settings zero = {0};
+    hd60s_settings_to_wire(&zero, &w);
+    assert(hd60s_settings_from_wire(&w, sizeof w, &out) == 0 && hd60s_settings_equal(&zero, &out));
+    assert(!hd60s_settings_equal(&in, &zero));
+
+    struct hd60s_settings keep = in, got = in;
+    hd60s_settings_to_wire(&in, &w);
+    struct hd60s_settings_wire bad = w;
+    assert(hd60s_settings_from_wire(&w, sizeof w - 1, &got) < 0 && hd60s_settings_from_wire(&w, sizeof w + 1, &got) < 0);
+    bad = w, bad.version = HD60S_SETTINGS_WIRE_VERSION + 1;
+    assert(hd60s_settings_from_wire(&bad, sizeof bad, &got) < 0);
+    bad = w, bad.range = RANGE_COUNT;
+    assert(hd60s_settings_from_wire(&bad, sizeof bad, &got) < 0);
+    bad = w, bad.audio_source = 2;
+    assert(hd60s_settings_from_wire(&bad, sizeof bad, &got) < 0);
+    bad = w, bad.mute = 2;
+    assert(hd60s_settings_from_wire(&bad, sizeof bad, &got) < 0);
+    bad = w, bad.reserved[1] = 1;
+    assert(hd60s_settings_from_wire(&bad, sizeof bad, &got) < 0);
+    assert(hd60s_settings_from_wire(NULL, sizeof w, &got) < 0 && hd60s_settings_equal(&got, &keep));
+}
+
+static const struct hd60s_settings pattern[2] = {
+    {RANGE_AUTO, {1, 1, 1, 1}, {AUDIO_HDMI, 1, 0}},
+    {RANGE_EXPANDED, {-2, -2, -2, -2}, {AUDIO_LINE, -2, 1}},
+};
+
+static void *flip_settings(void *arg)
+{
+    struct hd60s *d = arg;
+    for (int i = 0; i < 400000; i++)
+        hd60s_settings_publish(d, &pattern[i & 1]);
+    return NULL;
+}
+
+static void settings_snapshot_is_never_torn(void)
+{
+    struct hd60s d;
+    boot(&d, 0);
+    hd60s_settings_publish(&d, &pattern[0]);
+    pthread_t t;
+    pthread_create(&t, NULL, flip_settings, &d);
+    for (int i = 0; i < 400000; i++) {
+        struct hd60s_settings s = hd60s_settings_snapshot(&d);
+        assert(hd60s_settings_equal(&s, &pattern[0]) || hd60s_settings_equal(&s, &pattern[1]));
+    }
+    pthread_join(t, NULL);
+}
+
 int main(void)
 {
     transfer_plan_defaults_to_bulk_and_picks_narrowest_sufficient_iso_alt();
@@ -610,6 +668,8 @@ int main(void)
     policy_reruns_routing_when_the_source_becomes_hdmi();
     link_flags_decode_hdcp_and_dvi();
     policy_tracks_the_source_link();
+    settings_wire_round_trips_and_validates();
+    settings_snapshot_is_never_torn();
     puts("test_device: ok");
     return 0;
 }

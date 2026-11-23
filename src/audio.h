@@ -41,6 +41,7 @@ uint8_t audio_gain_code(int gain_half_db);
 /* "hdmi", "line" or "mix". */
 const char *audio_source_name(enum audio_source s);
 int audio_source_parse(const char *name, enum audio_source *out);
+int audio_source_valid(int source);
 /* FUN_1caf4 + FUN_1ce18. hdmi is the receiver's HDMI-signalling flag (b1:0x01 bit 2 on a digital input); cur is what the codec holds now (r04, gain and pair gain bits are kept where Elgato keeps them). */
 void audio_plan(const struct audio_settings *s, int hdmi, const struct audio_regs *cur, struct audio_regs *out);
 

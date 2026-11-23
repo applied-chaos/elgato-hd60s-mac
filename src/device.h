@@ -1,6 +1,7 @@
 #ifndef HD60S_DEVICE_H
 #define HD60S_DEVICE_H
 
+#include <stdatomic.h>
 #include <stddef.h>
 #include <stdint.h>
 
@@ -54,6 +55,24 @@ int hd60s_settings_parse(const char *json, struct hd60s_settings *out);
 void hd60s_settings_print(const struct hd60s_settings *s, char *buf, size_t n);
 /* Range for a name as above, or -1. */
 int hd60s_range_from_name(const char *name);
+int hd60s_settings_equal(const struct hd60s_settings *a, const struct hd60s_settings *b);
+
+/* Settings as sent to the driver extension (user-client method 0, structure input): fixed layout, no padding, so both
+ * sides agree on the bytes. Bump the version when the layout changes. */
+#define HD60S_SETTINGS_WIRE_VERSION 1
+struct hd60s_settings_wire {
+    uint16_t version;
+    uint8_t range;        /* enum hd60s_range */
+    uint8_t audio_source; /* enum audio_source */
+    uint8_t mute;         /* 0 or 1 */
+    int8_t brightness, contrast, saturation, hue, gain_offset;
+    uint8_t reserved[2];  /* zero */
+};
+_Static_assert(sizeof(struct hd60s_settings_wire) == 12, "wire layout");
+
+void hd60s_settings_to_wire(const struct hd60s_settings *s, struct hd60s_settings_wire *w);
+/* Checks length, version, every enum and the reserved bytes; out is untouched on failure. 0, or -1. */
+int hd60s_settings_from_wire(const struct hd60s_settings_wire *w, size_t len, struct hd60s_settings *out);
 
 struct libusb_context;
 struct libusb_device_handle;
@@ -68,7 +87,8 @@ struct hd60s {
     uint8_t mst_saved[5];  /* MST3367 bank 1 reg 0x27 snapshot, restored on stop */
     int started;
     struct hd60s_colour_cfg colour;
-    struct hd60s_settings settings;
+    struct hd60s_settings settings; /* write with hd60s_settings_publish once another thread may be reading */
+    _Atomic uint32_t settings_lock;
     struct tx tx;          /* HDMI-out transmitter state */
     struct audio_settings audio;
     int audio_routed_hdmi;
@@ -90,6 +110,11 @@ int hd60s_start(struct hd60s *d);
 void hd60s_stop(struct hd60s *d);
 /* Gain is clamped to +-12 dB. Sent now if started, otherwise at hd60s_start. 0, or -1 on a transport error. */
 int hd60s_set_audio(struct hd60s *d, const struct audio_settings *s);
+
+/* Thread-safe hand-over of settings to the thread running hd60s_policy_tick: publish from any thread, and the
+ * tick reads one consistent snapshot. */
+void hd60s_settings_publish(struct hd60s *d, const struct hd60s_settings *s);
+struct hd60s_settings hd60s_settings_snapshot(struct hd60s *d);
 
 void hd60s_policy_begin(struct hd60s_policy *s, long now_ms);
 void hd60s_policy_frame(struct hd60s_policy *s, int w, int h, int interlaced);
