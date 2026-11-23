@@ -2,7 +2,6 @@
 
 #include <IOKit/IOKitLib.h>
 #include <IOKit/IOMessage.h>
-#include <os/lock.h>
 #include <os/log.h>
 #include <stdatomic.h>
 #include <time.h>
@@ -132,32 +131,20 @@ void dext_feed_close(void)
     session = (struct link){0};
 }
 
-static os_unfair_lock control_lock = OS_UNFAIR_LOCK_INIT;
-static io_connect_t control;
-
+// Opened per call: a held connection keeps a terminated driver's process alive, blocking upgrades and replugs.
 int dext_send_settings(const struct hd60s_settings *s)
 {
     struct hd60s_settings_wire wire;
     hd60s_settings_to_wire(s, &wire);
-    os_unfair_lock_lock(&control_lock);
-    kern_return_t kr = KERN_FAILURE;
-    for (int attempt = 0; attempt < 2 && kr != KERN_SUCCESS; attempt++) {
-        if (!control) {
-            io_service_t driver = find_driver();
-            if (!driver)
-                break;
-            if (IOServiceOpen(driver, mach_task_self(), FRAME_CLIENT_TYPE, &control) != KERN_SUCCESS)
-                control = 0;
-            IOObjectRelease(driver);
-        }
-        if (!control)
-            break;
-        kr = IOConnectCallStructMethod(control, 0, &wire, sizeof wire, NULL, NULL);
-        if (kr != KERN_SUCCESS) {
-            IOServiceClose(control);
-            control = 0;
-        }
-    }
-    os_unfair_lock_unlock(&control_lock);
+    io_service_t driver = find_driver();
+    if (!driver)
+        return -1;
+    io_connect_t control;
+    kern_return_t kr = IOServiceOpen(driver, mach_task_self(), FRAME_CLIENT_TYPE, &control);
+    IOObjectRelease(driver);
+    if (kr != KERN_SUCCESS)
+        return -1;
+    kr = IOConnectCallStructMethod(control, 0, &wire, sizeof wire, NULL, NULL);
+    IOServiceClose(control);
     return kr == KERN_SUCCESS ? 0 : -1;
 }

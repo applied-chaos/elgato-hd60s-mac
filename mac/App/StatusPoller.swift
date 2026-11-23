@@ -32,6 +32,9 @@ final class StatusPoller: ObservableObject {
             sampledFrames = 0
             sampledDiscarded = 0
             ringMark = nil
+            #if DEXT
+            dext_feed_close()
+            #endif
         }
     }
 
@@ -53,6 +56,8 @@ final class StatusPoller: ObservableObject {
             fillFromRing(&st)
             return (decode(st), snapshot?.device.owner.name)
         }
+        // Opening the device here could beat the driver extension to it after a replug.
+        if st.owner == OWNER_NONE { return (decode(st), nil) }
         #endif
         if let snap = snapshot, st.owner != OWNER_NONE {
             var facts = decode(st)
