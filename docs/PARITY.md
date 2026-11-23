@@ -125,7 +125,7 @@ App status messages: "No Signal", "Protected with HDCP", "USB 3 is required for 
 |---|---|---|---|
 | E1 | Video passthrough while capturing | partial | #13 merged. The state machine was hardware-checked with HPD forced and a fake EDID, but never on a real TV: the DDC EDID burst read and TV lock are unproven (PROTOCOL §6.10). **TV**. Ticket: **Run the #13 passthrough TV test plan on a real TV** |
 | E2 | Passthrough audio | missing | Ticket #16 exists (PROTOCOL §6.7: N/CTS b1:0x33–0x35, regs 0xE0–0xE4, channel status b1:0x91–0x99, audio InfoFrame b1:0x68–0x6D/0xCE). **TV** |
-| E3 | HDCP passthrough | missing | See detail below. **Console + TV** |
+| E3 | HDCP passthrough | done (console check pending) | #27. Port of `FUN_20dc0`/`FUN_2109e` in `src/tx.c`. Checked on the ARZOPA monitor with a forced encrypted flag (auth done, 0x46 = 0x80); the Pi can't send HDCP, so the PS5 run is **Console + TV** |
 | E4 | Passthrough with no host app / after our stop | missing (unknown) | See detail below. **TV** (Pi source is fine) |
 | E5 | Per-mode MST3367 writes and unmute colour bits | missing | Elgato's `FUN_1d10a` step 3 (`FUN_20b4c`, `FUN_20c02` b0:0x03, `FUN_20cdc` b0:0x0F/0x12/0x13/0x17, b0:0x60) plus state-5 unmute b0:0xB2 bits 0–1 from b0:0x55 or b0:0x14. Skipped in #13. Capture doesn't need them (#7). The TV might, in SD/720p. **TV**. Ticket: **Port Elgato's per-mode MST3367 writes if the TV test needs them** (conditional on E1) |
 | E6 | Passthrough colour for RGB-only sinks and SD colorimetry | partial | `tx_avi` hard-codes DB2 colorimetry 0x88 (BT.709); Elgato sends 0x40 (601) for non-HD rows. The RGB-out path uses Elgato's BT.601 limited table (`DAT_33070`) for every mode. Now that capture switches to 601 for SD (#10), the AVI comment in `tx.c` is stale. **TV or DVI monitor**. Ticket: **Send BT.601 colorimetry in the passthrough AVI InfoFrame for SD** |
@@ -134,8 +134,8 @@ App status messages: "No Signal", "Protected with HDCP", "USB 3 is required for 
 **E3, HDCP passthrough.**
 - What Elgato does: when the source is encrypted (`dev+0x20`) and the TV is HDMI, the IT66121 authenticates with the TV using its internal keys, so HDCP content plays on the TV (capture stays blank).
 - How: `FUN_20dc0` reads BCaps/BStatus/BKSV over DDC (slave 0x74), writes An and the auth regs 0x1F–0x46, and polls 0x46 bit7 / 0x07 bit0. `FUN_2109e` turns HDCP off.
-- Safety: these are transmitter registers only, plus read-only DDC to the TV. The current allow-list (`tx.c:96`) excludes 0x1F–0x46 and would need widening.
-- Ticket: **Authenticate HDCP on HDMI out for encrypted sources**
+- Safety: these are transmitter registers only, plus read-only DDC to the TV. The allow-list now also takes exactly the values Elgato writes: 0x1F, 0x20, 0x21, 0x22, 0x28–0x2F (An), 0x0C–0x0E (interrupt clear), 0x10 = 0, 0x11 = 0x74. Output stays muted until the TV authenticates; a failed attempt retries every 2 s. A DVI sink gets no HDCP, as with Elgato.
+- Ticket (#27, done): **Authenticate HDCP on HDMI out for encrypted sources**
 
 **E4, passthrough with no host app or after our stop.**
 - What Elgato does: Elgato's help says a USB power adapter alone gives passthrough without recording. Our read-only probe found the IT66121 already set up at power-up (0x09–0x0B = B2 F8 37), so the MCU firmware likely runs passthrough standalone.

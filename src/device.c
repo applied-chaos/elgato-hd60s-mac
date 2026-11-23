@@ -549,7 +549,7 @@ void hd60s_policy_tick(struct hd60s *d, struct hd60s_parser *p, struct hd60s_pol
         if (hz == s->hz_seen)
             s->hz = hz;
         s->hz_seen = hz;
-        tx_poll(&d->tx, &tb, s->mode, s->hz);
+        tx_poll(&d->tx, &tb, s->mode, s->hz, d->link.hdcp);
         s->last_poll = now_ms;
     }
 }
