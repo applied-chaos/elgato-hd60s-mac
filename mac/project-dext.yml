@@ -70,9 +70,9 @@ targets:
       properties:
         com.apple.developer.driverkit: true
         com.apple.developer.driverkit.family.audio: true
+        # Must equal the development profile's grant exactly or AMFI refuses to launch the dext.
         com.apple.developer.driverkit.transport.usb:
-          - idVendor: 4057
-            idProduct: 116
+          - idVendor: "*"
         com.apple.developer.driverkit.allow-any-userclient-access: true
     settings:
       SDKROOT: driverkit
