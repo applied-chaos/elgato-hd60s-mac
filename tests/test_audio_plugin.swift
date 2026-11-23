@@ -66,7 +66,7 @@ func check(_ ok: Bool, _ what: String, line: UInt = #line) {
         try? fm.removeItem(atPath: tmp)
 
         check(AudioPlugin.appleScript(for: #"echo "a\b""#) == #"do shell script "echo \"a\\b\"" with administrator privileges"#, "applescript escaping")
-        let offered = InstallAction.offered
+        let offered = { InstallAction.offered(camera: $0, audio: $1, dext: $2, reinstall: false) }
         check(offered(false, .notInstalled, .notBundled) == .install, "nothing installed offers install")
         check(offered(false, .notInstalled, .notInstalled) == .install, "dext bundled but absent offers install")
         check(offered(true, .installed, .notBundled) == .uninstall, "camera installed offers uninstall")
@@ -75,6 +75,7 @@ func check(_ ok: Bool, _ what: String, line: UInt = #line) {
         check(offered(false, .notInstalled, .installed) == .uninstall, "orphaned dext offers uninstall")
         check(offered(false, .notInstalled, .needsApproval) == .uninstall, "dext awaiting approval offers uninstall")
         check(offered(false, .notInstalled, .failed("x")) == .install, "failed dext is not installed")
+        check(InstallAction.offered(camera: true, audio: .installed, dext: .notInstalled, reinstall: true) == .install, "reinstall over userspace camera offers install")
         print("audio plug-in tests passed")
     }
 }

@@ -15,9 +15,9 @@ enum AudioStatus: Equatable {
 enum InstallAction: Equatable {
     case install, uninstall
 
-    static func offered(camera: Bool, audio: AudioStatus, dext: DextStatus) -> InstallAction {
+    static func offered(camera: Bool, audio: AudioStatus, dext: DextStatus, reinstall: Bool) -> InstallAction {
         let dextIn = dext == .installed || dext == .needsApproval
-        return camera || audio != .notInstalled || dextIn ? .uninstall : .install
+        return !reinstall && (camera || audio != .notInstalled || dextIn) ? .uninstall : .install
     }
 }
 

@@ -424,7 +424,8 @@ struct InstallTab: View {
         return VStack(alignment: .leading, spacing: 0) {
             StateBlock(dot: status.colour, title: status.title, detail: status.detail, extra: extra)
             Group {
-                switch InstallAction.offered(camera: status.cameraInstalled, audio: installer.audio, dext: dext.status) {
+                switch InstallAction.offered(camera: status.cameraInstalled, audio: installer.audio, dext: dext.status,
+                                          reinstall: installer.flavour.offersReinstall(cameraInstalled: status == .installed, audio: installer.audio, dext: dext.status)) {
                 case .uninstall:
                     Button("Uninstall", action: installer.uninstall).buttonStyle(BrandButton(primary: false))
                         .disabled(status == .working)
