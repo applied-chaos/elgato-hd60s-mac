@@ -119,10 +119,7 @@ final class StreamSource: NSObject, CMIOExtensionStreamSource {
         var desc: CMFormatDescription?
         CMVideoFormatDescriptionCreate(allocator: kCFAllocatorDefault, codecType: kCVPixelFormatType_422YpCbCr8_yuvs,
                                        width: width, height: height, extensions: nil, formatDescriptionOut: &desc)
-        formatList = FrameRate.all.map {
-            CMIOExtensionStreamFormat(formatDescription: desc!, maxFrameDuration: $0.duration,
-                                      minFrameDuration: $0.duration, validFrameDurations: nil)
-        }
+        formatList = FrameRate.all.map { $0.streamFormat(desc!) }
         let attrs: [String: Any] = [
             kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_422YpCbCr8_yuvs,
             kCVPixelBufferWidthKey as String: width,
@@ -143,7 +140,7 @@ final class StreamSource: NSObject, CMIOExtensionStreamSource {
 
     var formats: [CMIOExtensionStreamFormat] { formatList }
 
-    var availableProperties: Set<CMIOExtensionProperty> { [.streamActiveFormatIndex, .streamFrameDuration] }
+    var availableProperties: Set<CMIOExtensionProperty> { [.streamActiveFormatIndex, .streamFrameDuration, .streamMaxFrameDuration] }
 
     func streamProperties(forProperties properties: Set<CMIOExtensionProperty>) throws -> CMIOExtensionStreamProperties {
         let p = CMIOExtensionStreamProperties(dictionary: [:])
@@ -152,6 +149,9 @@ final class StreamSource: NSObject, CMIOExtensionStreamSource {
         }
         if properties.contains(.streamFrameDuration) {
             p.frameDuration = rate.withLock { $0.duration }
+        }
+        if properties.contains(.streamMaxFrameDuration) {
+            p.maxFrameDuration = rate.withLock { $0.duration }
         }
         return p
     }

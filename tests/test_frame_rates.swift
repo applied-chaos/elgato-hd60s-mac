@@ -1,4 +1,5 @@
 import CoreMedia
+import CoreMediaIO
 import Foundation
 
 func check(_ ok: Bool, _ what: String, line: UInt = #line) {
@@ -26,6 +27,15 @@ func check(_ ok: Bool, _ what: String, line: UInt = #line) {
         check(FrameRate(duration: CMTime(value: 1, timescale: 100)) == .ntsc, "far above snaps to 59.94")
         check(FrameRate(duration: .invalid) == nil && FrameRate(duration: .zero) == nil, "bad duration rejected")
         check(FrameRate.ntsc.index == 0 && FrameRate.pal.index == 1, "index round trip")
+        var desc: CMFormatDescription?
+        CMVideoFormatDescriptionCreate(allocator: kCFAllocatorDefault, codecType: kCVPixelFormatType_422YpCbCr8_yuvs,
+                                       width: 1920, height: 1080, extensions: nil, formatDescriptionOut: &desc)
+        for rate in FrameRate.all {
+            let f = rate.streamFormat(desc!)
+            check(f.minFrameDuration == rate.duration && f.maxFrameDuration == rate.duration, "\(rate) range is its own duration")
+            check(f.validFrameDurations == [rate.duration],
+                  "\(rate) valid durations")
+        }
         print("frame rate tests passed")
     }
 }

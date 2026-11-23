@@ -1,4 +1,5 @@
 import CoreMedia
+import CoreMediaIO
 
 // Advertised camera rates. Frames are always stamped at arrival, so the choice only sets the nominal
 // duration and slate pacing; a source at the other rate still flows through without drops or repeats.
@@ -13,6 +14,12 @@ enum FrameRate: CaseIterable {
         case .p25: CMTime(value: 1, timescale: 25)
         case .p24: CMTime(value: 1, timescale: 24)
         }
+    }
+
+    // Discrete valid duration so each format advertises exactly its own rate to AVFoundation.
+    func streamFormat(_ description: CMFormatDescription) -> CMIOExtensionStreamFormat {
+        CMIOExtensionStreamFormat(formatDescription: description, maxFrameDuration: duration,
+                                  minFrameDuration: duration, validFrameDurations: [duration])
     }
 
     var index: Int { Self.allCases.firstIndex(of: self)! }
