@@ -49,6 +49,7 @@ enum hd60s_speed hd60s_speed_from_libusb(int libusb_speed);
 enum hd60s_access hd60s_access_from_error(int libusb_error);
 enum hd60s_owner hd60s_owner_from_path(const char *exe_path);
 int hd60s_parse_owner_pid(const char *usb_exclusive_owner, int *pid);
+enum hd60s_owner hd60s_owner_from_service(const char *usb_exclusive_owner);
 int hd60s_size_standard(int width, int height);
 
 /* Source type from the link flags; unknown if there is no signal to describe. */

@@ -124,6 +124,12 @@ int hd60s_parse_owner_pid(const char *s, int *pid)
     return sscanf(s, "pid %d", pid) == 1;
 }
 
+/* A kernel or dext client names its service class instead of a pid. */
+enum hd60s_owner hd60s_owner_from_service(const char *s)
+{
+    return strcmp(s, "HD60SDriver") == 0 ? OWNER_DRIVER : OWNER_OTHER;
+}
+
 int hd60s_size_standard(int w, int h)
 {
     return parser_is_sd(w, h) >= 0;

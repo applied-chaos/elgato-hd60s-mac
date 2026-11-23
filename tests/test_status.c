@@ -88,6 +88,8 @@ int main(void)
     int pid = 0;
     assert(hd60s_parse_owner_pid("pid 26442, net.mintopia.hd6", &pid) && pid == 26442);
     assert(!hd60s_parse_owner_pid("garbage", &pid));
+    assert(hd60s_owner_from_service("HD60SDriver") == OWNER_DRIVER);
+    assert(hd60s_owner_from_service("AppleUSBHostDeviceUserClient") == OWNER_OTHER);
 
     assert(hd60s_size_standard(1920, 1080) && hd60s_size_standard(1280, 720));
     assert(hd60s_size_standard(720, 576) && hd60s_size_standard(720, 480));

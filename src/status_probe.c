@@ -46,6 +46,10 @@ static void probe_owner(struct hd60s_status *s)
                 const char *base = strrchr(path, '/');
                 snprintf(s->owner_name, sizeof s->owner_name, "%s (pid %d)", base ? base + 1 : "unknown", owner_pid);
                 s->owner = hd60s_owner_from_path(path);
+            } else if (o && CFGetTypeID(o) == CFStringGetTypeID() &&
+                       CFStringGetCString(o, text, sizeof text, kCFStringEncodingUTF8)) {
+                snprintf(s->owner_name, sizeof s->owner_name, "%s", text);
+                s->owner = hd60s_owner_from_service(text);
             }
             if (o)
                 CFRelease(o);
