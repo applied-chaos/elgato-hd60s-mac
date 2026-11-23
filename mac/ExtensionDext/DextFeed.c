@@ -19,6 +19,7 @@ static IONotificationPortRef port;
 static io_object_t interest;
 static atomic_int lost;
 static uint32_t seen;
+static atomic_uint connections;
 
 static long now_ms(void) { return (long)(clock_gettime_nsec_np(CLOCK_UPTIME_RAW) / 1000000); }
 
@@ -77,6 +78,7 @@ static int bring_up(void)
         return -1;
     }
     seen = 0;
+    atomic_fetch_add(&connections, 1);
     os_log(OS_LOG_DEFAULT, "hd60s: connected to driver extension");
     return 0;
 }
@@ -113,6 +115,11 @@ int dext_feed_poll(uint8_t *out, size_t cap, struct fr_frame *info)
     return 1;
 }
 
+unsigned dext_feed_connections(void)
+{
+    return atomic_load(&connections);
+}
+
 struct fr_counters dext_feed_counters(void)
 {
     struct fr_counters none = {LINK_DOWN, 0, 0, 0, 0, 0, 0, 0, 0};
@@ -130,15 +137,8 @@ static io_connect_t control;
 
 int dext_send_settings(const struct hd60s_settings *s)
 {
-    struct audio_settings a = audio_from_pref(s->audio);
-    uint64_t in[] = {(uint64_t)s->range,
-                     (uint64_t)(int64_t)s->picture.brightness,
-                     (uint64_t)(int64_t)s->picture.contrast,
-                     (uint64_t)(int64_t)s->picture.saturation,
-                     (uint64_t)(int64_t)s->picture.hue,
-                     (uint64_t)a.source,
-                     (uint64_t)(int64_t)s->audio.gain_offset,
-                     (uint64_t)(a.mute != 0)};
+    struct hd60s_settings_wire wire;
+    hd60s_settings_to_wire(s, &wire);
     os_unfair_lock_lock(&control_lock);
     kern_return_t kr = KERN_FAILURE;
     for (int attempt = 0; attempt < 2 && kr != KERN_SUCCESS; attempt++) {
@@ -152,7 +152,7 @@ int dext_send_settings(const struct hd60s_settings *s)
         }
         if (!control)
             break;
-        kr = IOConnectCallScalarMethod(control, 0, in, sizeof in / sizeof *in, NULL, NULL);
+        kr = IOConnectCallStructMethod(control, 0, &wire, sizeof wire, NULL, NULL);
         if (kr != KERN_SUCCESS) {
             IOServiceClose(control);
             control = 0;

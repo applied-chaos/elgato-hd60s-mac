@@ -106,6 +106,9 @@ final class StreamSource: NSObject, CMIOExtensionStreamSource {
     private let unsupportedNs = OSAllocatedUnfairLock(initialState: UInt64(0))
     private var timer: DispatchSourceTimer?
     private var ticks = 0
+    #if DEXT
+    private var pushedConnections: UInt32?
+    #endif
     private var scaler: VTPixelTransferSession?
     private let statusOut = StatusPublisher()
     private var lastPublishNs: UInt64 = 0
@@ -235,8 +238,9 @@ final class StreamSource: NSObject, CMIOExtensionStreamSource {
             hd60s_open_wait_ms = 4000
             let opened = hd60s_open(dev) == 0
             if opened {
-                dev.pointee.settings = settings.withLock { $0 }
-                var audio = audio_from_pref(dev.pointee.settings.audio)
+                var current = settings.withLock { $0 }
+                hd60s_settings_publish(dev, &current)
+                var audio = audio_from_pref(current.audio)
                 _ = hd60s_set_audio(dev, &audio)
             }
             if opened && hd60s_start(dev) == 0 {
@@ -352,11 +356,7 @@ final class StreamSource: NSObject, CMIOExtensionStreamSource {
         }
         ticks += 1
         publishStatus()
-        if ticks % settingsEveryTicks == 0, let next = SettingsFile.load() {
-            settings.withLock { $0 = next }
-            // The capture thread reads this once a second; an aligned word write needs no lock.
-            dev.pointee.settings = next
-        }
+        if ticks % settingsEveryTicks == 0, let next = SettingsFile.load() { applySettings(next) }
         if ticks % statsEveryTicks == 0 {
             // ponytail: unsynchronised reads of counters the capture thread writes; fine for logging.
             #if DEXT
@@ -368,6 +368,24 @@ final class StreamSource: NSObject, CMIOExtensionStreamSource {
             log.info("parser: \(p.frames) frames, \(p.discarded) discarded, \(p.long_total) long lines kept")
             #endif
         }
+    }
+
+    private func applySettings(_ next: hd60s_settings) {
+        var previous = settings.withLock { current in
+            let p = current
+            current = next
+            return p
+        }
+        var latest = next
+        #if DEXT
+        // The driver extension keeps settings in memory only, so resend when the file changes and whenever the driver reconnects.
+        let connections = dext_feed_connections()
+        if hd60s_settings_equal(&previous, &latest) == 0 || connections != pushedConnections {
+            pushedConnections = dext_send_settings(&latest) == 0 ? connections : nil
+        }
+        #else
+        hd60s_settings_publish(dev, &latest)
+        #endif
     }
 
     private func publishStatus() {

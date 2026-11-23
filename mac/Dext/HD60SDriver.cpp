@@ -59,7 +59,6 @@ struct HD60SDriver_IVars {
     Xfer xfers[kXfers];
     uint32_t generation = 0;
     bool streamFailed = false, stopping = false;
-    uint64_t settings = 0; /* packed by SetSettings: range, four picture deltas, audio source, gain offset, mute; 0 is auto, neutral and Elgato's audio default */
 
     struct hd60s dev;
     struct hd60s_parser parser;
@@ -321,24 +320,9 @@ kern_return_t HD60SDriver::CopyFrameRing(IOMemoryDescriptor **memory)
     return kIOReturnSuccess;
 }
 
-void HD60SDriver::SetSettings(int range, int brightness, int contrast, int saturation, int hue, int audioSource, int gainOffset, int mute)
+void HD60SDriver::SetSettings(const struct hd60s_settings *settings)
 {
-    uint64_t packed = static_cast<uint64_t>(range) | static_cast<uint64_t>(static_cast<uint8_t>(brightness)) << 8 |
-                      static_cast<uint64_t>(static_cast<uint8_t>(contrast)) << 16 |
-                      static_cast<uint64_t>(static_cast<uint8_t>(saturation)) << 24 | static_cast<uint64_t>(static_cast<uint8_t>(hue)) << 32 |
-                      static_cast<uint64_t>(static_cast<uint8_t>(audioSource)) << 40 |
-                      static_cast<uint64_t>(static_cast<uint8_t>(gainOffset)) << 48 | static_cast<uint64_t>(mute != 0) << 56;
-    __atomic_store_n(&ivars->settings, packed, __ATOMIC_RELAXED);
-}
-
-static hd60s_settings loadSettings(const uint64_t *packed)
-{
-    uint64_t v = __atomic_load_n(packed, __ATOMIC_RELAXED);
-    hd60s_settings s = {};
-    s.range = static_cast<enum hd60s_range>(v & 0xff);
-    s.picture = {static_cast<int8_t>(v >> 8), static_cast<int8_t>(v >> 16), static_cast<int8_t>(v >> 24), static_cast<int8_t>(v >> 32)};
-    s.audio = {static_cast<enum audio_source>(v >> 40 & 0xff), static_cast<int8_t>(v >> 48), static_cast<int8_t>(v >> 56 & 1)};
-    return s;
+    hd60s_settings_publish(&ivars->dev, settings);
 }
 
 int HD60SDriver::Control(int in, uint8_t req, uint16_t val, uint16_t idx, uint8_t *buf, uint16_t len)
@@ -406,12 +390,13 @@ static bool submit(HD60SDriver_IVars *iv, uint32_t i)
 void HD60SDriver::BringUp()
 {
     auto *iv = ivars;
+    hd60s_settings kept = hd60s_settings_snapshot(&iv->dev);
     memset(&iv->dev, 0, sizeof iv->dev);
-    iv->dev.settings = loadSettings(&iv->settings);
+    hd60s_settings_publish(&iv->dev, &kept);
     iv->dev.usb = {this, HD60S_BULK, ctrlThunk, sleepThunk};
     iv->streamFailed = false;
     iv->generation++;
-    audio_settings audio = audio_from_pref(iv->dev.settings.audio);
+    audio_settings audio = audio_from_pref(kept.audio);
     if (hd60s_init(&iv->dev) < 0 || hd60s_set_audio(&iv->dev, &audio) < 0 || hd60s_start(&iv->dev) < 0 || iv->intf->SelectAlternateSetting(4) != kIOReturnSuccess) {
         os_log(OS_LOG_DEFAULT, "HD60S dext: bring-up failed (err %d)", iv->dev.err);
         link_step(&iv->link, LINK_UP_FAILED, nowMs(iv));
@@ -476,7 +461,6 @@ void IMPL(HD60SDriver, PolicyOccurred)
     case LINK_NONE: break;
     }
     if (iv->link.state == LINK_UP) {
-        iv->dev.settings = loadSettings(&iv->settings);
         hd60s_policy_tick(&iv->dev, &iv->parser, &iv->policy, static_cast<long>(nowMs(iv)));
     }
     if (static_cast<uint64_t>(now) - iv->lastAudioLog >= kAudioLogMs) {
