@@ -8,5 +8,7 @@
 	<array>
 		<string>$(TeamIdentifierPrefix)net.mintopia.hd60s</string>
 	</array>
+	<key>com.apple.security.device.camera</key>
+	<true/>
 </dict>
 </plist>

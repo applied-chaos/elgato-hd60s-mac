@@ -20,11 +20,13 @@
 	<string>$(MARKETING_VERSION)</string>
 	<key>CFBundleVersion</key>
 	<string>$(CURRENT_PROJECT_VERSION)</string>
-	<key>HD60SGroup</key>
-	<string>$(TeamIdentifierPrefix)net.mintopia.hd60s</string>
 	<key>HD60SFlavour</key>
 	<string>$(HD60S_FLAVOUR)</string>
+	<key>HD60SGroup</key>
+	<string>$(TeamIdentifierPrefix)net.mintopia.hd60s</string>
 	<key>LSMinimumSystemVersion</key>
 	<string>26.0</string>
+	<key>NSCameraUsageDescription</key>
+	<string>Elgato HD60 S needs camera access to send your picture settings to the HD60 S camera and read its status.</string>
 </dict>
 </plist>

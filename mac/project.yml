@@ -41,11 +41,13 @@ targets:
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         LSMinimumSystemVersion: "26.0"
         HD60SFlavour: $(HD60S_FLAVOUR)
+        NSCameraUsageDescription: Elgato HD60 S needs camera access to send your picture settings to the HD60 S camera and read its status.
     entitlements:
       path: App/HD60S.entitlements
       properties:
         com.apple.developer.system-extension.install: true
         com.apple.security.application-groups: [$(TeamIdentifierPrefix)net.mintopia.hd60s]
+        com.apple.security.device.camera: true
     settings:
       PRODUCT_BUNDLE_IDENTIFIER: net.mintopia.hd60s
       SWIFT_OBJC_BRIDGING_HEADER: App/Bridging.h

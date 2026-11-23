@@ -20,6 +20,7 @@ The app finds the device by the presence of `hset`. The app stays the source of 
 - Status needs a CMIO round trip per poll (about once a second); cheap.
 - The `4cc_` key form is not formally documented by Apple; it is the form developers report working since macOS 12.3, and macOS 14+ is reported reliable for string values. Deployment target is 26.
 - Anything that can open the CMIO device can set these properties, including asking the extension to quit. Same trust level as starting a stream.
+- The hardened-runtime app needs `com.apple.security.device.camera` and `NSCameraUsageDescription`: without camera permission CMIO hides the device from it. Users see one camera permission prompt.
 
 ## Supersedes
 None
