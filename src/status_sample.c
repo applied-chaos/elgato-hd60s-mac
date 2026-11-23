@@ -85,6 +85,10 @@ void hd60s_sample(struct hd60s_status *out, double seconds, struct hd60s_setting
                 st->height = k.unknown_h;
                 st->interlaced = k.unknown_interlaced;
             }
+            struct hd60s_link link = hd60s_read_link(&d);
+            if (link.hdcp)
+                st->signal = SIGNAL_HDCP;
+            st->source = hd60s_link_type_from_link(link, st->signal);
             st->frames = parser.frames;
             st->discarded = parser.discarded;
             st->long_lines = parser.long_total;

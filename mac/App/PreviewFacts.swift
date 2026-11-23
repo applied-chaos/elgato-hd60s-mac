@@ -1,7 +1,7 @@
 import Foundation
 
 enum PreviewFacts: String {
-    case live, sd, nosig, usb2, busy, none, unsupported
+    case live, sd, nosig, usb2, busy, none, unsupported, hdcp
 
     var view: StatusView {
         let stereo = #"{"rate":48000,"channels":2}"#
@@ -24,6 +24,7 @@ enum PreviewFacts: String {
         case .usb2: return StatusView(facts(speed: "high", port: "2-2.1", signal: active(1920, 1080, false, 59.94, "bt709"), audio: stereo, frames: 2528, discarded: 412), usedBy: nil)
         case .busy: return StatusView(facts(owner: "camera_extension", signal: active(1920, 1080, false, 59.94, "bt709"), audio: stereo), usedBy: "OBS")
         case .unsupported: return StatusView(facts(signal: #"{"state":"unsupported","width":1920,"height":1200}"#), usedBy: nil)
+        case .hdcp: return StatusView(facts(signal: #"{"state":"hdcp","source":"hdmi"}"#, frames: 40), usedBy: nil)
         case .none: return StatusView(facts(port: "", present: false, signal: #"{"state":"unknown"}"#), usedBy: nil)
         }
     }

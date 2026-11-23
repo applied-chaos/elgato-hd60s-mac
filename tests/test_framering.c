@@ -59,9 +59,12 @@ static void status_reaches_the_reader(struct fr_header *h)
     fr_status(h, LINK_UP, 10, 2, 3, 1);
     struct fr_counters c = fr_counters(h);
     assert(c.link == LINK_UP && c.frames == 10 && c.discarded == 2 && c.long_lines == 3 && c.errors == 1);
-    fr_device(h, 0x110311, 1);
+    fr_device(h, 0x110311, 1, 1, 0);
     c = fr_counters(h);
-    assert(c.mcu_version == 0x110311 && c.top_first == 1 && c.frames == 10);
+    assert(c.mcu_version == 0x110311 && c.top_first == 1 && c.frames == 10 && c.hdcp == 1 && c.dvi == 0);
+    fr_device(h, 0x110311, 1, 0, 1);
+    c = fr_counters(h);
+    assert(c.hdcp == 0 && c.dvi == 1);
 }
 
 struct stress {

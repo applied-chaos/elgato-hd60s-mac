@@ -15,8 +15,8 @@ func json(speed: String = "super", port: String = "0-2", access: String = "ok", 
     """.utf8)
 }
 
-func active(_ w: Int, _ h: Int, interlaced: Bool = false, order: String = "none", fps: Double, colour: String = "bt709") -> String {
-    "{\"state\":\"active\",\"width\":\(w),\"height\":\(h),\"interlaced\":\(interlaced),\"field_order\":\"\(order)\",\"fps\":\(fps),\"colour\":\"\(colour)\"}"
+func active(_ w: Int, _ h: Int, interlaced: Bool = false, order: String = "none", fps: Double, colour: String = "bt709", source: String? = nil) -> String {
+    "{\"state\":\"active\",\"width\":\(w),\"height\":\(h),\"interlaced\":\(interlaced),\"field_order\":\"\(order)\",\"fps\":\(fps),\"colour\":\"\(colour)\"\(source.map { ",\"source\":\"\($0)\"" } ?? "")}"
 }
 
 let stereo = "{\"rate\":48000,\"channels\":2}"
@@ -69,6 +69,16 @@ func rows(_ r: [StatusView.Row]) -> [String] { r.map { "\($0.label)|\($0.value)|
         check(odd2.dot == .warn && odd2.title == "Unsupported mode", "unsupported title")
         check(odd2.detail == "The source is sending 1920 × 1200. Set it to a standard resolution such as 1080p or 720p.", "unsupported detail \(odd2.detail)")
         check(odd2.input.isEmpty && rows(odd2.connection).count == 2, "unsupported hides input")
+
+        let hdcp = view(json(signal: "{\"state\":\"hdcp\",\"source\":\"hdmi\"}", frames: 40))
+        check(hdcp.dot == .warn && hdcp.title == "HDCP protected", "hdcp title")
+        check(hdcp.detail == "The source is encrypting its output. Turn off HDCP on the source to capture it.", "hdcp detail \(hdcp.detail)")
+        check(hdcp.input.isEmpty && rows(hdcp.connection).count == 3, "hdcp shows connection only \(rows(hdcp.connection))")
+        check(view(json(access: "failed", fw: nil, signal: "{\"state\":\"hdcp\"}")).title == "Can't open the HD60 S", "open failure outranks hdcp")
+
+        let dvi = view(json(signal: active(1920, 1080, fps: 60, source: "dvi"), audio: stereo, frames: 3))
+        check(rows(dvi.input).first == "Source|DVI|" && dvi.input.count == 6, "dvi source row \(rows(dvi.input))")
+        check(view(json(signal: active(1920, 1080, fps: 60, source: "hdmi"), audio: stereo)).input.count == 5, "hdmi adds no row")
 
         let failed = view(json(access: "failed", fw: nil, signal: "{\"state\":\"unknown\"}"))
         check(failed.dot == .warn && failed.title == "Can't open the HD60 S", "open failed")

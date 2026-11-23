@@ -121,13 +121,27 @@ int main(void)
     assert(strstr(t, "1366x700") && strstr(t, "unsupported mode"));
     char *u = render(hd60s_print_json, &s);
     assert(strstr(u, "\"signal\":{\"state\":\"unsupported\",\"width\":1366,\"height\":700}"));
+    s.signal = SIGNAL_HDCP;
+    s.source = SOURCE_HDMI;
+    t = render(hd60s_print_text, &s);
+    assert(strstr(t, "Signal:   HDCP protected\n") && strstr(t, "Source:   HDMI\n") && !strstr(t, "Input:"));
+    u = render(hd60s_print_json, &s);
+    assert(strstr(u, "\"signal\":{\"state\":\"hdcp\",\"source\":\"hdmi\"}"));
     s.signal = SIGNAL_ACTIVE;
+    s.source = SOURCE_DVI;
+    t = render(hd60s_print_text, &s);
+    assert(strstr(t, "Source:   DVI\n"));
+    s.source = SOURCE_UNKNOWN;
+    t = render(hd60s_print_text, &s);
+    assert(!strstr(t, "Source:"));
+    s.source = SOURCE_DVI;
     s.width = 1920;
     s.height = 1080;
 
     /* JSON contract. */
     char *j = render(hd60s_print_json, &s);
     assert(strstr(j, "\"signal\":{\"state\":\"active\",\"width\":1920,\"height\":1080,\"interlaced\":false"));
+    assert(strstr(j, "\"colour\":\"bt709\",\"range\":\"expanded\",\"source\":\"dvi\"}"));
     assert(strstr(j, "\"warnings\":[]") && strstr(j, "\"input\":\"ycbcr422\",\"colour\":\"bt709\",\"range\":\"expanded\""));
     assert(strstr(j, "\"audio\":{\"rate\":48000,\"channels\":2,\"source_rate\":44100}"));
     s.audio_source_rate = 0;

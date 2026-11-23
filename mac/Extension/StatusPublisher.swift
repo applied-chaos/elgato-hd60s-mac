@@ -11,6 +11,7 @@ final class StatusPublisher {
         var fps = 0.0
         var firmware: UInt32 = 0
         var client = ""
+        var hdcp = false, dvi = false
     }
 
     private let state = OSAllocatedUnfairLock(initialState: State())
@@ -25,6 +26,8 @@ final class StatusPublisher {
     }
 
     func setFirmware(_ mcu: UInt32) { state.withLock { $0.firmware = mcu } }
+
+    func setLink(hdcp: Bool, dvi: Bool) { state.withLock { ($0.hdcp, $0.dvi) = (hdcp, dvi) } }
 
     func frame(width: Int, height: Int, interlaced: Bool, topFirst: Bool, bt601: Bool, nowNs: UInt64) {
         state.withLock {
@@ -62,7 +65,9 @@ final class StatusPublisher {
         st.frames = frames
         st.discarded = discarded
         st.long_lines = longLines
-        if s.lastFrameNs != 0, nowNs &- s.lastFrameNs < Self.activeWithinNs {
+        if s.hdcp {
+            st.signal = SIGNAL_HDCP
+        } else if s.lastFrameNs != 0, nowNs &- s.lastFrameNs < Self.activeWithinNs {
             st.signal = SIGNAL_ACTIVE
             st.width = Int32(s.width)
             st.height = Int32(s.height)
@@ -75,6 +80,7 @@ final class StatusPublisher {
         } else {
             st.signal = SIGNAL_NONE
         }
+        st.source = hd60s_link_type_from_link(hd60s_link(hdcp: s.hdcp ? 1 : 0, dvi: s.dvi ? 1 : 0), st.signal)
         if let url = StatusSnapshot.url() { try? factsData(st).write(to: url, options: .atomic) }
     }
 
