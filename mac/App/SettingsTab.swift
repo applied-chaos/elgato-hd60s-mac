@@ -66,8 +66,7 @@ private struct SettingSlider: View {
     var enabled = true
 
     private static let thumb: CGFloat = 14
-    private static let readoutWidth: CGFloat = 38
-    private static let readoutFitsChars = 6
+    private static let readoutWidth: CGFloat = 56
 
     var body: some View {
         SettingRow(label: label, dimmed: !enabled) {
@@ -80,8 +79,8 @@ private struct SettingSlider: View {
     }
 
     private var readout: some View {
-        Text(text).font(.text(12)).monospacedDigit().foregroundStyle(Color.neutral).lineLimit(1).fixedSize()
-            .frame(width: Self.readoutWidth, alignment: text.count > Self.readoutFitsChars ? .leading : .trailing)
+        Text(text).font(.text(12)).monospacedDigit().foregroundStyle(Color.neutral).lineLimit(1)
+            .frame(width: Self.readoutWidth, alignment: .trailing)
     }
 
     private var track: some View {
