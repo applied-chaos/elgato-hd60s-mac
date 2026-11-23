@@ -1,6 +1,7 @@
 #include "device.h"
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "ub530_tables.h"
@@ -328,13 +329,73 @@ int hd60s_set_audio(struct hd60s *d, const struct audio_settings *s)
     return d->err ? -1 : 0;
 }
 
-/* FUN_103ea's clamp: coefficients are 15-bit with bit 14 as sign. */
-static uint16_t coeff_clamp(uint16_t c)
+/* FUN_103ea's clamp: words are 15-bit with bit 14 as sign, and the sign comes from the word before scaling. */
+static uint16_t coeff_clamp(uint16_t src, uint16_t v)
 {
-    uint16_t v = c & 0x7fff;
-    if (v & 0x4000)
+    if (src & 0x4000)
         return v <= 0x4000 ? 0x4000 : v;
     return v < 0x3fff ? v : 0x3fff;
+}
+
+/* FUN_103ea works on a word doubled into int16, scaled by x/10000 (truncating), then halved back to 15 bits. */
+static int wide(uint16_t w)
+{
+    return (int16_t)(w * 2);
+}
+
+static uint16_t narrow(int x)
+{
+    return (uint16_t)((uint16_t)(x / 10000) >> 1);
+}
+
+static uint16_t scale_word(uint16_t w, int k)
+{
+    return coeff_clamp(w, narrow(wide(w) * k));
+}
+
+static int hue_table(const uint8_t *t, int i)
+{
+    return t[2 * i] | t[2 * i + 1] << 8;
+}
+
+/* hue_table(t, i) interpolated a quarter step at a time, truncating towards zero. */
+static int hue_lerp(const uint8_t *t, int i, int quarter)
+{
+    return (int16_t)((hue_table(t, i + 1) - hue_table(t, i)) * quarter / 4 + hue_table(t, i));
+}
+
+static int pic_byte(int base, int8_t delta)
+{
+    int v = base + delta;
+    return v < 0 ? 0 : v > 255 ? 255 : v;
+}
+
+/* FUN_103ea: brightness is an offset, contrast scales the luma words, saturation the chroma words, hue rotates them. */
+static void apply_picture(uint16_t m[12], const struct hd60s_picture *p)
+{
+    int bri = pic_byte(0x81, p->brightness), con = pic_byte(0x80, p->contrast);
+    int sat = pic_byte(0x80, p->saturation), hue = pic_byte(0x80, p->hue);
+    if (sat == 0)
+        sat = 1;
+    int t = bri * 5 - 0x280;
+    m[10] = (uint16_t)((((t + (t < 0 ? 3 : 0)) * 16 & 0xffc0) + m[10]) & 0x7fc0) | 1;
+
+    static const int luma[3] = {1, 4, 7}, chroma[6] = {0, 3, 6, 2, 5, 8};
+    for (int i = 0; i < 3; i++)
+        m[luma[i]] = scale_word(m[luma[i]], con * 10000 >> 7);
+    for (int i = 0; i < 6; i++)
+        m[chroma[i]] = scale_word(m[chroma[i]], sat * 10000 >> 7);
+
+    uint8_t a = hue == 0 ? 0xff : (uint8_t)-hue;
+    int negative = a >= 0x80, step = negative ? a ^ 0x80 : 0x80 - a;
+    int s = hue_lerp(ub530_hue_sin, step >> 2, step & 3), c = hue_lerp(ub530_hue_cos, step >> 2, step & 3);
+    if (!negative)
+        s = -s;
+    for (int i = 0; i < 3; i++) {
+        int x = wide(m[chroma[i]]), y = wide(m[chroma[i + 3]]);
+        m[chroma[i]] = narrow(x * c - y * s);
+        m[chroma[i + 3]] = narrow(x * s + y * c);
+    }
 }
 
 /* AVI InfoFrame bytes as the MST3367 holds them. Elgato treats the reserved Y1Y0 = 3 as RGB. */
@@ -386,11 +447,7 @@ void hd60s_csc_plan(const struct hd60s_colour_cfg *c, struct hd60s_csc *out)
     }
     for (int i = 0; i < 9; i++)
         out->m[i] = (uint16_t)((uint32_t)((int16_t)out->m[i] * (int32_t)k) >> 12);
-    /* Picture controls at Elgato's defaults (brightness 0x81, others neutral). */
-    // ponytail: brightness/contrast/saturation/hue fixed; port FUN_103ea's maths if controls are wanted
-    for (int i = 0; i < 9; i++)
-        out->m[i] = coeff_clamp(out->m[i]);
-    out->m[10] = (uint16_t)(((0x40 + out->m[10]) & 0x7fc0) | 1);
+    apply_picture(out->m, &c->picture);
 }
 
 enum hd60s_colour hd60s_frame_colour(const struct hd60s_colour_cfg *c, enum hd60s_colour colorimetry)
@@ -470,7 +527,7 @@ int hd60s_start(struct hd60s *d)
             break;
         msleep(d, 5);
     }
-    d->colour = (struct hd60s_colour_cfg){INPUT_RGB, 0, d->settings.range, 0};
+    d->colour = (struct hd60s_colour_cfg){INPUT_RGB, 0, d->settings.range, 0, d->settings.picture};
     colour_convert(d, &d->colour);
     struct tx_bus tb = tx_bus(d);
     tx_start(&d->tx, &tb);
@@ -531,6 +588,7 @@ void hd60s_policy_tick(struct hd60s *d, struct hd60s_parser *p, struct hd60s_pol
     want.input = s->src.format;
     want.range = d->settings.range;
     want.quant = s->src.quant;
+    want.picture = d->settings.picture;
     if (memcmp(&want, &d->colour, sizeof want)) {
         colour_convert(d, &want);
         d->colour = want;
@@ -564,20 +622,42 @@ int hd60s_range_from_name(const char *name)
 
 void hd60s_settings_print(const struct hd60s_settings *s, char *buf, size_t n)
 {
-    snprintf(buf, n, "{\"range\":\"%s\"}", hd60s_range_names[s->range]);
+    snprintf(buf, n, "{\"range\":\"%s\",\"brightness\":%d,\"contrast\":%d,\"saturation\":%d,\"hue\":%d}",
+             hd60s_range_names[s->range], s->picture.brightness, s->picture.contrast, s->picture.saturation, s->picture.hue);
+}
+
+static const char *json_value(const char *json, const char *key)
+{
+    char pat[24];
+    snprintf(pat, sizeof pat, "\"%s\"", key);
+    const char *p = strstr(json, pat);
+    if (!p)
+        return NULL;
+    p += strlen(pat);
+    p += strspn(p, " \t\r\n");
+    if (*p++ != ':')
+        return NULL;
+    return p + strspn(p, " \t\r\n");
+}
+
+/* An absent key leaves *out alone; a present one must be an integer in -128..127. */
+static int json_picture_byte(const char *json, const char *key, int8_t *out)
+{
+    const char *p = json_value(json, key);
+    if (!p)
+        return strstr(json, key) ? -1 : 0;
+    char *end;
+    long v = strtol(p, &end, 10);
+    if (end == p || v < -128 || v > 127)
+        return -1;
+    *out = (int8_t)v;
+    return 0;
 }
 
 int hd60s_settings_parse(const char *json, struct hd60s_settings *out)
 {
-    const char *p = json ? strstr(json, "\"range\"") : NULL;
-    if (!p)
-        return -1;
-    p += 7;
-    p += strspn(p, " \t\r\n");
-    if (*p++ != ':')
-        return -1;
-    p += strspn(p, " \t\r\n");
-    if (*p++ != '"')
+    const char *p = json ? json_value(json, "range") : NULL;
+    if (!p || *p++ != '"')
         return -1;
     const char *end = strchr(p, '"');
     char name[16];
@@ -586,9 +666,12 @@ int hd60s_settings_parse(const char *json, struct hd60s_settings *out)
     memcpy(name, p, (size_t)(end - p));
     name[end - p] = 0;
     int r = hd60s_range_from_name(name);
-    if (r < 0)
+    struct hd60s_picture pic = {0};
+    if (r < 0 || json_picture_byte(json, "brightness", &pic.brightness) || json_picture_byte(json, "contrast", &pic.contrast) ||
+        json_picture_byte(json, "saturation", &pic.saturation) || json_picture_byte(json, "hue", &pic.hue))
         return -1;
     out->range = (enum hd60s_range)r;
+    out->picture = pic;
     return 0;
 }
 

@@ -76,14 +76,14 @@ App status messages: "No Signal", "Protected with HDCP", "USB 3 is required for 
 
 | # | Item | Status | Notes |
 |---|---|---|---|
-| C1 | Brightness, contrast, saturation, hue | missing | See detail below |
+| C1 | Brightness, contrast, saturation, hue | done (#23; hardware measurement in the ticket notes) | `FUN_103ea` ported in `apply_picture`; `--brightness/--contrast/--saturation/--hue`, settings.json keys, dext method 0 scalars 1-4. App sliders are #24 |
 | C2 | SD aspect / stretch | done (better than Elgato) | #10 reads AVI DB2 picture aspect (b2:0x49 bits 5:4) and pillarboxes or fills automatically. Elgato only has an app checkbox, "Stretch Standard Definition Input". A manual override is optional; no ticket needed unless asked |
 
 **C1, picture adjustments.**
 - What Elgato does: four sliders, default 0.5 each (`beddo-Brig/Cont/Satu/Hue_`). `dev+8..0xb` defaults are 0x80, 0x80, 0x80, 0x81.
 - How: each setter stores its byte and calls `FUN_cb40`. For HDMI (`dev+0x10` not 4/5/6) that runs `FUN_103ea(dev, bri, con, sat, hue, dev+0xc >> 5)`, which rewrites MST3367 b0:0x93–0xAA (the same coefficient block as `FUN_10b6b`). `FUN_10b6b` also calls `FUN_103ea` after loading the matrix, so the settings survive a matrix change.
-- Ours: `colour_convert` applies only the defaults (`// ponytail:` note in `device.c`).
-- Needs `FUN_103ea`'s maths ported, the `coeff_clamp` part of which is already done, plus a CLI flag and app UI. CMIO has no standard picture controls, so they'd be custom stream properties or app-only settings.
+- Ours (#23): `hd60s_csc_plan` runs the ported maths over the loaded matrix, so the controls survive range and input changes. Settings hold offsets from Elgato's bytes (brightness 0x81, the rest 0x80), so a zeroed struct is neutral. Brightness adds to the Y offset word (word 10), contrast scales words 1, 4, 7, saturation words 0, 2, 3, 5, 6, 8, and hue rotates the chroma pairs by +-62 degrees using Elgato's sine and cosine tables (extracted from the dylib, not committed).
+- App UI is #24. CMIO has no standard picture controls, so they stay app-only settings.
 - Test: Pi (SMPTE bars, measure Y/Cb/Cr shifts).
 - Ticket: **Port hardware brightness/contrast/saturation/hue controls**
 
