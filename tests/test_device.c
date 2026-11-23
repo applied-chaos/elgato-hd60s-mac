@@ -452,6 +452,46 @@ static void settings_round_trip_and_reject_bad_input(void)
     assert(hd60s_settings_parse("{\"range\":\"auto\",\"contrast\":\"x\"}", &s) < 0);
 }
 
+static void link_flags_decode_hdcp_and_dvi(void)
+{
+    /* b1:0x01 bit2 is set for an HDMI source (AVI present) and clear for DVI; measured on the Pi with and without an HDMI EDID. */
+    struct hd60s_link l = hd60s_link_from_regs(1, 0x04, 0x00);
+    assert(!l.hdcp && !l.dvi);
+    l = hd60s_link_from_regs(1, 0x00, 0x00);
+    assert(!l.hdcp && l.dvi);
+    l = hd60s_link_from_regs(1, 0x05, 0x00);
+    assert(l.hdcp && !l.dvi);
+    l = hd60s_link_from_regs(1, 0x04, 0x80);
+    assert(l.hdcp && !l.dvi);
+    l = hd60s_link_from_regs(1, 0x04, 0x7f);
+    assert(!l.hdcp);
+    l = hd60s_link_from_regs(1, 0xfa, 0x00);
+    assert(!l.hdcp && l.dvi);
+    l = hd60s_link_from_regs(0, 0x00, 0x00);
+    assert(!l.dvi);
+}
+
+static void policy_tracks_the_source_link(void)
+{
+    struct hd60s d;
+    struct hd60s_parser p = {0};
+    struct hd60s_policy pol;
+    boot(&d, 0);
+    assert(hd60s_init(&d) == 0 && hd60s_start(&d) == 0);
+    hd60s_policy_begin(&pol, 0);
+    fk.mst[0][0x51] = 0x80;
+    fk.mst[1][0x01] = 0x04;
+    hd60s_policy_tick(&d, &p, &pol, 1000);
+    assert(!d.link.hdcp && !d.link.dvi);
+    fk.mst[1][0x34] = 0x80;
+    hd60s_policy_tick(&d, &p, &pol, 2000);
+    assert(d.link.hdcp && !d.link.dvi);
+    fk.mst[1][0x34] = 0;
+    fk.mst[1][0x01] = 0x00;
+    hd60s_policy_tick(&d, &p, &pol, 3000);
+    assert(!d.link.hdcp && d.link.dvi);
+}
+
 int main(void)
 {
     transfer_plan_defaults_to_bulk_and_picks_narrowest_sufficient_iso_alt();
@@ -474,6 +514,8 @@ int main(void)
     start_routes_hdmi_audio_by_default();
     audio_settings_apply_at_start_and_live();
     policy_reruns_routing_when_the_source_becomes_hdmi();
+    link_flags_decode_hdcp_and_dvi();
+    policy_tracks_the_source_link();
     puts("test_device: ok");
     return 0;
 }

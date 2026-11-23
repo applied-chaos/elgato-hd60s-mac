@@ -278,15 +278,27 @@ static void select_hdmi(struct hd60s *d)
     msleep(d, 100);
 }
 
-static int source_is_dvi(struct hd60s *d)
+struct hd60s_link hd60s_link_from_regs(int digital, uint8_t r01, uint8_t r34)
+{
+    return (struct hd60s_link){.hdcp = r34 >> 7 | (r01 & 1), .dvi = digital && !(r01 >> 2 & 1)};
+}
+
+static int source_routing_flag(struct hd60s *d)
 {
     return (mst_read(d, 0, 0x51) & 0x80) ? mst_read(d, 1, 0x01) >> 2 & 1 : 0;
+}
+
+struct hd60s_link hd60s_read_link(struct hd60s *d)
+{
+    int digital = mst_read(d, 0, 0x51) & 0x80;
+    uint8_t r01 = (uint8_t)mst_read(d, 1, 0x01), r34 = (uint8_t)mst_read(d, 1, 0x34);
+    return d->link = hd60s_link_from_regs(digital != 0, r01, r34);
 }
 
 /* FUN_1caf4 (routing) and FUN_1ce18 (gain) for d->audio. */
 static void apply_audio(struct hd60s *d)
 {
-    int dvi = source_is_dvi(d);
+    int dvi = source_routing_flag(d);
     struct audio_regs cur = {.r04 = (uint8_t)i2c_read(d, I2C_AUDIO, 0x04)}, r;
     for (int i = 0; i < 4; i++) {
         cur.gain[i] = (uint8_t)i2c_read(d, I2C_AUDIO, (uint8_t)(0x0a + i));
@@ -565,7 +577,8 @@ void hd60s_policy_tick(struct hd60s *d, struct hd60s_parser *p, struct hd60s_pol
         uint8_t db3 = (uint8_t)mst_read(d, 2, 0x4a);
         s->src = hd60s_parse_avi(present, db1, db2, db3);
         p->wide = present && (db2 >> 4 & 3) == 2;
-        if (source_is_dvi(d) != d->audio_routed_dvi)
+        hd60s_read_link(d);
+        if (source_routing_flag(d) != d->audio_routed_dvi)
             apply_audio(d);
     }
     struct hd60s_colour_cfg want = d->colour;

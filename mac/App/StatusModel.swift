@@ -6,10 +6,11 @@ struct DeviceFacts: Decodable, Equatable {
     enum Access: String, Decodable { case ok, busy, failed, notTried = "not_tried" }
     enum Colour: String, Decodable { case bt709, bt601, unknown }
     enum Signal: Equatable {
-        case unknown, none
+        case unknown, none, hdcp
         case unsupported(width: Int, height: Int)
         case active(width: Int, height: Int, interlaced: Bool, topFirst: Bool, fps: Double, colour: Colour)
     }
+    enum Source: String, Decodable { case hdmi, dvi }
     struct Owner: Decodable, Equatable { var kind: String; var name: String? }
     struct Device: Decodable, Equatable {
         var present: Bool
@@ -25,6 +26,7 @@ struct DeviceFacts: Decodable, Equatable {
 
     var device: Device
     var signal: Signal
+    var source: Source?
     var audio: Audio?
     var parser: Parser
     var notes: [Note]
@@ -32,7 +34,7 @@ struct DeviceFacts: Decodable, Equatable {
     init(json: Data) throws { self = try JSONDecoder().decode(DeviceFacts.self, from: json) }
 
     private enum Keys: String, CodingKey { case device, signal, audio, parser, notes }
-    private enum SignalKeys: String, CodingKey { case state, width, height, interlaced, fieldOrder = "field_order", fps, colour }
+    private enum SignalKeys: String, CodingKey { case state, width, height, interlaced, fieldOrder = "field_order", fps, colour, source }
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: Keys.self)
@@ -41,8 +43,10 @@ struct DeviceFacts: Decodable, Equatable {
         parser = try c.decode(Parser.self, forKey: .parser)
         notes = try c.decodeIfPresent([Note].self, forKey: .notes) ?? []
         let s = try c.nestedContainer(keyedBy: SignalKeys.self, forKey: .signal)
+        source = try s.decodeIfPresent(Source.self, forKey: .source)
         switch try s.decode(String.self, forKey: .state) {
         case "none": signal = .none
+        case "hdcp": signal = .hdcp
         case "unsupported":
             signal = .unsupported(width: try s.decode(Int.self, forKey: .width), height: try s.decode(Int.self, forKey: .height))
         case "active":
@@ -80,6 +84,7 @@ struct StatusView: Equatable {
         if case .active(let w, let h, let interlaced, let topFirst, let fps, let colour) = f.signal {
             active = true
             input = Self.inputRows(w, h, interlaced, topFirst, fps, colour, f.audio)
+            if f.source == .dvi { input.insert(Row(label: "Source", value: "DVI"), at: 0) }
         }
         connection = Self.connectionRows(f)
         if usb2 {
@@ -92,6 +97,9 @@ struct StatusView: Equatable {
             dot = .ok
             title = usedBy.map { "Live, in use by \($0)" } ?? "Live"
             detail = usedBy == nil ? "The HDMI source is coming through." : "Only one app can use the HD60 S at a time."
+        } else if f.signal == .hdcp {
+            (dot, title) = (.warn, "HDCP protected")
+            detail = "The source is encrypting its output. Turn off HDCP on the source to capture it."
         } else if case .unsupported(let w, let h) = f.signal {
             (dot, title) = (.warn, "Unsupported mode")
             detail = "The source is sending \(w) × \(h). Set it to a standard resolution such as 1080p or 720p."

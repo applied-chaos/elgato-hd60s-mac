@@ -82,6 +82,14 @@ void hd60s_csc_plan(const struct hd60s_colour_cfg *c, struct hd60s_csc *out);
 /* Matrix of the frames leaving the device: its own for RGB input, else the source's with a size fallback. */
 enum hd60s_colour hd60s_frame_colour(const struct hd60s_colour_cfg *c, enum hd60s_colour colorimetry);
 
+/* Source link flags (FUN_125f7): HDCP encrypted, and DVI rather than HDMI signalling. */
+struct hd60s_link {
+    int hdcp, dvi;
+};
+
+/* digital: MST3367 b0:0x51 bit7. r01, r34: bank 1 regs 0x01 and 0x34. DVI is only meaningful on a digital input. */
+struct hd60s_link hd60s_link_from_regs(int digital, uint8_t r01, uint8_t r34);
+
 struct libusb_context;
 struct libusb_device_handle;
 
@@ -99,6 +107,7 @@ struct hd60s {
     struct tx tx;          /* HDMI-out transmitter state */
     struct audio_settings audio;
     int audio_routed_dvi;
+    struct hd60s_link link; /* refreshed by hd60s_policy_tick and hd60s_read_link */
 };
 
 /* Periodic work while streaming: aspect, colour matrix, HDMI-out mode. */
@@ -123,6 +132,8 @@ void hd60s_policy_frame(struct hd60s_policy *s, int w, int h, int interlaced);
 void hd60s_policy_tick(struct hd60s *d, struct hd60s_parser *p, struct hd60s_policy *s, long now_ms);
 
 int mst_read(struct hd60s *d, uint8_t bank, uint8_t reg);
+/* Reads the source link flags into d->link. */
+struct hd60s_link hd60s_read_link(struct hd60s *d);
 /* Source audio rate from the receiver's ACR packet for the given video mode; 0 if no audio or no mode. */
 int hd60s_source_audio_hz(struct hd60s *d, const struct tx_mode *m);
 /* Vsync period counter for hd60s_rate_from_vsync; 0 if unreadable. */

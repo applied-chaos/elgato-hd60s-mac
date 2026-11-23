@@ -93,8 +93,10 @@ void fr_status(struct fr_header *h, enum link_state link, uint64_t frames, uint6
     atomic_store_explicit(&h->link, (uint32_t)link, memory_order_release);
 }
 
-void fr_device(struct fr_header *h, uint32_t mcu_version, int top_first)
+void fr_device(struct fr_header *h, uint32_t mcu_version, int top_first, int hdcp, int dvi)
 {
+    atomic_store_explicit(&h->hdcp, (uint32_t)(hdcp != 0), memory_order_relaxed);
+    atomic_store_explicit(&h->dvi, (uint32_t)(dvi != 0), memory_order_relaxed);
     atomic_store_explicit(&h->mcu_version, mcu_version, memory_order_relaxed);
     atomic_store_explicit(&h->top_first, (uint32_t)(top_first != 0), memory_order_relaxed);
 }
@@ -110,5 +112,7 @@ struct fr_counters fr_counters(const struct fr_header *h)
         atomic_load_explicit(&h->errors, memory_order_relaxed),
         atomic_load_explicit(&h->mcu_version, memory_order_relaxed),
         atomic_load_explicit(&h->top_first, memory_order_relaxed),
+        atomic_load_explicit(&h->hdcp, memory_order_relaxed),
+        atomic_load_explicit(&h->dvi, memory_order_relaxed),
     };
 }
