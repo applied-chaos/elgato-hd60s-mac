@@ -119,6 +119,7 @@ final class Installer: NSObject, ObservableObject, OSSystemExtensionRequestDeleg
     let dext = DextInstaller()
     let flavour = Flavour.current
     private var installing = true
+    private var steps: [CameraStep] = []
     private var query: OSSystemExtensionRequest?
 
     func refresh() {
@@ -152,9 +153,10 @@ final class Installer: NSObject, ObservableObject, OSSystemExtensionRequestDeleg
     // One admin prompt; the extension request only follows if it succeeds, so a cancel changes nothing.
     func install() {
         installing = true
+        let plan = CameraStep.install(cameraActive: status == .installed)
         let activate = {
             self.dext.activate()
-            self.submit(.activationRequest(forExtensionWithIdentifier: extensionID, queue: .main))
+            self.run(plan)
         }
         switch flavour.installStep(audio: audio, plugInSource: bundledAudio?.path) {
         case .none: activate()
@@ -171,12 +173,38 @@ final class Installer: NSObject, ObservableObject, OSSystemExtensionRequestDeleg
         installing = false
         let deactivate = {
             self.dext.deactivate()
-            self.submit(.deactivationRequest(forExtensionWithIdentifier: extensionID, queue: .main))
+            self.run(CameraStep.uninstall)
         }
         switch flavour.uninstallStep(audio: audio) {
         case .admin(let script): runAsAdmin(script, then: deactivate)
         case .none, .missingPlugIn: deactivate()
         }
+    }
+
+    private func run(_ plan: [CameraStep]) {
+        steps = plan
+        runCurrentStep()
+    }
+
+    private func runCurrentStep() {
+        guard let step = steps.first else { return }
+        switch step {
+        case .deactivate: submit(.deactivationRequest(forExtensionWithIdentifier: extensionID, queue: .main))
+        case .activate: submit(.activationRequest(forExtensionWithIdentifier: extensionID, queue: .main))
+        case .awaitExit:
+            status = .working
+            Task { @MainActor in
+                if await CameraProcess.waitForExit() { advance() } else {
+                    steps = []
+                    status = .failed("The old camera extension did not stop. Restart your Mac, then install again.")
+                }
+            }
+        }
+    }
+
+    private func advance() {
+        steps.removeFirst()
+        if steps.isEmpty { status = installing ? .installed : .notInstalled } else { runCurrentStep() }
     }
 
     private func runAsAdmin(_ script: String, then next: @escaping () -> Void) {
@@ -219,11 +247,20 @@ final class Installer: NSObject, ObservableObject, OSSystemExtensionRequestDeleg
 
     func request(_ request: OSSystemExtensionRequest, didFinishWithResult result: OSSystemExtensionRequest.Result) {
         guard request !== query else { return }
-        status = result == .completed ? (installing ? .installed : .notInstalled) : .needsRestart
+        guard result == .completed else {
+            steps = []
+            status = .needsRestart
+            return
+        }
+        advance()
     }
 
     func request(_ request: OSSystemExtensionRequest, didFailWithError error: Error) {
-        if !installing, (error as? OSSystemExtensionError)?.code == .extensionNotFound { return refresh() }
+        if steps.first == .deactivate, (error as? OSSystemExtensionError)?.code == .extensionNotFound {
+            if installing { return advance() }
+            return refresh()
+        }
+        steps = []
         status = .failed(error.localizedDescription)
     }
 }

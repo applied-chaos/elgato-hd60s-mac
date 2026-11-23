@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		02868A6F3C8D49A5DE54FA44 /* CameraReplace.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC27E92433ECA22AF193DD00 /* CameraReplace.swift */; };
 		0695B172DEC8713663941FD6 /* StatusSnapshot.swift in Sources */ = {isa = PBXBuildFile; fileRef = CBFB2B7DB998B819EF42BD5A /* StatusSnapshot.swift */; };
 		06CE8B6E83B9A1A92D549046 /* audio.c in Sources */ = {isa = PBXBuildFile; fileRef = 8E26A3911F27BDDF09FCF87C /* audio.c */; };
 		07541F31BFB51136DBA9344B /* StatusModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 50F18EFD2D98C380B62D3046 /* StatusModel.swift */; };
@@ -143,6 +144,7 @@
 		C294100439805B100F077570 /* device_libusb.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = device_libusb.c; sourceTree = "<group>"; };
 		C7F46965F4F9398B418F05A8 /* OFL.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = OFL.txt; sourceTree = "<group>"; };
 		CBFB2B7DB998B819EF42BD5A /* StatusSnapshot.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatusSnapshot.swift; sourceTree = "<group>"; };
+		CC27E92433ECA22AF193DD00 /* CameraReplace.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CameraReplace.swift; sourceTree = "<group>"; };
 		D41EB16A58150036BD7A0F04 /* FrameRate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FrameRate.swift; sourceTree = "<group>"; };
 		D9B4906F3518E9B1364D6B76 /* Slate.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = Slate.png; sourceTree = "<group>"; };
 		DC2C4F95E7190211F481155B /* HD60SCameraDext.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = HD60SCameraDext.entitlements; sourceTree = "<group>"; };
@@ -216,6 +218,7 @@
 				791CD22A7A5BCBF5CA41DEC9 /* Assets.xcassets */,
 				0BB1F64555B5906AFF622AED /* AudioPlugin.swift */,
 				DEA4EB4F28F79C103481A0AB /* Bridging.h */,
+				CC27E92433ECA22AF193DD00 /* CameraReplace.swift */,
 				E474B4536D66208D95CEF6B3 /* DextInstaller.swift */,
 				9788A62CEE0CF0C4A1436A57 /* DextStatus.swift */,
 				A3E0C3F3545569814FC50DBC /* HD60S.entitlements */,
@@ -415,6 +418,7 @@
 			files = (
 				2F70A266B631DC81EFEE82B4 /* AppGroup.swift in Sources */,
 				68456F4805398A5E16120F98 /* AudioPlugin.swift in Sources */,
+				02868A6F3C8D49A5DE54FA44 /* CameraReplace.swift in Sources */,
 				59DFC7F8E006C47170E3D391 /* DextInstaller.swift in Sources */,
 				3D9B486C89BDD72174A60838 /* DextStatus.swift in Sources */,
 				935F140DCE2EC4E8C40E4C5A /* HD60SApp.swift in Sources */,
