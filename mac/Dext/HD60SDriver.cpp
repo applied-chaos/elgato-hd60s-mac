@@ -42,7 +42,7 @@ struct XferRef {
 };
 
 struct HD60SDriver_IVars {
-    OSSharedPtr<IODispatchQueue> usbQueue;
+    OSSharedPtr<IODispatchQueue> usbQueue, policyQueue;
     OSSharedPtr<IOUserAudioDevice> device;
     OSSharedPtr<IOUserAudioStream> stream;
     OSSharedPtr<IOBufferMemoryDescriptor> ioRing;
@@ -57,8 +57,9 @@ struct HD60SDriver_IVars {
     OSSharedPtr<IOBufferMemoryDescriptor> ctrlBuf;
     uint8_t *ctrlData = nullptr;
     Xfer xfers[kXfers];
-    uint32_t generation = 0, inflight = 0;
-    bool streamFailed = false, stopping = false, draining = false;
+    // Shared between the policy queue and the USB queue's completions.
+    uint32_t generation = 0;
+    bool streamFailed = false, stopping = false;
 
     struct hd60s dev;
     struct hd60s_parser parser;
@@ -252,6 +253,11 @@ kern_return_t IMPL(HD60SDriver, Start)
     if (ret != kIOReturnSuccess) return ret;
     ret = SetDispatchQueue("USB", iv->usbQueue.get());
     if (ret != kIOReturnSuccess) return ret;
+    // Control transfers block for milliseconds; on the USB queue they stalled audio completions past the HAL's read.
+    ret = IODispatchQueue::Create("Policy", 0, 0, iv->policyQueue.attach());
+    if (ret != kIOReturnSuccess) return ret;
+    ret = SetDispatchQueue("Policy", iv->policyQueue.get());
+    if (ret != kIOReturnSuccess) return ret;
 
     iv->frameBuf = static_cast<uint8_t *>(IOMallocZero(FR_SLOT_BYTES));
     if (!iv->frameBuf) return kIOReturnNoMemory;
@@ -278,7 +284,7 @@ kern_return_t IMPL(HD60SDriver, Start)
     if (ret != kIOReturnSuccess) return ret;
     iv->zeroTimer->SetHandler(iv->zeroAction.get());
 
-    ret = IOTimerDispatchSource::Create(iv->usbQueue.get(), iv->policyTimer.attach());
+    ret = IOTimerDispatchSource::Create(iv->policyQueue.get(), iv->policyTimer.attach());
     if (ret != kIOReturnSuccess) return ret;
     ret = CreateActionPolicyOccurred(0, iv->policyAction.attach());
     if (ret != kIOReturnSuccess) return ret;
@@ -294,11 +300,13 @@ kern_return_t IMPL(HD60SDriver, Start)
 kern_return_t IMPL(HD60SDriver, Stop)
 {
     auto *iv = ivars;
-    if (iv->usbQueue) iv->usbQueue->DispatchSync(^{
+    if (iv->policyQueue) iv->policyQueue->DispatchSync(^{
         iv->stopping = true;
-        if (iv->zeroTimer) iv->zeroTimer->Cancel(^{});
         if (iv->policyTimer) iv->policyTimer->Cancel(^{});
         if (iv->link.state == LINK_UP) TearDown(true);
+    });
+    if (iv->usbQueue) iv->usbQueue->DispatchSync(^{
+        if (iv->zeroTimer) iv->zeroTimer->Cancel(^{});
     });
     if (iv->intf) iv->intf->Close(this, 0);
     if (iv->usb) iv->usb->Close(this, 0);
@@ -361,6 +369,7 @@ int HD60SDriver::Control(int in, uint8_t req, uint16_t val, uint16_t idx, uint8_
 
 void HD60SDriver::Frame(const uint8_t *frame, int width, int height, int interlaced)
 {
+    // ponytail: the policy queue reads and resets these counters unsynchronised; a lost count only nudges mode detection.
     hd60s_policy_frame(&ivars->policy, width, height, interlaced);
     fr_publish(ivars->frames, frame, width, height, interlaced, ivars->parser.wide, ivars->parser.colour);
 }
@@ -404,25 +413,21 @@ static bool submit(HD60SDriver_IVars *iv, uint32_t i)
 {
     auto *ref = static_cast<XferRef *>(iv->xfers[i].action->GetReference());
     ref->index = i;
-    ref->generation = iv->generation;
-    if (iv->pipe->AsyncIO(iv->xfers[i].buf.get(), kXferSize, iv->xfers[i].action.get(), 1000) != kIOReturnSuccess) return false;
-    iv->inflight++;
-    return true;
+    ref->generation = __atomic_load_n(&iv->generation, __ATOMIC_ACQUIRE);
+    return iv->pipe->AsyncIO(iv->xfers[i].buf.get(), kXferSize, iv->xfers[i].action.get(), 1000) == kIOReturnSuccess;
 }
+
+static void failStream(HD60SDriver_IVars *iv) { __atomic_store_n(&iv->streamFailed, true, __ATOMIC_RELEASE); }
 
 void HD60SDriver::BringUp()
 {
     auto *iv = ivars;
-    if (iv->draining) {
-        link_step(&iv->link, LINK_UP_FAILED, nowMs(iv));
-        return;
-    }
     hd60s_settings kept = hd60s_settings_snapshot(&iv->dev);
     memset(&iv->dev, 0, sizeof iv->dev);
     hd60s_settings_publish(&iv->dev, &kept);
     iv->dev.usb = {this, HD60S_BULK, ctrlThunk, sleepThunk};
-    iv->streamFailed = false;
-    iv->generation++;
+    __atomic_store_n(&iv->streamFailed, false, __ATOMIC_RELEASE);
+    __atomic_add_fetch(&iv->generation, 1, __ATOMIC_ACQ_REL);
     audio_settings audio = audio_from_pref(kept.audio);
     if (hd60s_init(&iv->dev) < 0 || hd60s_set_audio(&iv->dev, &audio) < 0 || hd60s_start(&iv->dev) < 0 || iv->intf->SelectAlternateSetting(4) != kIOReturnSuccess) {
         os_log(OS_LOG_DEFAULT, "HD60S dext: bring-up failed (err %d)", iv->dev.err);
@@ -440,7 +445,7 @@ void HD60SDriver::BringUp()
     parser_init(&iv->parser, iv->frameBuf, FR_SLOT_BYTES, frameThunk, audioThunk, this);
     hd60s_policy_begin(&iv->policy, static_cast<long>(nowMs(iv)));
     for (uint32_t i = 0; i < kXfers; i++)
-        if (!submit(iv, i)) iv->streamFailed = true;
+        if (!submit(iv, i)) failStream(iv);
     link_step(&iv->link, LINK_UP_OK, nowMs(iv));
     os_log(OS_LOG_DEFAULT, "HD60S dext: streaming, MCU %06x", iv->dev.mcu_version);
 }
@@ -448,46 +453,30 @@ void HD60SDriver::BringUp()
 void HD60SDriver::TearDown(bool deviceGone)
 {
     auto *iv = ivars;
-    iv->generation++;
-    if (iv->pipe) {
-        // Asynchronous: a synchronous abort would wait for completions queued behind us on this queue.
-        iv->pipe->Abort(kIOUSBAbortAsynchronous, kIOReturnAborted, nullptr);
-        iv->pipe.reset();
-    }
-    if (deviceGone) return;
-    // SelectAlternateSetting waits for the aborted transfers, whose completions queue behind us here.
-    iv->draining = true;
-    if (!iv->inflight) FinishTearDown();
-}
-
-void HD60SDriver::FinishTearDown()
-{
-    auto *iv = ivars;
-    iv->draining = false;
-    if (iv->intf) iv->intf->SelectAlternateSetting(0);
-    hd60s_stop(&iv->dev);
+    __atomic_add_fetch(&iv->generation, 1, __ATOMIC_ACQ_REL);
+    if (iv->pipe) iv->pipe->Abort(kIOUSBAbortAsynchronous, kIOReturnAborted, nullptr);
+    // Completions run on the USB queue, so waiting here for them to drain cannot deadlock.
+    if (!deviceGone && iv->intf) iv->intf->SelectAlternateSetting(0);
+    iv->usbQueue->DispatchSync(^{ iv->pipe.reset(); });
+    if (!deviceGone) hd60s_stop(&iv->dev);
 }
 
 void IMPL(HD60SDriver, BulkDone)
 {
     auto *iv = ivars;
     auto *ref = static_cast<XferRef *>(action->GetReference());
-    iv->inflight--;
     // ponytail: a stale completion is told apart by generation only; fine while retries are 1 s apart.
-    if (ref->generation != iv->generation || iv->stopping) {
-        if (iv->draining && !iv->inflight && !iv->stopping) FinishTearDown();
-        return;
-    }
+    if (ref->generation != __atomic_load_n(&iv->generation, __ATOMIC_ACQUIRE) || iv->stopping || !iv->pipe) return;
     if (status == kIOReturnSuccess || status == kIOReturnTimeout) {
         parser_feed(&iv->parser, iv->xfers[ref->index].data, actualByteCount);
         // Hardware completion time, so a busy queue does not bend the clock.
         Deliver(completionTimestamp ? completionTimestamp : mach_absolute_time());
     } else {
         os_log(OS_LOG_DEFAULT, "HD60S dext: transfer status 0x%x", status);
-        iv->streamFailed = true;
+        failStream(iv);
         return;
     }
-    if (!submit(iv, ref->index)) iv->streamFailed = true;
+    if (!submit(iv, ref->index)) failStream(iv);
 }
 
 void IMPL(HD60SDriver, PolicyOccurred)
@@ -495,7 +484,7 @@ void IMPL(HD60SDriver, PolicyOccurred)
     auto *iv = ivars;
     if (iv->stopping) return;
     long now = static_cast<long>(nowMs(iv));
-    switch (link_step(&iv->link, iv->streamFailed && iv->link.state == LINK_UP ? LINK_LOST : LINK_TICK, now)) {
+    switch (link_step(&iv->link, __atomic_load_n(&iv->streamFailed, __ATOMIC_ACQUIRE) && iv->link.state == LINK_UP ? LINK_LOST : LINK_TICK, now)) {
     case LINK_BRING_UP: BringUp(); break;
     case LINK_TEAR_DOWN: TearDown(false); break;
     case LINK_NONE: break;

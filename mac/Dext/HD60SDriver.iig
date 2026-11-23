@@ -21,13 +21,12 @@ public:
     void SetSettings(const struct hd60s_settings *settings) LOCALONLY;
     void BringUp() LOCALONLY;
     void TearDown(bool deviceGone) LOCALONLY;
-    void FinishTearDown() LOCALONLY;
     int Control(int in, uint8_t req, uint16_t val, uint16_t idx, uint8_t *buf, uint16_t len) LOCALONLY;
     void Frame(const uint8_t *frame, int width, int height, int interlaced) LOCALONLY;
     void Audio(const uint8_t *pcm, size_t len) LOCALONLY;
     void Deliver(uint64_t host) LOCALONLY;
     virtual void ZeroTimestampOccurred(OSAction *action TARGET, uint64_t time) TYPE(IOTimerDispatchSource::TimerOccurred) QUEUENAME(USB);
-    virtual void PolicyOccurred(OSAction *action TARGET, uint64_t time) TYPE(IOTimerDispatchSource::TimerOccurred) QUEUENAME(USB);
+    virtual void PolicyOccurred(OSAction *action TARGET, uint64_t time) TYPE(IOTimerDispatchSource::TimerOccurred) QUEUENAME(Policy);
     virtual void BulkDone(OSAction *action TARGET, IOReturn status, uint32_t actualByteCount, uint64_t completionTimestamp)
         TYPE(IOUSBHostPipe::CompleteAsyncIO) QUEUENAME(USB);
 };
