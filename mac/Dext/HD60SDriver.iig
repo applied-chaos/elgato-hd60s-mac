@@ -21,6 +21,7 @@ public:
     void SetSettings(const struct hd60s_settings *settings) LOCALONLY;
     void BringUp() LOCALONLY;
     void TearDown(bool deviceGone) LOCALONLY;
+    void FinishTearDown() LOCALONLY;
     int Control(int in, uint8_t req, uint16_t val, uint16_t idx, uint8_t *buf, uint16_t len) LOCALONLY;
     void Frame(const uint8_t *frame, int width, int height, int interlaced) LOCALONLY;
     void Audio(const uint8_t *pcm, size_t len) LOCALONLY;

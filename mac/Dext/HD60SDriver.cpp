@@ -57,8 +57,8 @@ struct HD60SDriver_IVars {
     OSSharedPtr<IOBufferMemoryDescriptor> ctrlBuf;
     uint8_t *ctrlData = nullptr;
     Xfer xfers[kXfers];
-    uint32_t generation = 0;
-    bool streamFailed = false, stopping = false;
+    uint32_t generation = 0, inflight = 0;
+    bool streamFailed = false, stopping = false, draining = false;
 
     struct hd60s dev;
     struct hd60s_parser parser;
@@ -69,7 +69,7 @@ struct HD60SDriver_IVars {
     int16_t stage[kStageFrames * kChannels];
     uint32_t staged = 0;
     struct {
-        uint64_t written, readEnd, lastArrival, pads;
+        uint64_t written, readEnd, lastArrival, pads, maxShort, shortAge;
     } ioShared = {};
     uint64_t lates = 0, overflow = 0, maxLate = 0, lastAudioLog = 0;
 
@@ -149,6 +149,11 @@ static void silenceUndelivered(HD60SDriver_IVars *iv, uint64_t sampleTime, uint6
     uint64_t last = __atomic_load_n(&iv->ioShared.lastArrival, __ATOMIC_RELAXED);
     bool live = last && hostTime < last + kAudioLiveMs * iv->msTicks;
     if (live) __atomic_fetch_add(&iv->ioShared.pads, end - from, __ATOMIC_RELAXED);
+    // ponytail: unsynchronised diagnostic pair, may tear against the policy log's reset.
+    if (live && end - from > iv->ioShared.maxShort) {
+        iv->ioShared.maxShort = end - from;
+        iv->ioShared.shortAge = hostTime > last ? hostTime - last : 0;
+    }
 }
 
 static kern_return_t addAudioDevice(HD60SDriver *self, HD60SDriver_IVars *iv)
@@ -160,12 +165,17 @@ static kern_return_t addAudioDevice(HD60SDriver *self, HD60SDriver_IVars *iv)
     iv->device = IOUserAudioDevice::Create(self, false, uid.get(), model.get(), maker.get(), kIOFrames);
     if (!iv->device) return kIOReturnNoMemory;
     iv->device->SetName(name.get());
-    iv->device->SetSampleRate(kSampleRate);
+    kern_return_t ret = iv->device->SetAvailableSampleRates(&kSampleRate, 1);
+    if (ret == kIOReturnSuccess) ret = iv->device->SetSampleRate(kSampleRate);
+    if (ret != kIOReturnSuccess) {
+        os_log(OS_LOG_DEFAULT, "HD60S dext: sample rate refused 0x%x", ret);
+        return ret;
+    }
     iv->device->SetTransportType(IOUserAudioTransportType::USB);
     iv->device->SetCanBeDefaultInputDevice(false);
     iv->device->SetInputSafetyOffset(kSafetyFrames);
 
-    kern_return_t ret = IOBufferMemoryDescriptor::Create(kIOMemoryDirectionInOut, kIOFrames * kBytesPerFrame, 0, iv->ioRing.attach());
+    ret = IOBufferMemoryDescriptor::Create(kIOMemoryDirectionInOut, kIOFrames * kBytesPerFrame, 0, iv->ioRing.attach());
     if (ret != kIOReturnSuccess) return ret;
     iv->ioRing->SetLength(kIOFrames * kBytesPerFrame);
     ret = iv->ioRing->CreateMapping(0, 0, 0, 0, 0, &iv->ioMap);
@@ -295,6 +305,17 @@ kern_return_t IMPL(HD60SDriver, Stop)
     if (iv->device) RemoveObject(iv->device.get());
     if (iv->ioMap) { iv->ioMap->release(); iv->ioMap = nullptr; }
     if (iv->frameMap) { iv->frameMap->release(); iv->frameMap = nullptr; iv->frames = nullptr; }
+    // Actions and audio objects retain this driver; until they go, free() never runs and the process never exits.
+    for (auto &x : iv->xfers) x.action.reset();
+    iv->zeroAction.reset();
+    iv->policyAction.reset();
+    iv->zeroTimer.reset();
+    iv->policyTimer.reset();
+    iv->stream.reset();
+    iv->device.reset();
+    iv->pipe.reset();
+    iv->intf.reset();
+    iv->usb.reset();
     return Stop(provider, SUPERDISPATCH);
 }
 
@@ -384,12 +405,18 @@ static bool submit(HD60SDriver_IVars *iv, uint32_t i)
     auto *ref = static_cast<XferRef *>(iv->xfers[i].action->GetReference());
     ref->index = i;
     ref->generation = iv->generation;
-    return iv->pipe->AsyncIO(iv->xfers[i].buf.get(), kXferSize, iv->xfers[i].action.get(), 1000) == kIOReturnSuccess;
+    if (iv->pipe->AsyncIO(iv->xfers[i].buf.get(), kXferSize, iv->xfers[i].action.get(), 1000) != kIOReturnSuccess) return false;
+    iv->inflight++;
+    return true;
 }
 
 void HD60SDriver::BringUp()
 {
     auto *iv = ivars;
+    if (iv->draining) {
+        link_step(&iv->link, LINK_UP_FAILED, nowMs(iv));
+        return;
+    }
     hd60s_settings kept = hd60s_settings_snapshot(&iv->dev);
     memset(&iv->dev, 0, sizeof iv->dev);
     hd60s_settings_publish(&iv->dev, &kept);
@@ -428,6 +455,15 @@ void HD60SDriver::TearDown(bool deviceGone)
         iv->pipe.reset();
     }
     if (deviceGone) return;
+    // SelectAlternateSetting waits for the aborted transfers, whose completions queue behind us here.
+    iv->draining = true;
+    if (!iv->inflight) FinishTearDown();
+}
+
+void HD60SDriver::FinishTearDown()
+{
+    auto *iv = ivars;
+    iv->draining = false;
     if (iv->intf) iv->intf->SelectAlternateSetting(0);
     hd60s_stop(&iv->dev);
 }
@@ -436,8 +472,12 @@ void IMPL(HD60SDriver, BulkDone)
 {
     auto *iv = ivars;
     auto *ref = static_cast<XferRef *>(action->GetReference());
+    iv->inflight--;
     // ponytail: a stale completion is told apart by generation only; fine while retries are 1 s apart.
-    if (ref->generation != iv->generation || iv->stopping) return;
+    if (ref->generation != iv->generation || iv->stopping) {
+        if (iv->draining && !iv->inflight && !iv->stopping) FinishTearDown();
+        return;
+    }
     if (status == kIOReturnSuccess || status == kIOReturnTimeout) {
         parser_feed(&iv->parser, iv->xfers[ref->index].data, actualByteCount);
         // Hardware completion time, so a busy queue does not bend the clock.
@@ -465,10 +505,13 @@ void IMPL(HD60SDriver, PolicyOccurred)
     }
     if (static_cast<uint64_t>(now) - iv->lastAudioLog >= kAudioLogMs) {
         iv->lastAudioLog = static_cast<uint64_t>(now);
-        os_log(OS_LOG_DEFAULT, "HD60S dext audio: %d ppm, %lu rephases, %llu pads, %llu late, %llu overflow, max lateness %llu us",
+        os_log(OS_LOG_DEFAULT, "HD60S dext audio: %d ppm, %lu rephases, %llu pads, %llu late, %llu overflow, max lateness %llu us, "
+               "worst short read %llu frames %llu us after an arrival",
                static_cast<int>((iv->clock.nominal_ticks_per_sample / iv->clock.ticks_per_sample - 1) * 1e6), iv->clock.rephases,
-               __atomic_load_n(&iv->ioShared.pads, __ATOMIC_RELAXED), iv->lates, iv->overflow, iv->maxLate * 1000 / iv->msTicks);
+               __atomic_load_n(&iv->ioShared.pads, __ATOMIC_RELAXED), iv->lates, iv->overflow, iv->maxLate * 1000 / iv->msTicks,
+               iv->ioShared.maxShort, iv->ioShared.shortAge * 1000 / iv->msTicks);
         iv->maxLate = 0;
+        iv->ioShared.maxShort = 0;
     }
     fr_status(iv->frames, iv->link.state, iv->parser.frames, iv->parser.discarded, iv->parser.long_total, iv->link.failures);
     fr_device(iv->frames, iv->dev.mcu_version, iv->parser.top_first, iv->dev.link.hdcp, iv->dev.link.dvi);
