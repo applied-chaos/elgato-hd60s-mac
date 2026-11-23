@@ -27,7 +27,6 @@ struct hd60s_link {
 struct hd60s_link hd60s_link_from_regs(int digital, uint8_t r01, uint8_t r34);
 
 struct hd60s;
-/* Reads the source link flags into d->link. */
 struct hd60s_link hd60s_read_link(struct hd60s *d);
 
 #endif

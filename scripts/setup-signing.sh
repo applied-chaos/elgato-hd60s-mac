@@ -237,7 +237,6 @@ check_profile() {
 
 GROUP="$TEAM.net.mintopia.hd60s"
 
-# check_group FILE: the app and camera both read settings.json from this App Group, so each profile must carry it.
 check_group() {
   if security cms -D -i "$1" | plutil -extract Entitlements.com\\.apple\\.security\\.application-groups json -o - - 2>/dev/null | grep -q "\"$GROUP\""; then
     return 0

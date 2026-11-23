@@ -33,7 +33,6 @@ static int hue_table(const uint8_t *t, int i)
     return t[2 * i] | t[2 * i + 1] << 8;
 }
 
-/* hue_table(t, i) interpolated a quarter step at a time, truncating towards zero. */
 static int hue_lerp(const uint8_t *t, int i, int quarter)
 {
     return (int16_t)((hue_table(t, i + 1) - hue_table(t, i)) * quarter / 4 + hue_table(t, i));

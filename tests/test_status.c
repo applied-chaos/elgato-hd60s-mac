@@ -176,7 +176,6 @@ int main(void)
     assert(hd60s_exact_fps(50.2, (struct hd60s_rate){0, 0}, 0) == 50.2);
     assert(fabs(hd60s_rate_hz((struct hd60s_rate){240, 1}) - 23.97602) < 1e-4);
 
-    /* Every warning bit has a code and a message, and nothing sets a bit past WARN_COUNT. */
     s = (struct hd60s_status){0};
     for (int i = 0; i < WARN_COUNT; i++) {
         assert(*hd60s_warning_code((enum hd60s_warning)i));

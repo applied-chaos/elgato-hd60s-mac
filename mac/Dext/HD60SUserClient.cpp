@@ -26,7 +26,6 @@ kern_return_t IMPL(HD60SUserClient, CopyClientMemoryForType)
     return driver->CopyFrameRing(memory);
 }
 
-// Selector 0: one hd60s_settings_wire as structure input, nothing else. Anything malformed is refused.
 kern_return_t HD60SUserClient::ExternalMethod(uint64_t selector, IOUserClientMethodArguments *arguments,
                                               const IOUserClientMethodDispatch *dispatch, OSObject *target, void *reference)
 {

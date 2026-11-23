@@ -378,7 +378,6 @@ final class StreamSource: NSObject, CMIOExtensionStreamSource {
         }
         var latest = next
         #if DEXT
-        // The driver extension keeps settings in memory only, so resend when the file changes and whenever the driver reconnects.
         let connections = dext_feed_connections()
         if hd60s_settings_equal(&previous, &latest) == 0 || connections != pushedConnections {
             pushedConnections = dext_send_settings(&latest) == 0 ? connections : nil

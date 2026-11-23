@@ -62,8 +62,8 @@ int hd60s_settings_equal(const struct hd60s_settings *a, const struct hd60s_sett
 #define HD60S_SETTINGS_WIRE_VERSION 1
 struct hd60s_settings_wire {
     uint16_t version;
-    uint8_t range;        /* enum hd60s_range */
-    uint8_t audio_source; /* enum audio_source */
+    uint8_t range;
+    uint8_t audio_source;
     uint8_t mute;         /* 0 or 1 */
     int8_t brightness, contrast, saturation, hue, gain_offset;
     uint8_t reserved[2];  /* zero */

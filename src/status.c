@@ -9,8 +9,8 @@
 
 struct named {
     int value;
-    const char *code; /* JSON form */
-    const char *text; /* prose; a printf format for warnings */
+    const char *code;
+    const char *text;
 };
 
 #define COUNT_OF(t) (sizeof(t) / sizeof *(t))
@@ -77,7 +77,6 @@ _Static_assert(COUNT_OF(inputs) == INPUT_COUNT, "inputs table");
 _Static_assert(COUNT_OF(warnings) == WARN_COUNT, "warnings table");
 _Static_assert(WARN_COUNT <= 32, "warnings are bits of a uint32_t");
 
-/* MCU versions seen on working devices (b0<<16 | b1<<8 | b2). */
 static const uint32_t known_mcu[] = {HD60S_DEV_MCU};
 
 enum hd60s_speed hd60s_speed_from_libusb(int v)

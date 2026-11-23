@@ -6,7 +6,6 @@ final class DextInstaller: NSObject, ObservableObject, OSSystemExtensionRequestD
     static let identifier = "net.mintopia.hd60s.dext"
     @Published var status = DextStatus.notBundled
     private var installing = true
-    /// Called when an activation finishes, so settings chosen before the driver existed reach it.
     var onActivated: (() -> Void)?
 
     var bundled: Bool {
