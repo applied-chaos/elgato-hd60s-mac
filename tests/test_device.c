@@ -413,7 +413,7 @@ static void picture_controls_reach_hardware_live_and_survive_a_range_change(void
 
     d.settings.picture.brightness = 63;
     hd60s_policy_tick(&d, &p, &pol, 1000);
-    assert((fk.mst[0][0xa7] << 8 | fk.mst[0][0xa8]) == 0x1401);
+    assert((fk.mst[0][0xa7] << 8 | fk.mst[0][0xa8]) == BRIGHT_63_WORD);
     int before = fk.requests;
     hd60s_policy_tick(&d, &p, &pol, 1100);
     assert(fk.requests == before);
