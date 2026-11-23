@@ -1,6 +1,7 @@
 #ifndef HD60S_STATUS_H
 #define HD60S_STATUS_H
 
+#include <stdbool.h>
 #include <stdint.h>
 #include <signal.h>
 #include <stdio.h>
@@ -55,9 +56,22 @@ int hd60s_size_standard(int width, int height);
 /* Source type from the link flags; unknown if there is no signal to describe. */
 enum hd60s_link_type hd60s_link_type_from_link(struct hd60s_link l, enum hd60s_signal signal);
 
-/* Signal from two frame-ring peeks a poll apart; an unknown size counts as unsupported only if it held across both,
- * otherwise it is a mode-switch runt. */
-enum hd60s_signal hd60s_ring_signal(int advanced, int hdcp, int width, int height, int prev_width, int prev_height);
+struct hd60s_size {
+    int width, height;
+};
+
+/* A timing with no known mode, told from the varying runt frames of a mode switch by its size repeating. */
+#define HD60S_UNSUPPORTED_FRAMES 15
+#define HD60S_UNSUPPORTED_POLLS 3
+struct hd60s_unknown_run {
+    struct hd60s_size size;
+    unsigned count;
+};
+/* Times in a row this unknown size has now been seen; 0 for a known size, which also clears the run. */
+unsigned hd60s_unknown_run_note(struct hd60s_unknown_run *r, struct hd60s_size s);
+
+/* Signal from one poll of the driver's frame ring; advanced means a newer frame arrived since the last poll. */
+enum hd60s_signal hd60s_ring_signal(bool advanced, bool hdcp, struct hd60s_size latest, struct hd60s_unknown_run *run);
 
 /* Firmware read but not in the known list: informational, not a warning. */
 int hd60s_firmware_untested(const struct hd60s_status *s);

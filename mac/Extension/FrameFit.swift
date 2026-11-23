@@ -34,18 +34,3 @@ func fitRect(width: Int, height: Int, wide: Bool = false) -> Rect? {
     let h = min(outputHeight, outputWidth * d / n) & ~1
     return Rect(x: (outputWidth - w) / 2 & ~1, y: (outputHeight - h) / 2, w: w, h: h)
 }
-
-// Tells a stable timing with no known mode (show the "Unsupported mode" slate) from the runt frames of a
-// mode switch, which vary in size.
-struct UnsupportedWatch {
-    static let stableFrames = 15
-    private var size = [0, 0]
-    private var run = 0
-
-    mutating func note(width: Int, height: Int, known: Bool) -> Bool {
-        guard !known else { run = 0; return false }
-        run = size == [width, height] ? run + 1 : 1
-        size = [width, height]
-        return run >= Self.stableFrames
-    }
-}

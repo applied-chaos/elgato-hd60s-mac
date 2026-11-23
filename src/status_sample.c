@@ -6,15 +6,14 @@
 #include "tx.h"
 
 #define FRAME_CAP (1920 * 1440 * 2)
-#define UNSUPPORTED_STABLE_FRAMES 15
 
 struct watch {
     struct hd60s_status st;
     struct hd60s_parser *parser;
     double first, last;
     unsigned long standard;
-    int unknown_w, unknown_h, unknown_interlaced;
-    unsigned long unknown_run;
+    struct hd60s_unknown_run unknown;
+    int unknown_interlaced;
     size_t audio_bytes;
 };
 
@@ -29,15 +28,11 @@ static void watch_frame(void *ctx, const uint8_t *frame, int w, int h, int inter
 {
     struct watch *k = ctx;
     (void)frame;
-    if (!hd60s_size_standard(w, h)) {
+    if (hd60s_unknown_run_note(&k->unknown, (struct hd60s_size){w, h})) {
         k->st.runts++;
-        k->unknown_run = w == k->unknown_w && h == k->unknown_h ? k->unknown_run + 1 : 1;
-        k->unknown_w = w;
-        k->unknown_h = h;
         k->unknown_interlaced = interlaced;
         return;
     }
-    k->unknown_run = 0;
     k->last = now();
     if (!k->standard++)
         k->first = k->last;
@@ -83,10 +78,10 @@ void hd60s_sample(struct hd60s_status *out, double seconds, struct hd60s_setting
             parser_init(&parser, frame, FRAME_CAP, watch_frame, watch_audio, &k);
             hd60s_stream(&d, &parser, stop, seconds);
             st->signal = k.standard ? SIGNAL_ACTIVE : SIGNAL_NONE;
-            if (k.unknown_run >= UNSUPPORTED_STABLE_FRAMES) {
+            if (k.unknown.count >= HD60S_UNSUPPORTED_FRAMES) {
                 st->signal = SIGNAL_UNSUPPORTED;
-                st->width = k.unknown_w;
-                st->height = k.unknown_h;
+                st->width = k.unknown.size.width;
+                st->height = k.unknown.size.height;
                 st->interlaced = k.unknown_interlaced;
             }
             struct hd60s_link link = hd60s_read_link(&d);

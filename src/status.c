@@ -135,15 +135,28 @@ int hd60s_size_standard(int w, int h)
     return parser_is_sd(w, h) >= 0;
 }
 
-enum hd60s_signal hd60s_ring_signal(int advanced, int hdcp, int w, int h, int prev_w, int prev_h)
+unsigned hd60s_unknown_run_note(struct hd60s_unknown_run *r, struct hd60s_size s)
+{
+    if (hd60s_size_standard(s.width, s.height)) {
+        *r = (struct hd60s_unknown_run){0};
+        return 0;
+    }
+    if (r->count && s.width == r->size.width && s.height == r->size.height)
+        return ++r->count;
+    *r = (struct hd60s_unknown_run){s, 1};
+    return 1;
+}
+
+enum hd60s_signal hd60s_ring_signal(bool advanced, bool hdcp, struct hd60s_size latest, struct hd60s_unknown_run *run)
 {
     if (hdcp)
         return SIGNAL_HDCP;
-    if (!advanced)
+    if (!advanced || latest.width <= 0 || latest.height <= 0) {
+        *run = (struct hd60s_unknown_run){0};
         return SIGNAL_NONE;
-    if (hd60s_size_standard(w, h))
-        return SIGNAL_ACTIVE;
-    return w > 0 && h > 0 && w == prev_w && h == prev_h ? SIGNAL_UNSUPPORTED : SIGNAL_NONE;
+    }
+    unsigned n = hd60s_unknown_run_note(run, latest);
+    return n == 0 ? SIGNAL_ACTIVE : n >= HD60S_UNSUPPORTED_POLLS ? SIGNAL_UNSUPPORTED : SIGNAL_NONE;
 }
 
 static int fw_known(uint32_t v)

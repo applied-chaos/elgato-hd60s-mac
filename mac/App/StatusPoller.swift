@@ -12,12 +12,12 @@ final class StatusPoller: ObservableObject {
     private let queue = DispatchQueue(label: "net.mintopia.hd60s.status")
     private var timer: DispatchSourceTimer?
     private var sampledFrames: UInt = 0, sampledDiscarded: UInt = 0
-    private var ringMark: (number: UInt32, at: Date)?
+    private typealias RingPoll = (number: UInt32, at: Date, size: hd60s_size, active: Bool)
     // ponytail: frames counted over a window only just tell 60 from 59.94; pass the MST3367 vsync rate
     // through the frame ring if it must be exact.
-    private var ringWindow: [(number: UInt32, at: Date)] = []
+    private var ringWindow: [RingPoll] = []
     private static let fpsWindowSeconds = 30.0
-    private var ringSize: (width: Int32, height: Int32) = (0, 0)
+    private var ringUnknown = hd60s_unknown_run()
     private static let sampleSeconds = 0.8
     private static let restSeconds = 1.0
 
@@ -36,9 +36,8 @@ final class StatusPoller: ObservableObject {
         queue.async { [self] in
             sampledFrames = 0
             sampledDiscarded = 0
-            ringMark = nil
             ringWindow = []
-            ringSize = (0, 0)
+            ringUnknown = hd60s_unknown_run()
             #if DEXT
             dext_feed_close()
             #endif
@@ -96,19 +95,25 @@ final class StatusPoller: ObservableObject {
     #if DEXT
     private func fillFromRing(_ st: inout hd60s_status) {
         var info = fr_frame(), counters = fr_counters(), number: UInt32 = 0
-        guard dext_feed_peek(&info, &counters, &number) != 0 else {
-            st.access = ACCESS_BUSY
-            return
-        }
-        if ringMark == nil {
-            ringMark = (number, Date())
-            Thread.sleep(forTimeInterval: 0.5)
+        var signal = SIGNAL_NONE
+        var rate: (from: RingPoll, to: RingPoll)?
+        // A fresh start polls until a stable unsupported mode can be told from runts, instead of first reading no signal.
+        for poll in 0..<(ringWindow.isEmpty ? Int(HD60S_UNSUPPORTED_POLLS) + 1 : 1) {
+            if poll > 0 { Thread.sleep(forTimeInterval: 0.2) }
             guard dext_feed_peek(&info, &counters, &number) != 0 else { return st.access = ACCESS_BUSY }
+            let size = hd60s_size(width: info.width, height: info.height)
+            let previous = ringWindow.last
+            signal = hd60s_ring_signal(previous.map { $0.number != number } ?? false, counters.hdcp != 0, size, &ringUnknown)
+            let now: RingPoll = (number, Date(), size, signal == SIGNAL_ACTIVE)
+            if now.active, let previous, previous.active, previous.size.width == size.width, previous.size.height == size.height {
+                ringWindow.append(now)
+                ringWindow.removeAll { now.at.timeIntervalSince($0.at) > Self.fpsWindowSeconds }
+                rate = ringWindow.count > 1 ? (ringWindow[0], now) : (previous, now)
+            } else {
+                ringWindow = [now]
+                rate = previous.map { ($0, now) }
+            }
         }
-        let now = Date()
-        let delta = number &- (ringMark?.number ?? number)
-        let span = now.timeIntervalSince(ringMark?.at ?? now)
-        ringMark = (number, now)
         st.access = ACCESS_OK
         st.frames = UInt(counters.frames)
         st.discarded = UInt(counters.discarded)
@@ -117,24 +122,27 @@ final class StatusPoller: ObservableObject {
             st.fw_valid = 1
             st.mcu_version = counters.mcu_version
         }
-        let prev = ringSize
-        ringSize = (info.width, info.height)
-        st.signal = hd60s_ring_signal(delta > 0 && span > 0 ? 1 : 0, Int32(counters.hdcp), info.width, info.height,
-                                      prev.width, prev.height)
-        if st.signal != SIGNAL_ACTIVE || prev != ringSize { ringWindow = [] }
-        ringWindow.append((number, now))
-        ringWindow.removeAll { now.timeIntervalSince($0.at) > Self.fpsWindowSeconds }
-        guard st.signal == SIGNAL_ACTIVE || st.signal == SIGNAL_UNSUPPORTED else { return }
-        st.width = info.width
-        st.height = info.height
-        guard st.signal == SIGNAL_ACTIVE else { return }
-        st.interlaced = info.interlaced
-        st.field_order = counters.top_first != 0 ? FIELD_TOP_FIRST : FIELD_NONE
-        let first = ringWindow[0]
-        st.fps = ringWindow.count > 1 ? Double(number &- first.number) / now.timeIntervalSince(first.at) : Double(delta) / span
-        st.colour = info.colour == Int32(COLOUR_BT601.rawValue) ? COLOUR_BT601 : COLOUR_BT709
-        st.audio_rate = 48000
-        st.audio_channels = 2
+        st.signal = signal
+        switch signal {
+        case SIGNAL_ACTIVE:
+            st.width = info.width
+            st.height = info.height
+            st.interlaced = info.interlaced
+            st.field_order = counters.top_first != 0 ? FIELD_TOP_FIRST : FIELD_NONE
+            if let rate, rate.to.at > rate.from.at {
+                st.fps = Double(rate.to.number &- rate.from.number) / rate.to.at.timeIntervalSince(rate.from.at)
+            }
+            st.colour = info.colour == Int32(COLOUR_BT601.rawValue) ? COLOUR_BT601 : COLOUR_BT709
+            st.audio_rate = 48000
+            st.audio_channels = 2
+        case SIGNAL_UNSUPPORTED:
+            st.width = info.width
+            st.height = info.height
+        case SIGNAL_NONE, SIGNAL_HDCP, SIGNAL_UNKNOWN:
+            break
+        default:
+            preconditionFailure("unknown signal \(signal.rawValue)")
+        }
     }
     #endif
 

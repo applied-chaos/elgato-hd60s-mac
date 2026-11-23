@@ -1,6 +1,7 @@
 #include "../src/status.h"
 
 #include <assert.h>
+#include <stdbool.h>
 #include <math.h>
 #include <stdio.h>
 #include <string.h>
@@ -197,12 +198,31 @@ int main(void)
         char *j = render(hd60s_print_json, &s);
         assert(strstr(j, "\"owner\":{\"kind\":\"") && !strstr(j, "\"kind\":\"\""));
     }
-    assert(hd60s_ring_signal(0, 0, 1920, 1080, 1920, 1080) == SIGNAL_NONE);
-    assert(hd60s_ring_signal(1, 0, 1920, 1080, 0, 0) == SIGNAL_ACTIVE);
-    assert(hd60s_ring_signal(1, 1, 1920, 1080, 1920, 1080) == SIGNAL_HDCP);
-    assert(hd60s_ring_signal(1, 0, 1120, 700, 1120, 700) == SIGNAL_UNSUPPORTED);
-    assert(hd60s_ring_signal(1, 0, 1280, 703, 1280, 12) == SIGNAL_NONE);
-    assert(hd60s_ring_signal(1, 0, 1280, 703, 0, 0) == SIGNAL_NONE);
-    assert(hd60s_ring_signal(1, 0, 0, 0, 0, 0) == SIGNAL_NONE);
+    struct hd60s_size hd = {1920, 1080}, odd = {1120, 700};
+    struct hd60s_unknown_run run = {0};
+    assert(hd60s_unknown_run_note(&run, hd) == 0);
+    for (unsigned i = 1; i <= HD60S_UNSUPPORTED_FRAMES; i++)
+        assert(hd60s_unknown_run_note(&run, odd) == i);
+    assert(hd60s_unknown_run_note(&run, (struct hd60s_size){1280, 703}) == 1);
+    assert(hd60s_unknown_run_note(&run, hd) == 0 && run.count == 0);
+    for (int h = 12; h < 12 + 2 * HD60S_UNSUPPORTED_FRAMES; h++)
+        assert(hd60s_unknown_run_note(&run, (struct hd60s_size){1280, h}) == 1);
+
+    run = (struct hd60s_unknown_run){0};
+    assert(hd60s_ring_signal(true, false, hd, &run) == SIGNAL_ACTIVE);
+    assert(hd60s_ring_signal(false, false, hd, &run) == SIGNAL_NONE);
+    assert(hd60s_ring_signal(true, true, hd, &run) == SIGNAL_HDCP);
+    for (int i = 1; i < HD60S_UNSUPPORTED_POLLS; i++)
+        assert(hd60s_ring_signal(true, false, odd, &run) == SIGNAL_NONE);
+    assert(hd60s_ring_signal(true, false, odd, &run) == SIGNAL_UNSUPPORTED);
+    assert(hd60s_ring_signal(true, false, odd, &run) == SIGNAL_UNSUPPORTED);
+    assert(hd60s_ring_signal(false, false, odd, &run) == SIGNAL_NONE);
+    assert(hd60s_ring_signal(true, false, odd, &run) == SIGNAL_NONE);
+    run = (struct hd60s_unknown_run){0};
+    struct hd60s_size runt = {1280, 703};
+    assert(hd60s_ring_signal(true, false, runt, &run) == SIGNAL_NONE);
+    assert(hd60s_ring_signal(true, false, runt, &run) == SIGNAL_NONE);
+    assert(hd60s_ring_signal(true, false, hd, &run) == SIGNAL_ACTIVE);
+    assert(hd60s_ring_signal(true, false, (struct hd60s_size){0, 0}, &run) == SIGNAL_NONE);
     return 0;
 }

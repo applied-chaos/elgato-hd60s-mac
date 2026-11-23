@@ -9,7 +9,6 @@ func signal(_ json: String?) -> [String: Any] {
     return o["signal"] as! [String: Any]
 }
 
-// A stable timing with no known mode reports "unsupported"; mode-switch runts don't disturb the active size.
 func unsupported() {
     let p = StatusPublisher()
     var t: UInt64 = 1_000_000_000

@@ -106,10 +106,10 @@ build/test_camera_property: tests/test_camera_property.swift mac/Shared/CameraPr
 	@mkdir -p build
 	swiftc -parse-as-library -o $@ mac/Shared/CameraProperty.swift tests/test_camera_property.swift
 
-build/test_status_publisher: tests/test_status_publisher.swift mac/Extension/StatusPublisher.swift mac/Extension/FrameFit.swift mac/Shared/StatusFacts.swift src/status.c src/status.h src/parser.c src/parser.h
+build/test_status_publisher: tests/test_status_publisher.swift mac/Extension/StatusPublisher.swift mac/Shared/StatusFacts.swift src/status.c src/status.h src/parser.c src/parser.h
 	@mkdir -p build/status_publisher
 	for f in status parser; do $(CC) $(CFLAGS) -c -o build/status_publisher/$$f.o src/$$f.c || exit 1; done
-	swiftc -parse-as-library -import-objc-header src/status.h -o $@ mac/Extension/StatusPublisher.swift mac/Extension/FrameFit.swift mac/Shared/StatusFacts.swift tests/test_status_publisher.swift build/status_publisher/*.o
+	swiftc -parse-as-library -import-objc-header src/status.h -o $@ mac/Extension/StatusPublisher.swift mac/Shared/StatusFacts.swift tests/test_status_publisher.swift build/status_publisher/*.o
 
 build/test_frame_rates: tests/test_frame_rates.swift mac/Extension/FrameRate.swift
 	@mkdir -p build

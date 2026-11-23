@@ -131,7 +131,7 @@ final class StreamSource: NSObject, CMIOExtensionStreamSource {
     private var unsupportedSlate: CVPixelBuffer?
     private var hdcpSlate: CVPixelBuffer?
     private let hdcp = OSAllocatedUnfairLock(initialState: false)
-    private var unsupported = UnsupportedWatch()
+    private var unknownRun = hd60s_unknown_run()
     private let unsupportedNs = OSAllocatedUnfairLock(initialState: UInt64(0))
     private var timer: DispatchSourceTimer?
     private let outputQueue = DispatchQueue(label: "hd60s output")
@@ -309,7 +309,9 @@ final class StreamSource: NSObject, CMIOExtensionStreamSource {
     private func send(_ frame: UnsafeMutablePointer<UInt8>, _ w: Int, _ h: Int, _ interlaced: Bool, wide: Bool, bt601: Bool) {
         if hdcp.withLock({ $0 }) { return }
         let fit = fitRect(width: w, height: h, wide: wide)
-        if unsupported.note(width: w, height: h, known: fit != nil) { unsupportedNs.withLock { $0 = hostNs() } }
+        if hd60s_unknown_run_note(&unknownRun, hd60s_size(width: Int32(w), height: Int32(h))) >= HD60S_UNSUPPORTED_FRAMES {
+            unsupportedNs.withLock { $0 = hostNs() }
+        }
         guard let r = fit else { return }
         if interlaced { deint_frame(deinterlacer, frame, Int32(w), Int32(h)) }
         var pb: CVPixelBuffer?

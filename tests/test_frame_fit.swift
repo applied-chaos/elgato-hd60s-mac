@@ -29,14 +29,6 @@ func check(_ ok: Bool, _ what: String, line: UInt = #line) {
         }
         check(fitRect(width: 1280, height: 1024) == Rect(x: 284, y: 0, w: 1350, h: 1080), "5:4 pillarboxed")
         check(fitRect(width: 1440, height: 900) == Rect(x: 96, y: 0, w: 1728, h: 1080), "16:10 pillarboxed")
-        var watch = UnsupportedWatch()
-        check(!watch.note(width: 1366, height: 700, known: false), "one frame is not stable")
-        for _ in 0..<UnsupportedWatch.stableFrames { _ = watch.note(width: 1366, height: 700, known: false) }
-        check(watch.note(width: 1366, height: 700, known: false), "stable unknown size")
-        check(!watch.note(width: 1920, height: 1080, known: true), "known frame clears")
-        for i in 0..<(UnsupportedWatch.stableFrames * 2) {
-            check(!watch.note(width: 1280, height: 12 + i, known: false), "varying runts never stable")
-        }
         // runt frames seen during a mode switch
         for (w, h) in [(1280, 12), (1280, 703), (1920, 1045), (720, 1080), (0, 0)] {
             check(fitRect(width: w, height: h) == nil, "\(w)x\(h) rejected")
