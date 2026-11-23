@@ -97,7 +97,7 @@ func bytes(_ s: hd60s_settings) -> [UInt8] { var s = s; return withUnsafeBytes(o
         check(sent.count == 3 && sent.last == live.value, "each change reaches the camera")
         live.value.mute = true
         check(sent.count == 3, "no send without a change")
-        live.push()
+        live.sendToCamera()
         check(sent.count == 4 && sent.last == live.value, "explicit push resends, as when the camera reappears")
         check(SettingsFile.parse(SettingsFile.json(live.value.device)).map(PictureAudioSettings.init) == live.value, "wire JSON round trip")
         let reopened = SettingsStore(url: store)
@@ -107,7 +107,7 @@ func bytes(_ s: hd60s_settings) -> [UInt8] { var s = s; return withUnsafeBytes(o
         sent = []
         let pinned = SettingsStore(url: store, preview: full) { sent.append(PictureAudioSettings($0)) }
         pinned.value.hue = 5
-        pinned.push()
+        pinned.sendToCamera()
         check(pinned.value.hue == 5 && PictureAudioSettings(SettingsFile.read(store)!) == d, "preview store never writes")
         check(sent.isEmpty, "preview store never sends")
         print("settings model tests passed")

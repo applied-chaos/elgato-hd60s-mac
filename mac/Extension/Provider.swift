@@ -397,7 +397,6 @@ final class StreamSource: NSObject, CMIOExtensionStreamSource {
 
     var factsJSON: String? { statusOut.factsJSON }
 
-    // Saved in this process's own container so a restart before the app next pushes keeps the user's choice.
     func apply(_ next: hd60s_settings) {
         var previous = settings.withLock { current in
             let p = current
@@ -406,10 +405,14 @@ final class StreamSource: NSObject, CMIOExtensionStreamSource {
         }
         var latest = next
         guard hd60s_settings_equal(&previous, &latest) == 0 else { return }
-        if let url = SettingsFile.url() { try? SettingsFile.write(next, to: url) }
+        persistForRestart(next)
         #if !DEXT
         hd60s_settings_publish(dev, &latest)
         #endif
+    }
+
+    private func persistForRestart(_ s: hd60s_settings) {
+        if let url = SettingsFile.url() { try? SettingsFile.write(s, to: url) }
     }
 
     #if DEXT

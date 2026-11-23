@@ -3,7 +3,7 @@ import Foundation
 
 // Replacing a running extension races in launchd: the new job is refused while the old one is still being
 // removed ("Operation already in progress") and never runs until reboot. sysextd won't let us deactivate a
-// build other than our own, so the old process is asked to quit first, and the result is checked afterwards.
+// build other than our own.
 enum CameraStep: Equatable {
     case requestQuit, awaitExit, activate, verify, deactivate
 
@@ -13,9 +13,8 @@ enum CameraStep: Equatable {
 
     static let uninstall: [CameraStep] = [.deactivate]
 
-    // Builds before the quit property refuse it, so there is nothing to wait for; a stuck exit still activates.
-    static func after(_ step: CameraStep, ok: Bool, rest: [CameraStep]) -> [CameraStep] {
-        step == .requestQuit && !ok ? rest.filter { $0 != .awaitExit } : rest
+    static func remaining(_ rest: [CameraStep], quitRefused: Bool) -> [CameraStep] {
+        quitRefused ? rest.filter { $0 != .awaitExit } : rest
     }
 }
 

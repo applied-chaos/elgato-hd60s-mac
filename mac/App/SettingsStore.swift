@@ -14,13 +14,12 @@ final class SettingsStore: ObservableObject {
         pinned = preview != nil
         self.send = send
         value = preview ?? url.flatMap(SettingsFile.read).map(PictureAudioSettings.init) ?? PictureAudioSettings()
-        push()
+        sendToCamera()
     }
 
     func reset() { value = PictureAudioSettings() }
 
-    // The app is the source of truth: the camera keeps only what it was last sent.
-    func push() {
+    func sendToCamera() {
         guard !pinned else { return }
         send(value.device)
     }
@@ -28,6 +27,6 @@ final class SettingsStore: ObservableObject {
     private func persist() {
         guard !pinned else { return }
         if let url { try? SettingsFile.write(value.device, to: url) }
-        push()
+        sendToCamera()
     }
 }

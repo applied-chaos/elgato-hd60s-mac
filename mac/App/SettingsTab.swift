@@ -181,6 +181,6 @@ struct SettingsTab: View {
         }
         .frame(maxHeight: .infinity)
         .layoutPriority(1)
-        .onAppear { store.push() }
+        .onAppear { store.sendToCamera() }
     }
 }

@@ -40,10 +40,9 @@ enum CameraLink {
         }
     }
 
-    /// Calls `changed` on `queue` whenever cameras come or go, including the extension restarting.
-    static func watchDevices(queue: DispatchQueue, _ changed: @escaping () -> Void) {
+    static func watchDevices(queue: DispatchQueue, onDevicesChanged: @escaping () -> Void) {
         var a = address(UInt32(kCMIOHardwarePropertyDevices))
-        CMIOObjectAddPropertyListenerBlock(system, &a, queue) { _, _ in changed() }
+        CMIOObjectAddPropertyListenerBlock(system, &a, queue) { _, _ in onDevicesChanged() }
     }
 }
 

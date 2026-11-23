@@ -1,6 +1,5 @@
 import Foundation
 
-/// settings.json in the caller's own app group container.
 enum SettingsFile {
     static func url() -> URL? { AppGroup.container?.appendingPathComponent("settings.json") }
 

@@ -1,6 +1,5 @@
 import Foundation
 
-// Custom CoreMediaIO device properties, the app's channel to the camera extension (docs/decisions/0001).
 enum CameraProperty: String, CaseIterable {
     case settings = "hset", status = "hsta", quit = "hqit"
 

@@ -11,10 +11,9 @@ func check(_ ok: Bool, _ what: String, line: UInt = #line) {
         check(CameraStep.install(cameraActive: false) == [.activate, .verify], "fresh install activates and verifies")
         check(CameraStep.uninstall == [.deactivate], "uninstall only deactivates")
         check(!replace.contains(.deactivate), "install never deactivates")
-        check(CameraStep.after(.requestQuit, ok: true, rest: Array(replace.dropFirst())) == [.awaitExit, .activate, .verify], "quit accepted waits")
-        check(CameraStep.after(.requestQuit, ok: false, rest: Array(replace.dropFirst())) == [.activate, .verify], "older build without quit skips the wait")
-        check(CameraStep.after(.awaitExit, ok: false, rest: [.activate, .verify]) == [.activate, .verify], "exit timeout still activates")
-        check(CameraStep.after(.activate, ok: true, rest: [.verify]) == [.verify], "activation goes on to verify")
+        check(CameraStep.remaining(Array(replace.dropFirst()), quitRefused: false) == [.awaitExit, .activate, .verify], "quit accepted waits")
+        check(CameraStep.remaining(Array(replace.dropFirst()), quitRefused: true) == [.activate, .verify], "older build without quit skips the wait")
+        check(CameraStep.remaining([.activate, .verify], quitRefused: false) == [.activate, .verify], "exit timeout still activates")
 
         let exe = "/Library/SystemExtensions/ABC/net.mintopia.hd60s.camera.systemextension/Contents/MacOS/net.mintopia.hd60s.camera"
         check(CameraProcess.matches(path: exe), "extension binary matches")

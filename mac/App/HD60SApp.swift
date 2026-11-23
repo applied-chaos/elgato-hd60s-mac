@@ -224,7 +224,7 @@ final class Installer: NSObject, ObservableObject, OSSystemExtensionRequestDeleg
 
     private func advance(ok: Bool = true) {
         let step = steps.removeFirst()
-        steps = CameraStep.after(step, ok: ok, rest: steps)
+        steps = CameraStep.remaining(steps, quitRefused: step == .requestQuit && !ok)
         if steps.isEmpty { status = installing ? .installed : .notInstalled } else { runCurrentStep() }
     }
 
@@ -478,8 +478,8 @@ struct MainWindow: View {
         .onAppear {
             if let name = HD60SApp.launchArguments.value(after: "--preview-tab") { tab = name == "status" ? .status : name == "settings" ? .settings : .install }
             if tab == .status { poller.start() }
-            dext.resendSettingsOnActivation = { [settings] in settings.push() }
-            CameraLink.watchDevices(queue: .main) { [settings] in settings.push() }
+            dext.resendSettingsOnActivation = { [settings] in settings.sendToCamera() }
+            CameraLink.watchDevices(queue: .main) { [settings] in settings.sendToCamera() }
         }
         .onDisappear { poller.stop() }
         .onChange(of: tab) { _, new in new == .status ? poller.start() : poller.stop() }
