@@ -2,6 +2,7 @@
 
 #include "HD60SUserClient.h"
 #include "HD60SDriver.h"
+#include "device.h"
 #include "parser.h"
 
 kern_return_t IMPL(HD60SUserClient, Start)
@@ -23,12 +24,13 @@ kern_return_t IMPL(HD60SUserClient, CopyClientMemoryForType)
     return driver->CopyFrameRing(memory);
 }
 
-// Selector 0: scalar inputs are an enum hd60s_range, then brightness, contrast, saturation and hue as -128..127 offsets from Elgato's defaults.
+// Selector 0: scalar inputs are an enum hd60s_range, then brightness, contrast, saturation and hue as -128..127 offsets from Elgato's defaults,
+// then enum audio_source, the gain as a half-dB offset from the default -6 dB, and mute (0 or 1).
 kern_return_t HD60SUserClient::ExternalMethod(uint64_t selector, IOUserClientMethodArguments *arguments,
                                               const IOUserClientMethodDispatch *dispatch, OSObject *target, void *reference)
 {
     auto *driver = OSDynamicCast(HD60SDriver, GetProvider());
-    if (selector != 0 || !driver || !arguments || arguments->scalarInputCount != 5) return kIOReturnBadArgument;
+    if (selector != 0 || !driver || !arguments || arguments->scalarInputCount != 8) return kIOReturnBadArgument;
     uint64_t range = arguments->scalarInput[0];
     if (range > RANGE_EXPANDED) return kIOReturnBadArgument;
     int picture[4];
@@ -37,6 +39,12 @@ kern_return_t HD60SUserClient::ExternalMethod(uint64_t selector, IOUserClientMet
         if (v < -128 || v > 127) return kIOReturnBadArgument;
         picture[i] = static_cast<int>(v);
     }
-    driver->SetSettings(static_cast<int>(range), picture[0], picture[1], picture[2], picture[3]);
+    uint64_t source = arguments->scalarInput[5];
+    int64_t gainOffset = static_cast<int64_t>(arguments->scalarInput[6]);
+    uint64_t mute = arguments->scalarInput[7];
+    if ((source != AUDIO_HDMI && source != AUDIO_LINE && source != AUDIO_MIX) || gainOffset < -128 || gainOffset > 127 || mute > 1)
+        return kIOReturnBadArgument;
+    driver->SetSettings(static_cast<int>(range), picture[0], picture[1], picture[2], picture[3], static_cast<int>(source),
+                        static_cast<int>(gainOffset), static_cast<int>(mute));
     return kIOReturnSuccess;
 }

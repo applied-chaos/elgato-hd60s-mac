@@ -570,6 +570,9 @@ void hd60s_policy_frame(struct hd60s_policy *s, int w, int h, int interlaced)
 
 void hd60s_policy_tick(struct hd60s *d, struct hd60s_parser *p, struct hd60s_policy *s, long now_ms)
 {
+    struct audio_settings audio = audio_from_pref(d->settings.audio);
+    if (memcmp(&audio, &d->audio, sizeof audio))
+        hd60s_set_audio(d, &audio);
     if (now_ms - s->aspect_at >= ASPECT_POLL_MS) {
         s->aspect_at = now_ms;
         int present = mst_read(d, 2, 0x0b) & 0x08;
@@ -622,8 +625,12 @@ int hd60s_range_from_name(const char *name)
 
 void hd60s_settings_print(const struct hd60s_settings *s, char *buf, size_t n)
 {
-    snprintf(buf, n, "{\"range\":\"%s\",\"brightness\":%d,\"contrast\":%d,\"saturation\":%d,\"hue\":%d}",
-             hd60s_range_names[s->range], s->picture.brightness, s->picture.contrast, s->picture.saturation, s->picture.hue);
+    struct audio_settings a = audio_from_pref(s->audio);
+    snprintf(buf, n,
+             "{\"range\":\"%s\",\"brightness\":%d,\"contrast\":%d,\"saturation\":%d,\"hue\":%d,"
+             "\"source\":\"%s\",\"gain\":%d,\"mute\":%s}",
+             hd60s_range_names[s->range], s->picture.brightness, s->picture.contrast, s->picture.saturation, s->picture.hue,
+             audio_source_name(a.source), a.gain_half_db, a.mute ? "true" : "false");
 }
 
 static const char *json_value(const char *json, const char *key)
@@ -654,6 +661,37 @@ static int json_picture_byte(const char *json, const char *key, int8_t *out)
     return 0;
 }
 
+static int json_audio(const char *json, struct audio_pref *out)
+{
+    struct audio_settings a = AUDIO_DEFAULT;
+    const char *p = json_value(json, "source");
+    if (p) {
+        const char *end = *p++ == '"' ? strchr(p, '"') : NULL;
+        char name[8];
+        if (!end || (size_t)(end - p) >= sizeof name)
+            return -1;
+        memcpy(name, p, (size_t)(end - p));
+        name[end - p] = 0;
+        if (!audio_source_parse(name, &a.source))
+            return -1;
+    }
+    if ((p = json_value(json, "gain"))) {
+        char *end;
+        long v = strtol(p, &end, 10);
+        if (end == p || v < AUDIO_GAIN_MIN || v > AUDIO_GAIN_MAX)
+            return -1;
+        a.gain_half_db = (int)v;
+    }
+    if ((p = json_value(json, "mute"))) {
+        if (strncmp(p, "true", 4) == 0)
+            a.mute = 1;
+        else if (strncmp(p, "false", 5) != 0)
+            return -1;
+    }
+    *out = audio_to_pref(a);
+    return 0;
+}
+
 int hd60s_settings_parse(const char *json, struct hd60s_settings *out)
 {
     const char *p = json ? json_value(json, "range") : NULL;
@@ -667,11 +705,13 @@ int hd60s_settings_parse(const char *json, struct hd60s_settings *out)
     name[end - p] = 0;
     int r = hd60s_range_from_name(name);
     struct hd60s_picture pic = {0};
-    if (r < 0 || json_picture_byte(json, "brightness", &pic.brightness) || json_picture_byte(json, "contrast", &pic.contrast) ||
+    struct audio_pref audio;
+    if (r < 0 || json_audio(json, &audio) || json_picture_byte(json, "brightness", &pic.brightness) || json_picture_byte(json, "contrast", &pic.contrast) ||
         json_picture_byte(json, "saturation", &pic.saturation) || json_picture_byte(json, "hue", &pic.hue))
         return -1;
     out->range = (enum hd60s_range)r;
     out->picture = pic;
+    out->audio = audio;
     return 0;
 }
 

@@ -2,6 +2,7 @@
 
 #include <IOKit/IOKitLib.h>
 #include <IOKit/IOMessage.h>
+#include <os/lock.h>
 #include <os/log.h>
 #include <stdatomic.h>
 #include <time.h>
@@ -122,4 +123,41 @@ void dext_feed_close(void)
 {
     tear_down();
     session = (struct link){0};
+}
+
+static os_unfair_lock control_lock = OS_UNFAIR_LOCK_INIT;
+static io_connect_t control;
+
+int dext_send_settings(const struct hd60s_settings *s)
+{
+    struct audio_settings a = audio_from_pref(s->audio);
+    uint64_t in[] = {(uint64_t)s->range,
+                     (uint64_t)(int64_t)s->picture.brightness,
+                     (uint64_t)(int64_t)s->picture.contrast,
+                     (uint64_t)(int64_t)s->picture.saturation,
+                     (uint64_t)(int64_t)s->picture.hue,
+                     (uint64_t)a.source,
+                     (uint64_t)(int64_t)s->audio.gain_offset,
+                     (uint64_t)(a.mute != 0)};
+    os_unfair_lock_lock(&control_lock);
+    kern_return_t kr = KERN_FAILURE;
+    for (int attempt = 0; attempt < 2 && kr != KERN_SUCCESS; attempt++) {
+        if (!control) {
+            io_service_t driver = find_driver();
+            if (!driver)
+                break;
+            if (IOServiceOpen(driver, mach_task_self(), FRAME_CLIENT_TYPE, &control) != KERN_SUCCESS)
+                control = 0;
+            IOObjectRelease(driver);
+        }
+        if (!control)
+            break;
+        kr = IOConnectCallScalarMethod(control, 0, in, sizeof in / sizeof *in, NULL, NULL);
+        if (kr != KERN_SUCCESS) {
+            IOServiceClose(control);
+            control = 0;
+        }
+    }
+    os_unfair_lock_unlock(&control_lock);
+    return kr == KERN_SUCCESS ? 0 : -1;
 }

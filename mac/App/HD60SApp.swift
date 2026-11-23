@@ -229,9 +229,15 @@ final class Installer: NSObject, ObservableObject, OSSystemExtensionRequestDeleg
 }
 
 enum Tab: CaseIterable {
-    case install, status
+    case install, status, settings
 
-    var label: String { self == .install ? "Install" : "Status" }
+    var label: String {
+        switch self {
+        case .install: "Install"
+        case .status: "Status"
+        case .settings: "Settings"
+        }
+    }
 }
 
 // The hidden title bar still takes this much of the window, so designed offsets from the top are reduced by it.
@@ -367,6 +373,7 @@ struct MainWindow: View {
     @StateObject private var installer = Installer.shared
     @StateObject private var dext = Installer.shared.dext
     @StateObject private var poller = StatusPoller(preview: HD60SApp.launchArguments.value(after: "--preview-facts").flatMap(PreviewFacts.init))
+    @StateObject private var settings = SettingsStore(url: SettingsFile.url(), preview: HD60SApp.launchArguments.value(after: "--preview-settings").flatMap(PictureAudioSettings.init(json:)))
     @State private var tab = Tab.install
     @State private var chosen = HD60SApp.launchArguments.value(after: "--preview-tab") != nil
 
@@ -391,6 +398,7 @@ struct MainWindow: View {
                 switch tab {
                 case .install: InstallTab(installer: installer, dext: dext)
                 case .status: StatusTab(poller: poller)
+                case .settings: SettingsTab(store: settings)
                 }
                 Spacer(minLength: 0)
             }
@@ -412,7 +420,7 @@ struct MainWindow: View {
         }
         .preferredColorScheme(.light)
         .onAppear {
-            if let name = HD60SApp.launchArguments.value(after: "--preview-tab") { tab = name == "status" ? .status : .install }
+            if let name = HD60SApp.launchArguments.value(after: "--preview-tab") { tab = name == "status" ? .status : name == "settings" ? .settings : .install }
             if tab == .status { poller.start() }
         }
         .onDisappear { poller.stop() }

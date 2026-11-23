@@ -4,10 +4,7 @@ enum StatusSnapshot {
     static let fileName = "status.json"
     static let maxAge: TimeInterval = 3
 
-    static func url() -> URL? {
-        guard let group = Bundle.main.object(forInfoDictionaryKey: "HD60SGroup") as? String, !group.isEmpty else { return nil }
-        return FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: group)?.appendingPathComponent(fileName)
-    }
+    static func url() -> URL? { AppGroup.container?.appendingPathComponent(fileName) }
 }
 
 func factsData(_ st: hd60s_status) -> Data {

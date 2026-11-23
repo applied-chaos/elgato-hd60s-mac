@@ -18,7 +18,7 @@ public:
     virtual kern_return_t StartDevice(IOUserAudioObjectID object_id, IOUserAudioStartStopFlags flags) override LOCALONLY;
     virtual kern_return_t StopDevice(IOUserAudioObjectID object_id, IOUserAudioStartStopFlags flags) override LOCALONLY;
     kern_return_t CopyFrameRing(IOMemoryDescriptor **memory) LOCALONLY;
-    void SetSettings(int range, int brightness, int contrast, int saturation, int hue) LOCALONLY;
+    void SetSettings(int range, int brightness, int contrast, int saturation, int hue, int audioSource, int gainOffset, int mute) LOCALONLY;
     void BringUp() LOCALONLY;
     void TearDown(bool deviceGone) LOCALONLY;
     int Control(int in, uint8_t req, uint16_t val, uint16_t idx, uint8_t *buf, uint16_t len) LOCALONLY;
