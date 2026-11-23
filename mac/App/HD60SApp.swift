@@ -45,15 +45,6 @@ enum Status: Equatable {
         }
     }
 
-    var canInstall: Bool {
-        switch self {
-        case .notInstalled, .cancelled, .failed: true
-        case .working, .needsApproval, .installed, .needsRestart: false
-        }
-    }
-
-    var cameraInstalled: Bool { self == .installed || self == .needsApproval }
-
     static func preview(_ name: String) -> Status? {
         switch name {
         case "notInstalled": .notInstalled
@@ -117,10 +108,10 @@ final class Installer: NSObject, ObservableObject, OSSystemExtensionRequestDeleg
     static let shared = Installer()
     @Published var status = Status.working
     @Published var audio = AudioStatus.notInstalled
+    @Published var camera = CameraState.absent
 
     let dext = DextInstaller()
     let flavour = Flavour.current
-    private var installing = true
     private var steps: [CameraStep] = []
     private var planOnQuery = false
     private var query: OSSystemExtensionRequest?
@@ -142,6 +133,7 @@ final class Installer: NSObject, ObservableObject, OSSystemExtensionRequestDeleg
         }
         status = live.contains { $0.isEnabled } ? .installed
             : live.contains { $0.isAwaitingUserApproval } ? .needsApproval : .notInstalled
+        camera = CameraState(active: live.first { $0.isEnabled || $0.isAwaitingUserApproval }?.bundleVersion, bundled: bundledCameraBuild)
     }
 
     func submit(_ request: OSSystemExtensionRequest) {
@@ -160,7 +152,6 @@ final class Installer: NSObject, ObservableObject, OSSystemExtensionRequestDeleg
 
     // One admin prompt; the extension request only follows if it succeeds, so a cancel changes nothing.
     func install() {
-        installing = true
         refreshAudio()
         let activate = {
             self.dext.activate()
@@ -173,12 +164,11 @@ final class Installer: NSObject, ObservableObject, OSSystemExtensionRequestDeleg
         }
     }
 
-    var canInstall: Bool {
-        status.canInstall || flavour.offersReinstall(cameraInstalled: status == .installed, audio: audio, dext: dext.status)
-    }
+    var action: InstallAction { InstallAction.offered(flavour: flavour, camera: camera, audio: audio, dext: dext.status) }
+
+    var canInstall: Bool { action == .install && status != .working && dext.status != .working }
 
     func uninstall() {
-        installing = false
         let deactivate = {
             self.dext.deactivate()
             self.run(CameraStep.uninstall)
@@ -240,7 +230,7 @@ final class Installer: NSObject, ObservableObject, OSSystemExtensionRequestDeleg
     private func advance(ok: Bool = true) {
         let step = steps.removeFirst()
         steps = CameraStep.remaining(steps, quitRefused: step == .requestQuit && !ok)
-        if steps.isEmpty { status = installing ? .installed : .notInstalled } else { runCurrentStep() }
+        if steps.isEmpty { refresh() } else { runCurrentStep() }
     }
 
     private func runAsAdmin(_ script: String, then next: @escaping () -> Void) {
@@ -421,13 +411,13 @@ struct InstallTab: View {
     var body: some View {
         let status = installer.status
         var extra: [String] = []
+        if installer.camera == .outdated { extra.append("Camera extension: update pending, click Install") }
         if installer.flavour.showsAudioPlugIn && audioDiffers { extra.append("Audio plug-in: \(installer.audio.label)") }
         if let label = dext.status.label { extra.append("Driver extension: \(label)") }
         return VStack(alignment: .leading, spacing: 0) {
             StateBlock(dot: status.colour, title: status.title, detail: status.detail, extra: extra)
             Group {
-                switch InstallAction.offered(camera: status.cameraInstalled, audio: installer.audio, dext: dext.status,
-                                          reinstall: installer.flavour.offersReinstall(cameraInstalled: status == .installed, audio: installer.audio, dext: dext.status)) {
+                switch installer.action {
                 case .uninstall:
                     Button("Uninstall", action: installer.uninstall).buttonStyle(BrandButton(primary: false))
                         .disabled(status == .working)

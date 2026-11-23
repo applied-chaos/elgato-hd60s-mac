@@ -35,12 +35,6 @@ func check(_ ok: Bool, _ what: String, line: UInt = #line) {
         check(Flavour.driverKit.uninstallStep(audio: .notInstalled) == .none && Flavour.driverKit.uninstallStep(audio: .installed) == .admin(uninstall), "driverkit uninstall prompts only for a plug-in")
         check(Flavour.driverKit.installStep(audio: .outdated, plugInSource: nil) == .admin(uninstall), "driverkit removes old plug-in")
         check(Flavour.userspace.showsAudioPlugIn && !Flavour.driverKit.showsAudioPlugIn, "plug-in line only in userspace")
-        check(!Flavour.userspace.offersReinstall(cameraInstalled: true, audio: .installed, dext: .notBundled), "userspace unchanged")
-        check(Flavour.driverKit.offersReinstall(cameraInstalled: true, audio: .installed, dext: .installed), "stale plug-in")
-        check(Flavour.driverKit.offersReinstall(cameraInstalled: true, audio: .notInstalled, dext: .notInstalled), "dext missing")
-        check(!Flavour.driverKit.offersReinstall(cameraInstalled: true, audio: .notInstalled, dext: .installed), "all done")
-        check(!Flavour.driverKit.offersReinstall(cameraInstalled: true, audio: .installed, dext: .working), "busy")
-        check(!Flavour.driverKit.offersReinstall(cameraInstalled: false, audio: .installed, dext: .installed), "camera not installed")
         // admin prompt outcomes
         check(AudioPlugin.outcome(exitCode: 0, stderr: "") == .done, "ok")
         check(AudioPlugin.outcome(exitCode: 1, stderr: "execution error: User canceled. (-128)") == .cancelled, "cancel")
@@ -70,16 +64,26 @@ func check(_ ok: Bool, _ what: String, line: UInt = #line) {
         try? fm.removeItem(atPath: tmp)
 
         check(AudioPlugin.appleScript(for: #"echo "a\b""#) == #"do shell script "echo \"a\\b\"" with administrator privileges"#, "applescript escaping")
-        let offered = { InstallAction.offered(camera: $0, audio: $1, dext: $2, reinstall: false) }
-        check(offered(false, .notInstalled, .notBundled) == .install, "nothing installed offers install")
-        check(offered(false, .notInstalled, .notInstalled) == .install, "dext bundled but absent offers install")
-        check(offered(true, .installed, .notBundled) == .uninstall, "camera installed offers uninstall")
-        check(offered(false, .installed, .notBundled) == .uninstall, "orphaned audio plug-in offers uninstall")
-        check(offered(false, .outdated, .notBundled) == .uninstall, "outdated orphan offers uninstall")
-        check(offered(false, .notInstalled, .installed) == .uninstall, "orphaned dext offers uninstall")
-        check(offered(false, .notInstalled, .needsApproval) == .uninstall, "dext awaiting approval offers uninstall")
-        check(offered(false, .notInstalled, .failed("x")) == .install, "failed dext is not installed")
-        check(InstallAction.offered(camera: true, audio: .installed, dext: .notInstalled, reinstall: true) == .install, "reinstall over userspace camera offers install")
+        // Uninstall only when every component is in and current; anything missing or outdated offers Install.
+        let user = { InstallAction.offered(flavour: .userspace, camera: $0, audio: $1, dext: .notBundled) }
+        check(user(.absent, .notInstalled) == .install, "userspace: nothing installed")
+        check(user(.current, .installed) == .uninstall, "userspace: all in")
+        check(user(.current, .notInstalled) == .install, "userspace: plug-in removed, camera left")
+        check(user(.current, .outdated) == .install, "userspace: plug-in outdated")
+        check(user(.outdated, .installed) == .install, "userspace: camera outdated")
+        check(user(.absent, .installed) == .install, "userspace: orphaned plug-in")
+        let dk = { InstallAction.offered(flavour: .driverKit, camera: $0, audio: $1, dext: $2) }
+        check(dk(.current, .notInstalled, .installed) == .uninstall, "driverkit: all in")
+        check(dk(.current, .notInstalled, .needsReplug) == .uninstall, "driverkit: dext waiting for replug is in")
+        check(dk(.current, .notInstalled, .needsApproval) == .uninstall, "driverkit: dext awaiting approval is in")
+        check(dk(.current, .installed, .installed) == .install, "driverkit: stale plug-in")
+        check(dk(.current, .notInstalled, .notInstalled) == .install, "driverkit: dext missing")
+        check(dk(.current, .notInstalled, .failed("x")) == .install, "driverkit: failed dext")
+        check(dk(.outdated, .notInstalled, .installed) == .install, "driverkit: camera outdated")
+        check(dk(.absent, .notInstalled, .installed) == .install, "driverkit: camera missing")
+        check(CameraState(active: nil, bundled: "189") == .absent, "no camera")
+        check(CameraState(active: "188", bundled: "189") == .outdated, "older camera")
+        check(CameraState(active: "189", bundled: "189") == .current, "same camera")
         print("audio plug-in tests passed")
     }
 }

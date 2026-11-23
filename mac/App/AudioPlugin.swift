@@ -12,12 +12,23 @@ enum AudioStatus: Equatable {
     }
 }
 
+enum CameraState: Equatable {
+    case absent, current, outdated
+
+    init(active: String?, bundled: String?) {
+        self = active == nil ? .absent : active == bundled ? .current : .outdated
+    }
+}
+
 enum InstallAction: Equatable {
     case install, uninstall
 
-    static func offered(camera: Bool, audio: AudioStatus, dext: DextStatus, reinstall: Bool) -> InstallAction {
-        let dextIn = dext == .installed || dext == .needsReplug || dext == .needsApproval
-        return !reinstall && (camera || audio != .notInstalled || dextIn) ? .uninstall : .install
+    static func offered(flavour: Flavour, camera: CameraState, audio: AudioStatus, dext: DextStatus) -> InstallAction {
+        let complete = switch flavour {
+        case .userspace: audio == .installed
+        case .driverKit: audio == .notInstalled && [.installed, .needsReplug, .needsApproval].contains(dext)
+        }
+        return camera == .current && complete ? .uninstall : .install
     }
 }
 
@@ -43,11 +54,6 @@ enum Flavour: String {
 
     func uninstallStep(audio: AudioStatus) -> InstallStep {
         self == .driverKit && audio == .notInstalled ? .none : .admin(AudioPlugin.uninstallScript())
-    }
-
-    func offersReinstall(cameraInstalled: Bool, audio: AudioStatus, dext: DextStatus) -> Bool {
-        self == .driverKit && cameraInstalled && dext != .working && dext != .needsApproval
-            && (audio != .notInstalled || dext == .notInstalled)
     }
 }
 
