@@ -149,10 +149,10 @@ static void avi_parse_covers_each_format_and_colorimetry(void)
 static void csc_plan_is_data_driven(void)
 {
     struct hd60s_csc hd, sd, yuv, yuv_sd;
-    hd60s_csc_plan(&(struct hd60s_colour_cfg){INPUT_RGB, 0, RANGE_AUTO, 0}, &hd);
-    hd60s_csc_plan(&(struct hd60s_colour_cfg){INPUT_RGB, 1, RANGE_AUTO, 0}, &sd);
-    hd60s_csc_plan(&(struct hd60s_colour_cfg){INPUT_YCBCR444, 0, RANGE_AUTO, 0}, &yuv);
-    hd60s_csc_plan(&(struct hd60s_colour_cfg){INPUT_YCBCR422, 1, RANGE_AUTO, 0}, &yuv_sd);
+    hd60s_csc_plan(&(struct hd60s_colour_cfg){INPUT_RGB, 0, RANGE_AUTO, 0, {0}}, &hd);
+    hd60s_csc_plan(&(struct hd60s_colour_cfg){INPUT_RGB, 1, RANGE_AUTO, 0, {0}}, &sd);
+    hd60s_csc_plan(&(struct hd60s_colour_cfg){INPUT_YCBCR444, 0, RANGE_AUTO, 0, {0}}, &yuv);
+    hd60s_csc_plan(&(struct hd60s_colour_cfg){INPUT_YCBCR422, 1, RANGE_AUTO, 0, {0}}, &yuv_sd);
     assert(hd.mode == 0x40 && sd.mode == 0x40 && yuv.mode == 0x62);
     assert(memcmp(&hd, &sd, sizeof hd) != 0);
     assert(yuv.m[0] == 0x1000 && yuv.m[4] == 0x1000 && yuv.m[8] == 0x1000 && yuv.m[1] == 0);
@@ -161,8 +161,8 @@ static void csc_plan_is_data_driven(void)
 
 static void frame_colour_follows_source_for_ycbcr(void)
 {
-    struct hd60s_colour_cfg rgb_hd = {INPUT_RGB, 0, RANGE_AUTO, 0}, rgb_sd = {INPUT_RGB, 1, RANGE_AUTO, 0};
-    struct hd60s_colour_cfg y_hd = {INPUT_YCBCR444, 0, RANGE_AUTO, 0}, y_sd = {INPUT_YCBCR422, 1, RANGE_AUTO, 0};
+    struct hd60s_colour_cfg rgb_hd = {INPUT_RGB, 0, RANGE_AUTO, 0, {0}}, rgb_sd = {INPUT_RGB, 1, RANGE_AUTO, 0, {0}};
+    struct hd60s_colour_cfg y_hd = {INPUT_YCBCR444, 0, RANGE_AUTO, 0, {0}}, y_sd = {INPUT_YCBCR422, 1, RANGE_AUTO, 0, {0}};
     assert(hd60s_frame_colour(&rgb_hd, COLOUR_BT601) == COLOUR_BT709); /* device encodes RGB itself */
     assert(hd60s_frame_colour(&rgb_sd, COLOUR_BT709) == COLOUR_BT601);
     assert(hd60s_frame_colour(&y_hd, COLOUR_BT601) == COLOUR_BT601);
@@ -311,7 +311,7 @@ static void transfer_plan_defaults_to_bulk_and_picks_narrowest_sufficient_iso_al
 static struct hd60s_csc plan(enum hd60s_input_format in, int sd, enum hd60s_range r, int quant)
 {
     struct hd60s_csc c;
-    hd60s_csc_plan(&(struct hd60s_colour_cfg){in, sd, r, quant}, &c);
+    hd60s_csc_plan(&(struct hd60s_colour_cfg){in, sd, r, quant, {0}}, &c);
     return c;
 }
 
@@ -370,12 +370,71 @@ static void range_scaling_reaches_hardware_and_follows_the_source(void)
     assert((uint16_t)(fk.mst[0][0x93] << 8 | fk.mst[0][0x94]) == full0);
 }
 
+static void picture_controls_follow_fun_103ea(void)
+{
+    /* Expected words come from a literal port of FUN_103ea's decompile applied to the BT.709 matrix; deltas are from Elgato's default bytes. */
+    static const struct {
+        struct hd60s_picture p;
+        uint16_t m[12];
+    } cases[] = {
+        {{0, 0, 0, 0}, {0x802, 0x365, 0x7e28, 0x78b9, 0xb65, 0x79d6, 0x7f45, 0x127, 0x802, 0x2000, 0x41, 0x2000}},
+        {{63, 0, 0, 0}, {0x802, 0x365, 0x7e28, 0x78b9, 0xb65, 0x79d6, 0x7f45, 0x127, 0x802, 0x2000, 0x1401, 0x2000}},  /* bri 0xc0 */
+        {{-65, 0, 0, 0}, {0x802, 0x365, 0x7e28, 0x78b9, 0xb65, 0x79d6, 0x7f45, 0x127, 0x802, 0x2000, 0x6c01, 0x2000}},  /* bri 0x40 */
+        {{0, 64, 0, 0}, {0x802, 0x517, 0x7e28, 0x78b9, 0x1117, 0x79d6, 0x7f45, 0x1ba, 0x802, 0x2000, 0x41, 0x2000}},  /* con 0xc0 */
+        {{0, 0, -128, 0}, {0xf, 0x365, 0x7ffc, 0x7ff1, 0xb65, 0x7ff4, 0x7fff, 0x127, 0xf, 0x2000, 0x41, 0x2000}},  /* sat 0 */
+        {{0, 0, 64, 0}, {0xc03, 0x365, 0x7d3c, 0x7515, 0xb65, 0x76c1, 0x7ee7, 0x127, 0xc03, 0x2000, 0x41, 0x2000}},  /* sat 0xc0 */
+        {{0, 0, 0, 16}, {0x7ac, 0x365, 0x7d0f, 0x77f0, 0xb65, 0x7ae9, 0x63, 0x127, 0x807, 0x2000, 0x41, 0x2000}},  /* hue 0x90 */
+        {{0, 0, 0, -16}, {0x82f, 0x365, 0x7f4a, 0x79a7, 0xb65, 0x78e2, 0x7e2a, 0x127, 0x7d3, 0x2000, 0x41, 0x2000}},  /* hue 0x70 */
+        {{0, 0, 0, -128}, {0x570, 0x365, 0x627, 0x1f1, 0xb65, 0x76aa, 0x789e, 0x127, 0x32d, 0x2000, 0x41, 0x2000}},  /* hue 0 */
+        {{0, 0, 0, 127}, {0x233, 0x365, 0x7816, 0x771d, 0xb65, 0x373, 0x6af, 0x127, 0x476, 0x2000, 0x41, 0x2000}},  /* hue 0xff */
+        {{127, 127, 127, 127}, {0x462, 0x6c3, 0x703c, 0x6e4b, 0x16b2, 0x6e0, 0xd51, 0x24b, 0x8e3, 0x2000, 0x2781, 0x2000}},  /* all 0xff */
+        {{-128, -128, -128, -128}, {0xa, 0x0, 0xb, 0x3, 0x0, 0x7fed, 0x7ff2, 0x0, 0x6, 0x2000, 0x5881, 0x2000}},  /* all minimum (brightness byte 1) */
+    };
+    for (size_t i = 0; i < sizeof cases / sizeof *cases; i++) {
+        struct hd60s_csc c;
+        hd60s_csc_plan(&(struct hd60s_colour_cfg){INPUT_RGB, 0, RANGE_STANDARD, 0, cases[i].p}, &c);
+        assert(c.mode == 0x40 && memcmp(c.m, cases[i].m, sizeof c.m) == 0);
+    }
+}
+
+enum { COMPRESS_OFFSET_WORD = 0x400, DEFAULT_BRIGHTNESS_WORD = 0x41, BRIGHT_63_WORD = 0x1401 };
+
+static void picture_controls_reach_hardware_live_and_survive_a_range_change(void)
+{
+    struct hd60s d;
+    struct hd60s_parser p = {0};
+    struct hd60s_policy pol;
+    boot(&d, 0);
+    assert(hd60s_init(&d) == 0 && hd60s_start(&d) == 0);
+    p.last_w = 1920, p.last_h = 1080;
+    hd60s_policy_begin(&pol, 0);
+    hd60s_policy_tick(&d, &p, &pol, 0);
+    assert((fk.mst[0][0xa7] << 8 | fk.mst[0][0xa8]) == DEFAULT_BRIGHTNESS_WORD);
+
+    d.settings.picture.brightness = 63;
+    hd60s_policy_tick(&d, &p, &pol, 1000);
+    assert((fk.mst[0][0xa7] << 8 | fk.mst[0][0xa8]) == BRIGHT_63_WORD);
+    int before = fk.requests;
+    hd60s_policy_tick(&d, &p, &pol, 1100);
+    assert(fk.requests == before);
+
+    d.settings.range = RANGE_EXPANDED;
+    d.settings.picture.brightness = 0;
+    fk.mst[2][0x0b] = 0x08;
+    fk.mst[2][0x4a] = 0x08;
+    hd60s_policy_tick(&d, &p, &pol, 2000);
+    assert((fk.mst[0][0xa7] << 8 | fk.mst[0][0xa8]) == COMPRESS_OFFSET_WORD + DEFAULT_BRIGHTNESS_WORD);
+    d.settings.picture.brightness = 63;
+    hd60s_policy_tick(&d, &p, &pol, 3000);
+    assert((fk.mst[0][0xa7] << 8 | fk.mst[0][0xa8]) == COMPRESS_OFFSET_WORD + BRIGHT_63_WORD);
+}
+
 static void settings_round_trip_and_reject_bad_input(void)
 {
-    char buf[64];
+    char buf[128];
     struct hd60s_settings s;
     for (enum hd60s_range r = RANGE_AUTO; r <= RANGE_EXPANDED; r++) {
-        hd60s_settings_print(&(struct hd60s_settings){r}, buf, sizeof buf);
+        hd60s_settings_print(&(struct hd60s_settings){r, {0}}, buf, sizeof buf);
         assert(hd60s_settings_parse(buf, &s) == 0 && s.range == r);
     }
     assert(hd60s_settings_parse("{ \"range\" : \"expanded\" }", &s) == 0 && s.range == RANGE_EXPANDED);
@@ -385,6 +444,14 @@ static void settings_round_trip_and_reject_bad_input(void)
     assert(hd60s_settings_parse(NULL, &s) < 0);
     assert(hd60s_range_from_name("auto") == RANGE_AUTO && hd60s_range_from_name("standard") == RANGE_STANDARD);
     assert(hd60s_range_from_name("full") < 0);
+
+    struct hd60s_settings pic = {RANGE_STANDARD, {-128, 5, 127, -1}};
+    hd60s_settings_print(&pic, buf, sizeof buf);
+    assert(hd60s_settings_parse(buf, &s) == 0 && s.range == RANGE_STANDARD && memcmp(&s.picture, &pic.picture, sizeof pic.picture) == 0);
+    assert(hd60s_settings_parse("{\"range\":\"auto\"}", &s) == 0 && !s.picture.hue && !s.picture.brightness); /* older files */
+    s.picture.hue = 9;
+    assert(hd60s_settings_parse("{\"range\":\"auto\",\"hue\":128}", &s) < 0 && s.picture.hue == 9);
+    assert(hd60s_settings_parse("{\"range\":\"auto\",\"contrast\":\"x\"}", &s) < 0);
 }
 
 static void link_flags_decode_hdcp_and_dvi(void)
@@ -439,6 +506,8 @@ int main(void)
     frame_colour_follows_source_for_ycbcr();
     policy_follows_source_colour_format();
     colour_range_scales_the_matrix();
+    picture_controls_follow_fun_103ea();
+    picture_controls_reach_hardware_live_and_survive_a_range_change();
     auto_range_follows_source_quantisation();
     range_scaling_reaches_hardware_and_follows_the_source();
     settings_round_trip_and_reject_bad_input();
