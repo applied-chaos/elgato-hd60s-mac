@@ -13,7 +13,7 @@ static struct hd60s_status healthy(void)
     s.access = ACCESS_OK;
     s.owner = OWNER_CLI;
     s.fw_valid = 1;
-    s.mcu_version = HD60S_KNOWN_MCU[0];
+    s.mcu_version = HD60S_DEV_MCU;
     return s;
 }
 
@@ -176,5 +176,25 @@ int main(void)
     assert(hd60s_exact_fps(50.2, (struct hd60s_rate){0, 0}, 0) == 50.2);
     assert(fabs(hd60s_rate_hz((struct hd60s_rate){240, 1}) - 23.97602) < 1e-4);
 
+    /* Every warning bit has a code and a message, and nothing sets a bit past WARN_COUNT. */
+    s = (struct hd60s_status){0};
+    for (int i = 0; i < WARN_COUNT; i++) {
+        assert(*hd60s_warning_code((enum hd60s_warning)i));
+        hd60s_warning_message((enum hd60s_warning)i, &s, msg, sizeof msg);
+        assert(*msg && !strchr(msg, '%'));
+    }
+    for (int a = 0; a < ACCESS_COUNT; a++)
+        for (int v = 0; v < SPEED_COUNT; v++) {
+            s = healthy();
+            s.access = (enum hd60s_access)a;
+            s.speed = (enum hd60s_speed)v;
+            assert(hd60s_warnings(&s) >> WARN_COUNT == 0);
+        }
+    for (int o = 0; o < OWNER_COUNT; o++) {
+        s = healthy();
+        s.owner = (enum hd60s_owner)o;
+        char *j = render(hd60s_print_json, &s);
+        assert(strstr(j, "\"owner\":{\"kind\":\"") && !strstr(j, "\"kind\":\"\""));
+    }
     return 0;
 }

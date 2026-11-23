@@ -8,17 +8,17 @@
 #include "device.h"
 #include "parser.h"
 
-enum hd60s_speed { SPEED_UNKNOWN, SPEED_LOW, SPEED_FULL, SPEED_HIGH, SPEED_SUPER, SPEED_SUPER_PLUS };
-enum hd60s_access { ACCESS_NOT_TRIED, ACCESS_OK, ACCESS_BUSY, ACCESS_FAILED };
-enum hd60s_owner { OWNER_NONE, OWNER_CLI, OWNER_CAMERA, OWNER_DRIVER, OWNER_OTHER, OWNER_UNKNOWN };
-enum hd60s_signal { SIGNAL_UNKNOWN, SIGNAL_NONE, SIGNAL_ACTIVE, SIGNAL_UNSUPPORTED, SIGNAL_HDCP };
-enum hd60s_link_type { SOURCE_UNKNOWN, SOURCE_HDMI, SOURCE_DVI };
-enum hd60s_field_order { FIELD_NONE, FIELD_TOP_FIRST };
-enum hd60s_warning { WARN_NO_DEVICE, WARN_NOT_SUPERSPEED, WARN_BUSY, WARN_OPEN_FAILED };
+/* Every enum ends in a _COUNT sentinel; status.c checks its name tables against it at compile time. */
+enum hd60s_speed { SPEED_UNKNOWN, SPEED_LOW, SPEED_FULL, SPEED_HIGH, SPEED_SUPER, SPEED_SUPER_PLUS, SPEED_COUNT };
+enum hd60s_access { ACCESS_NOT_TRIED, ACCESS_OK, ACCESS_BUSY, ACCESS_FAILED, ACCESS_COUNT };
+enum hd60s_owner { OWNER_NONE, OWNER_CLI, OWNER_CAMERA, OWNER_DRIVER, OWNER_OTHER, OWNER_UNKNOWN, OWNER_COUNT };
+enum hd60s_signal { SIGNAL_UNKNOWN, SIGNAL_NONE, SIGNAL_ACTIVE, SIGNAL_UNSUPPORTED, SIGNAL_HDCP, SIGNAL_COUNT };
+enum hd60s_link_type { SOURCE_UNKNOWN, SOURCE_HDMI, SOURCE_DVI, SOURCE_COUNT };
+enum hd60s_field_order { FIELD_NONE, FIELD_TOP_FIRST, FIELD_COUNT };
+enum hd60s_warning { WARN_NO_DEVICE, WARN_NOT_SUPERSPEED, WARN_BUSY, WARN_OPEN_FAILED, WARN_COUNT };
 
-/* MCU versions seen on working devices (b0<<16 | b1<<8 | b2). */
-extern const uint32_t HD60S_KNOWN_MCU[];
-extern const int HD60S_KNOWN_MCU_COUNT;
+/* Firmware seen on the dev unit; any other MCU version is reported as untested. */
+#define HD60S_DEV_MCU 0x110311
 
 /* The status report shared by the CLI and the app (the app reads the JSON form). */
 struct hd60s_status {

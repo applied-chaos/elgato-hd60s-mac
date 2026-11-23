@@ -7,10 +7,78 @@
 #include <math.h>
 #include <string.h>
 
-#define WARNING_COUNT (WARN_OPEN_FAILED + 1)
+struct named {
+    int value;
+    const char *code; /* JSON form */
+    const char *text; /* prose; a printf format for warnings */
+};
 
-const uint32_t HD60S_KNOWN_MCU[] = {0x110311}; /* observed on the dev unit */
-const int HD60S_KNOWN_MCU_COUNT = 1;
+#define COUNT_OF(t) (sizeof(t) / sizeof *(t))
+#define NAME_OF(t, v) named((t), COUNT_OF(t), (v))
+
+static const struct named *named(const struct named *t, size_t n, int v)
+{
+    for (size_t i = 0; i < n; i++)
+        if (t[i].value == v)
+            return &t[i];
+    return t;
+}
+
+static const struct named speeds[] = {
+    {SPEED_UNKNOWN, "unknown", "unknown speed"},
+    {SPEED_LOW, "low", "USB 1.0 low speed (1.5 Mb/s)"},
+    {SPEED_FULL, "full", "USB 1.1 full speed (12 Mb/s)"},
+    {SPEED_HIGH, "high", "USB 2.0 high speed (480 Mb/s)"},
+    {SPEED_SUPER, "super", "USB 3.0 SuperSpeed (5 Gb/s)"},
+    {SPEED_SUPER_PLUS, "super_plus", "USB 3.1+ SuperSpeed+ (10 Gb/s or more)"},
+};
+static const struct named accesses[] = {
+    {ACCESS_NOT_TRIED, "not_tried", ""}, {ACCESS_OK, "ok", ""}, {ACCESS_BUSY, "busy", ""}, {ACCESS_FAILED, "failed", ""},
+};
+static const struct named owners[] = {
+    {OWNER_UNKNOWN, "unknown", "unknown"},
+    {OWNER_NONE, "nobody", "nobody"},
+    {OWNER_CLI, "cli", "this tool"},
+    {OWNER_CAMERA, "camera_extension", "camera extension"},
+    {OWNER_DRIVER, "driver_extension", "driver extension"},
+    {OWNER_OTHER, "other", "another process"},
+};
+static const struct named signals[] = {
+    {SIGNAL_UNKNOWN, "unknown", ""}, {SIGNAL_NONE, "none", ""}, {SIGNAL_ACTIVE, "active", ""},
+    {SIGNAL_UNSUPPORTED, "unsupported", ""}, {SIGNAL_HDCP, "hdcp", ""},
+};
+static const struct named sources[] = {
+    {SOURCE_UNKNOWN, "unknown", "unknown"}, {SOURCE_HDMI, "hdmi", "HDMI"}, {SOURCE_DVI, "dvi", "DVI"},
+};
+static const struct named field_orders[] = {{FIELD_NONE, "none", ""}, {FIELD_TOP_FIRST, "top_first", ""}};
+static const struct named colours[] = {
+    {COLOUR_UNKNOWN, "unknown", "unknown"}, {COLOUR_BT709, "bt709", "BT.709"}, {COLOUR_BT601, "bt601", "BT.601"},
+};
+static const struct named inputs[] = {
+    {INPUT_RGB, "rgb", "RGB"}, {INPUT_YCBCR444, "ycbcr444", "YCbCr 4:4:4"}, {INPUT_YCBCR422, "ycbcr422", "YCbCr 4:2:2"},
+};
+/* Warning text takes: 1 speed, 2 " (port ...)", 3 owner, 4 ": " or "", 5 owner process name. */
+static const struct named warnings[] = {
+    {WARN_NO_DEVICE, "no_device", "No HD60 S found. Check the USB cable and that the device is powered."},
+    {WARN_NOT_SUPERSPEED, "not_superspeed",
+     "Connected at %1$s%2$s, not SuperSpeed. Use a USB 3 port, a USB 3 cable, and no USB 2 hub."},
+    {WARN_BUSY, "busy", "Device is in use by %3$s%4$s%5$s. Signal details unavailable until it lets go."},
+    {WARN_OPEN_FAILED, "open_failed", "Could not open the device. Unplug and replug it."},
+};
+
+_Static_assert(COUNT_OF(speeds) == SPEED_COUNT, "speeds table");
+_Static_assert(COUNT_OF(accesses) == ACCESS_COUNT, "accesses table");
+_Static_assert(COUNT_OF(owners) == OWNER_COUNT, "owners table");
+_Static_assert(COUNT_OF(signals) == SIGNAL_COUNT, "signals table");
+_Static_assert(COUNT_OF(sources) == SOURCE_COUNT, "sources table");
+_Static_assert(COUNT_OF(field_orders) == FIELD_COUNT, "field orders table");
+_Static_assert(COUNT_OF(colours) == COLOUR_COUNT, "colours table");
+_Static_assert(COUNT_OF(inputs) == INPUT_COUNT, "inputs table");
+_Static_assert(COUNT_OF(warnings) == WARN_COUNT, "warnings table");
+_Static_assert(WARN_COUNT <= 32, "warnings are bits of a uint32_t");
+
+/* MCU versions seen on working devices (b0<<16 | b1<<8 | b2). */
+static const uint32_t known_mcu[] = {HD60S_DEV_MCU};
 
 enum hd60s_speed hd60s_speed_from_libusb(int v)
 {
@@ -62,8 +130,8 @@ int hd60s_size_standard(int w, int h)
 
 static int fw_known(uint32_t v)
 {
-    for (int i = 0; i < HD60S_KNOWN_MCU_COUNT; i++)
-        if (HD60S_KNOWN_MCU[i] == v)
+    for (size_t i = 0; i < COUNT_OF(known_mcu); i++)
+        if (known_mcu[i] == v)
             return 1;
     return 0;
 }
@@ -89,67 +157,7 @@ uint32_t hd60s_warnings(const struct hd60s_status *s)
 
 const char *hd60s_warning_code(enum hd60s_warning w)
 {
-    switch (w) {
-    case WARN_NO_DEVICE:
-        return "no_device";
-    case WARN_NOT_SUPERSPEED:
-        return "not_superspeed";
-    case WARN_BUSY:
-        return "busy";
-    case WARN_OPEN_FAILED:
-        return "open_failed";
-    }
-    return "";
-}
-
-static const char *speed_name(enum hd60s_speed v)
-{
-    switch (v) {
-    case SPEED_LOW:
-        return "USB 1.0 low speed (1.5 Mb/s)";
-    case SPEED_FULL:
-        return "USB 1.1 full speed (12 Mb/s)";
-    case SPEED_HIGH:
-        return "USB 2.0 high speed (480 Mb/s)";
-    case SPEED_SUPER:
-        return "USB 3.0 SuperSpeed (5 Gb/s)";
-    case SPEED_SUPER_PLUS:
-        return "USB 3.1+ SuperSpeed+ (10 Gb/s or more)";
-    case SPEED_UNKNOWN:
-        break;
-    }
-    return "unknown speed";
-}
-
-static const char *speed_code(enum hd60s_speed v)
-{
-    static const char *const names[] = {"unknown", "low", "full", "high", "super", "super_plus"};
-    return names[v];
-}
-
-static const char *owner_name(enum hd60s_owner o)
-{
-    switch (o) {
-    case OWNER_NONE:
-        return "nobody";
-    case OWNER_CLI:
-        return "this tool";
-    case OWNER_CAMERA:
-        return "camera extension";
-    case OWNER_DRIVER:
-        return "driver extension";
-    case OWNER_OTHER:
-        return "another process";
-    case OWNER_UNKNOWN:
-        break;
-    }
-    return "unknown";
-}
-
-static const char *owner_code(enum hd60s_owner o)
-{
-    static const char *const names[] = {"nobody", "cli", "camera_extension", "driver_extension", "other", "unknown"};
-    return names[o];
+    return NAME_OF(warnings, w)->code;
 }
 
 void hd60s_warning_message(enum hd60s_warning w, const struct hd60s_status *s, char *buf, size_t n)
@@ -157,23 +165,8 @@ void hd60s_warning_message(enum hd60s_warning w, const struct hd60s_status *s, c
     char at[64] = "";
     if (s->port_path[0])
         snprintf(at, sizeof at, " (port %s)", s->port_path);
-    switch (w) {
-    case WARN_NO_DEVICE:
-        snprintf(buf, n, "No HD60 S found. Check the USB cable and that the device is powered.");
-        break;
-    case WARN_NOT_SUPERSPEED:
-        snprintf(buf, n,
-                 "Connected at %s%s, not SuperSpeed. Use a USB 3 port, a USB 3 cable, and no USB 2 hub.",
-                 speed_name(s->speed), at);
-        break;
-    case WARN_BUSY:
-        snprintf(buf, n, "Device is in use by %s%s%s. Signal details unavailable until it lets go.",
-                 owner_name(s->owner), s->owner_name[0] ? ": " : "", s->owner_name);
-        break;
-    case WARN_OPEN_FAILED:
-        snprintf(buf, n, "Could not open the device. Unplug and replug it.");
-        break;
-    }
+    snprintf(buf, n, NAME_OF(warnings, w)->text, NAME_OF(speeds, s->speed)->text, at, NAME_OF(owners, s->owner)->text,
+             s->owner_name[0] ? ": " : "", s->owner_name);
 }
 
 static void untested_message(const struct hd60s_status *s, char *buf, size_t n)
@@ -187,26 +180,6 @@ enum hd60s_link_type hd60s_link_type_from_link(struct hd60s_link l, enum hd60s_s
     return signal == SIGNAL_ACTIVE || signal == SIGNAL_HDCP ? (l.dvi ? SOURCE_DVI : SOURCE_HDMI) : SOURCE_UNKNOWN;
 }
 
-static const char *source_name(enum hd60s_link_type s)
-{
-    return s == SOURCE_DVI ? "DVI" : "HDMI";
-}
-
-static const char *colour_name(enum hd60s_colour c)
-{
-    return c == COLOUR_BT709 ? "BT.709" : c == COLOUR_BT601 ? "BT.601" : "unknown";
-}
-
-static const char *input_name(enum hd60s_input_format f)
-{
-    return f == INPUT_YCBCR444 ? "YCbCr 4:4:4" : f == INPUT_YCBCR422 ? "YCbCr 4:2:2" : "RGB";
-}
-
-static const char *input_code(enum hd60s_input_format f)
-{
-    return f == INPUT_YCBCR444 ? "ycbcr444" : f == INPUT_YCBCR422 ? "ycbcr422" : "rgb";
-}
-
 static void mode_text(const struct hd60s_status *s, char *buf, size_t n)
 {
     snprintf(buf, n, "%dx%d%s %.2f fps", s->width, s->height, s->interlaced ? "i" : "p", s->fps);
@@ -217,16 +190,17 @@ void hd60s_print_text(const struct hd60s_status *s, FILE *out)
     char line[256], mode[64];
     fprintf(out, "Device:   %s", s->present ? "present" : "not found");
     if (s->present)
-        fprintf(out, ", %s%s%s", speed_name(s->speed), s->port_path[0] ? ", port " : "", s->port_path);
+        fprintf(out, ", %s%s%s", NAME_OF(speeds, s->speed)->text, s->port_path[0] ? ", port " : "", s->port_path);
     fputc('\n', out);
     if (s->fw_valid)
         fprintf(out, "Firmware: MCU %02x.%02x.%02x\n", s->mcu_version >> 16 & 0xff,
                 s->mcu_version >> 8 & 0xff, s->mcu_version & 0xff);
     else
         fprintf(out, "Firmware: unknown\n");
-    fprintf(out, "Owner:    %s%s%s\n", owner_name(s->owner), s->owner_name[0] ? ": " : "", s->owner_name);
+    fprintf(out, "Owner:    %s%s%s\n", NAME_OF(owners, s->owner)->text, s->owner_name[0] ? ": " : "", s->owner_name);
     switch (s->signal) {
     case SIGNAL_UNKNOWN:
+    case SIGNAL_COUNT:
         fprintf(out, "Signal:   unknown (device not opened)\n");
         break;
     case SIGNAL_NONE:
@@ -240,14 +214,14 @@ void hd60s_print_text(const struct hd60s_status *s, FILE *out)
         break;
     case SIGNAL_ACTIVE:
         mode_text(s, mode, sizeof mode);
-        fprintf(out, "Signal:   %s%s\n", mode, s->field_order == FIELD_TOP_FIRST ? ", top field first" : "");
-        fprintf(out, "Input:    %s\n", input_name(s->input_format));
-        fprintf(out, "Colour:   %s\n", colour_name(s->colour));
+        fprintf(out, "Signal:   %s%s\n", mode, s->field_order == FIELD_NONE ? "" : ", top field first");
+        fprintf(out, "Input:    %s\n", NAME_OF(inputs, s->input_format)->text);
+        fprintf(out, "Colour:   %s\n", NAME_OF(colours, s->colour)->text);
         fprintf(out, "Range:    %s\n", hd60s_range_names[s->range]);
         break;
     }
     if (s->source != SOURCE_UNKNOWN)
-        fprintf(out, "Source:   %s\n", source_name(s->source));
+        fprintf(out, "Source:   %s\n", NAME_OF(sources, s->source)->text);
     if (s->audio_rate) {
         fprintf(out, "Audio:    %d Hz, %d channels", s->audio_rate, s->audio_channels);
         if (s->audio_source_rate)
@@ -264,7 +238,7 @@ void hd60s_print_text(const struct hd60s_status *s, FILE *out)
         untested_message(s, line, sizeof line);
         fprintf(out, "Note:     %s\n", line);
     }
-    for (int i = 0; i < WARNING_COUNT; i++)
+    for (int i = 0; i < WARN_COUNT; i++)
         if (w >> i & 1) {
             hd60s_warning_message((enum hd60s_warning)i, s, line, sizeof line);
             fprintf(out, "Warning:  %s\n", line);
@@ -285,21 +259,20 @@ static void json_str(FILE *out, const char *s)
 
 void hd60s_print_json(const struct hd60s_status *s, FILE *out)
 {
-    static const char *const state[] = {"unknown", "none", "active", "unsupported", "hdcp"};
     char msg[256];
     fprintf(out, "{\"device\":{\"present\":%s,\"port\":", s->present ? "true" : "false");
     if (s->port_path[0])
         json_str(out, s->port_path);
     else
         fputs("null", out);
-    fprintf(out, ",\"speed\":\"%s\",\"access\":\"%s\",\"firmware\":", speed_code(s->speed),
-            s->access == ACCESS_OK ? "ok" : s->access == ACCESS_BUSY ? "busy" : s->access == ACCESS_FAILED ? "failed" : "not_tried");
+    fprintf(out, ",\"speed\":\"%s\",\"access\":\"%s\",\"firmware\":", NAME_OF(speeds, s->speed)->code,
+            NAME_OF(accesses, s->access)->code);
     if (s->fw_valid)
         fprintf(out, "\"%02x.%02x.%02x\"", s->mcu_version >> 16 & 0xff, s->mcu_version >> 8 & 0xff,
                 s->mcu_version & 0xff);
     else
         fputs("null", out);
-    fprintf(out, ",\"owner\":{\"kind\":\"%s\",\"pid\":", owner_code(s->owner));
+    fprintf(out, ",\"owner\":{\"kind\":\"%s\",\"pid\":", NAME_OF(owners, s->owner)->code);
     if (s->owner_pid)
         fprintf(out, "%d", s->owner_pid);
     else
@@ -309,16 +282,16 @@ void hd60s_print_json(const struct hd60s_status *s, FILE *out)
         json_str(out, s->owner_name);
     else
         fputs("null", out);
-    fprintf(out, "}},\"signal\":{\"state\":\"%s\"", state[s->signal]);
+    fprintf(out, "}},\"signal\":{\"state\":\"%s\"", NAME_OF(signals, s->signal)->code);
     if (s->signal == SIGNAL_ACTIVE)
         fprintf(out,
                 ",\"width\":%d,\"height\":%d,\"interlaced\":%s,\"field_order\":\"%s\",\"fps\":%.2f,\"input\":\"%s\",\"colour\":\"%s\",\"range\":\"%s\"",
                 s->width, s->height, s->interlaced ? "true" : "false",
-                s->field_order == FIELD_TOP_FIRST ? "top_first" : "none", s->fps, input_code(s->input_format),
-                s->colour == COLOUR_BT709 ? "bt709" : s->colour == COLOUR_BT601 ? "bt601" : "unknown",
+                NAME_OF(field_orders, s->field_order)->code, s->fps, NAME_OF(inputs, s->input_format)->code,
+                NAME_OF(colours, s->colour)->code,
                 hd60s_range_names[s->range]);
     if (s->source != SOURCE_UNKNOWN)
-        fprintf(out, ",\"source\":\"%s\"", s->source == SOURCE_DVI ? "dvi" : "hdmi");
+        fprintf(out, ",\"source\":\"%s\"", NAME_OF(sources, s->source)->code);
     if (s->signal == SIGNAL_UNSUPPORTED)
         fprintf(out, ",\"width\":%d,\"height\":%d", s->width, s->height);
     fputs("},\"audio\":", out);
@@ -334,7 +307,7 @@ void hd60s_print_json(const struct hd60s_status *s, FILE *out)
             s->frames, s->discarded, s->runts, s->long_lines);
     uint32_t w = hd60s_warnings(s);
     int first = 1;
-    for (int i = 0; i < WARNING_COUNT; i++)
+    for (int i = 0; i < WARN_COUNT; i++)
         if (w >> i & 1) {
             hd60s_warning_message((enum hd60s_warning)i, s, msg, sizeof msg);
             fprintf(out, "%s{\"code\":\"%s\",\"message\":", first ? "" : ",", hd60s_warning_code((enum hd60s_warning)i));

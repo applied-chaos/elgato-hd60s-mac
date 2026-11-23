@@ -634,7 +634,7 @@ void hd60s_policy_tick(struct hd60s *d, struct hd60s_parser *p, struct hd60s_pol
 
 int hd60s_range_from_name(const char *name)
 {
-    for (int r = RANGE_AUTO; r <= RANGE_EXPANDED; r++)
+    for (int r = 0; r < RANGE_COUNT; r++)
         if (name && strcmp(name, hd60s_range_names[r]) == 0)
             return r;
     return -1;
