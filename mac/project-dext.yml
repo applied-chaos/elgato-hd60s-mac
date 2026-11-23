@@ -59,7 +59,7 @@ targets:
             idProduct: 116
             IOUserClass: HD60SDriver
             IOUserServerName: $(PRODUCT_BUNDLE_IDENTIFIER)
-            UserClientProperties:
+            IOUserAudioDriverUserClientProperties:
               IOClass: IOUserUserClient
               IOUserClass: IOUserAudioDriverUserClient
             HD60SUserClientProperties:

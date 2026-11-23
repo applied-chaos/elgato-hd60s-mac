@@ -39,17 +39,17 @@
 			<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
 			<key>IOProviderClass</key>
 			<string>IOUSBHostDevice</string>
-			<key>IOUserClass</key>
-			<string>HD60SDriver</string>
-			<key>IOUserServerName</key>
-			<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
-			<key>UserClientProperties</key>
+			<key>IOUserAudioDriverUserClientProperties</key>
 			<dict>
 				<key>IOClass</key>
 				<string>IOUserUserClient</string>
 				<key>IOUserClass</key>
 				<string>IOUserAudioDriverUserClient</string>
 			</dict>
+			<key>IOUserClass</key>
+			<string>HD60SDriver</string>
+			<key>IOUserServerName</key>
+			<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
 			<key>idProduct</key>
 			<integer>116</integer>
 			<key>idVendor</key>
