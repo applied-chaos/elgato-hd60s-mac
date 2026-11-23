@@ -63,7 +63,6 @@ func check(_ ok: Bool, _ what: String, line: UInt = #line) {
         check(ran(AudioPlugin.uninstallScript(directory: hal, restart: "true")) == 0, "uninstall idempotent")
         check(AudioPlugin.notInstalledHint(appPath: "/Applications/HD60S.app") == "Click Install.", "in Applications")
         check(AudioPlugin.notInstalledHint(appPath: "/Users/x/Downloads/HD60S.app") == "Move the app to Applications, then click Install.", "elsewhere")
-        // Bundle(path:) caches Info.plist per path, so a removed or replaced plug-in would still read as before.
         let plist = { (v: String) in
             try! fm.createDirectory(atPath: hal + "/HD60SAudio.driver/Contents", withIntermediateDirectories: true)
             (["CFBundleVersion": v] as NSDictionary).write(toFile: hal + "/HD60SAudio.driver/Contents/Info.plist", atomically: true)
@@ -77,7 +76,6 @@ func check(_ ok: Bool, _ what: String, line: UInt = #line) {
         try? fm.removeItem(atPath: tmp)
 
         check(AudioPlugin.appleScript(for: #"echo "a\b""#) == #"do shell script "echo \"a\\b\"" with administrator privileges"#, "applescript escaping")
-        // Uninstall only when every component is in and current; anything missing or outdated offers Install.
         let user = { InstallAction.offered(flavour: .userspace, camera: $0, audio: $1, dext: .notBundled) }
         check(user(.absent, .notInstalled) == .install, "userspace: nothing installed")
         check(user(.current, .installed) == .uninstall, "userspace: all in")
@@ -97,6 +95,8 @@ func check(_ ok: Bool, _ what: String, line: UInt = #line) {
         check(CameraState(active: nil, bundled: "189") == .absent, "no camera")
         check(CameraState(active: "188", bundled: "189") == .outdated, "older camera")
         check(CameraState(active: "189", bundled: "189") == .current, "same camera")
+        check(CameraState(settledAfter: .install) == .current && CameraState(settledAfter: .uninstall) == .absent,
+              "a finished plan sets the camera state without waiting for the system list")
         print("audio plug-in tests passed")
     }
 }

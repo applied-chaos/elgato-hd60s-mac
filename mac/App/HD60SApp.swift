@@ -113,6 +113,7 @@ final class Installer: NSObject, ObservableObject, OSSystemExtensionRequestDeleg
     let dext = DextInstaller()
     let flavour = Flavour.current
     private var steps: [CameraStep] = []
+    private var running = InstallAction.install
     private var planOnQuery = false
     private var query: OSSystemExtensionRequest?
 
@@ -129,7 +130,10 @@ final class Installer: NSObject, ObservableObject, OSSystemExtensionRequestDeleg
         if planOnQuery {
             planOnQuery = false
             let plan = CameraStep.install(active: live.first { $0.isEnabled }?.bundleVersion, bundled: bundledCameraBuild)
-            return plan.isEmpty ? (status = .installed) : run(plan)
+            guard plan.isEmpty else { return run(plan) }
+            camera = .current
+            status = .installed
+            return
         }
         status = live.contains { $0.isEnabled } ? .installed
             : live.contains { $0.isAwaitingUserApproval } ? .needsApproval : .notInstalled
@@ -151,6 +155,7 @@ final class Installer: NSObject, ObservableObject, OSSystemExtensionRequestDeleg
 
     // One admin prompt; the extension request only follows if it succeeds, so a cancel changes nothing.
     func install() {
+        running = .install
         refreshAudio()
         let activate = {
             self.dext.activate()
@@ -165,9 +170,19 @@ final class Installer: NSObject, ObservableObject, OSSystemExtensionRequestDeleg
 
     var action: InstallAction { InstallAction.offered(flavour: flavour, camera: camera, audio: audio, dext: dext.status) }
 
-    var canInstall: Bool { action == .install && status != .working && dext.status != .working }
+    var busy: Bool { status == .working || dext.status == .working }
+
+    var canInstall: Bool { action == .install && !busy }
+
+    // Picks up changes made outside the app, but never over a result the user still needs to read.
+    func refreshIfIdle() {
+        guard HD60SApp.launchArguments.value(after: "--preview-state") == nil, !busy,
+              ![.cancelled, .needsRestart].contains(status) else { return }
+        refresh()
+    }
 
     func uninstall() {
+        running = .uninstall
         let deactivate = {
             self.dext.deactivate()
             self.run(CameraStep.uninstall)
@@ -229,7 +244,10 @@ final class Installer: NSObject, ObservableObject, OSSystemExtensionRequestDeleg
     private func advance(ok: Bool = true) {
         let step = steps.removeFirst()
         steps = CameraStep.remaining(steps, quitRefused: step == .requestQuit && !ok)
-        if steps.isEmpty { refresh() } else { runCurrentStep() }
+        guard steps.isEmpty else { return runCurrentStep() }
+        camera = CameraState(settledAfter: running)
+        status = running == .install ? .installed : .notInstalled
+        refreshAudio()
     }
 
     private func runAsAdmin(_ script: String, then next: @escaping () -> Void) {
@@ -419,7 +437,7 @@ struct InstallTab: View {
                 switch installer.action {
                 case .uninstall:
                     Button("Uninstall", action: installer.uninstall).buttonStyle(BrandButton(primary: false))
-                        .disabled(status == .working)
+                        .disabled(installer.busy)
                 case .install:
                     Button("Install", action: installer.install).buttonStyle(BrandButton(primary: true))
                         .keyboardShortcut(.defaultAction).disabled(!installer.canInstall)
@@ -488,9 +506,7 @@ struct MainWindow: View {
         }
         .onDisappear { poller.stop() }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
-            guard HD60SApp.launchArguments.value(after: "--preview-state") == nil,
-                  ![.working, .cancelled, .needsRestart].contains(installer.status), dext.status != .working else { return }
-            installer.refresh()
+            installer.refreshIfIdle()
         }
         .onChange(of: tab) { _, new in new == .status ? poller.start() : poller.stop() }
         .onChange(of: installer.status) { _, new in

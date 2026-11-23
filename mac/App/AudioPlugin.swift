@@ -18,6 +18,11 @@ enum CameraState: Equatable {
     init(active: String?, bundled: String?) {
         self = active == nil ? .absent : active == bundled ? .current : .outdated
     }
+
+    // macOS's extension list can lag a finished request, so the plan's own result decides.
+    init(settledAfter action: InstallAction) {
+        self = action == .install ? .current : .absent
+    }
 }
 
 enum InstallAction: Equatable {
