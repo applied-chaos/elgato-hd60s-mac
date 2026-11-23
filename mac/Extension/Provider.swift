@@ -134,6 +134,7 @@ final class StreamSource: NSObject, CMIOExtensionStreamSource {
     private var unsupported = UnsupportedWatch()
     private let unsupportedNs = OSAllocatedUnfairLock(initialState: UInt64(0))
     private var timer: DispatchSourceTimer?
+    private let outputQueue = DispatchQueue(label: "hd60s output")
     private var ticks = 0
     #if DEXT
     private var pushed: (settings: hd60s_settings, connections: UInt32)?
@@ -198,9 +199,17 @@ final class StreamSource: NSObject, CMIOExtensionStreamSource {
     #if DEXT
     private let dextFrame = UnsafeMutablePointer<UInt8>.allocate(capacity: Int(DEXT_FRAME_BYTES))
 
+    private var pollTimer: DispatchSourceTimer?
+
     func startStream() throws {
         guard timer == nil else { return }
         lastFrameNs.withLock { $0 = 0 }
+        // Polling only at the output rate beats against a 60 Hz source and drops about 2 frames a second.
+        let poll = DispatchSource.makeTimerSource(queue: outputQueue)
+        poll.schedule(deadline: .now(), repeating: .milliseconds(2), leeway: .microseconds(500))
+        poll.setEventHandler { [unowned self] in pollDext() }
+        poll.resume()
+        pollTimer = poll
         restartTimer()
     }
 
@@ -208,7 +217,9 @@ final class StreamSource: NSObject, CMIOExtensionStreamSource {
         guard timer != nil else { return }
         timer?.cancel()
         timer = nil
-        dext_feed_close()
+        pollTimer?.cancel()
+        pollTimer = nil
+        outputQueue.sync { dext_feed_close() }
         statusOut.clear()
         if let scaler { VTPixelTransferSessionInvalidate(scaler) }
         scaler = nil
@@ -242,7 +253,7 @@ final class StreamSource: NSObject, CMIOExtensionStreamSource {
 
     private func restartTimer() {
         timer?.cancel()
-        let timer = DispatchSource.makeTimerSource(queue: DispatchQueue(label: "hd60s slate"))
+        let timer = DispatchSource.makeTimerSource(queue: outputQueue)
         let period = rate.withLock { $0.duration.seconds }
         timer.schedule(deadline: .now(), repeating: .nanoseconds(Int(period * 1e9)), leeway: .milliseconds(1))
         timer.setEventHandler { [unowned self] in tick() }
@@ -362,19 +373,21 @@ final class StreamSource: NSObject, CMIOExtensionStreamSource {
         statusOut.setLink(hdcp: protected, dvi: dvi)
     }
 
+    #if DEXT
+    private func pollDext() {
+        var info = fr_frame()
+        guard dext_feed_poll(dextFrame, Int(DEXT_FRAME_BYTES), &info) != 0 else { return }
+        let c = dext_feed_counters()
+        statusOut.frame(width: Int(info.width), height: Int(info.height), interlaced: info.interlaced != 0,
+                        topFirst: c.top_first != 0, bt601: info.colour == Int32(COLOUR_BT601.rawValue), nowNs: hostNs())
+        statusOut.setFirmware(c.mcu_version)
+        send(dextFrame, Int(info.width), Int(info.height), info.interlaced != 0, wide: info.wide != 0,
+             bt601: info.colour == Int32(COLOUR_BT601.rawValue))
+    }
+    #endif
+
     private func tick() {
         refreshLink()
-        #if DEXT
-        var info = fr_frame()
-        if dext_feed_poll(dextFrame, Int(DEXT_FRAME_BYTES), &info) != 0 {
-            let c = dext_feed_counters()
-            statusOut.frame(width: Int(info.width), height: Int(info.height), interlaced: info.interlaced != 0,
-                            topFirst: c.top_first != 0, bt601: info.colour == Int32(COLOUR_BT601.rawValue), nowNs: hostNs())
-            statusOut.setFirmware(c.mcu_version)
-            send(dextFrame, Int(info.width), Int(info.height), info.interlaced != 0, wide: info.wide != 0,
-                 bt601: info.colour == Int32(COLOUR_BT601.rawValue))
-        }
-        #endif
         let protected = hdcp.withLock { $0 }
         if protected || hostNs() &- lastFrameNs.withLock({ $0 }) > noFramesTimeoutNs {
             let odd = hostNs() &- unsupportedNs.withLock({ $0 }) < 1_000_000_000

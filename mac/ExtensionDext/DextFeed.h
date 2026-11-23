@@ -9,7 +9,7 @@
 
 enum { DEXT_FRAME_BYTES = FR_SLOT_BYTES };
 
-/* Camera side of the driver extension: reconnects on its own. Call from one queue at the output rate.
+/* Camera side of the driver extension: reconnects on its own. Call from one serial queue.
  * Copies a frame newer than the last one into out and returns 1, else 0. */
 int dext_feed_poll(uint8_t *out, size_t cap, struct fr_frame *info);
 /* Newest frame's size and the driver's counters, without copying the frame. 0 when not connected; info is zeroed until a frame arrives. */
