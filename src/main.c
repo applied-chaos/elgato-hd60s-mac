@@ -78,13 +78,36 @@ static void report(const struct capture *c)
 static int usage(void)
 {
     fprintf(stderr, "usage: hd60s info\n"
-                    "       hd60s status [--json] [-r range]\n"
-                    "       hd60s capture [-n frames] [-o out.uyvy|-] [-a out.pcm] [-s hdmi|line|mix] [-g dB] [-m] [-r range] [--iso]\n"
+                    "       hd60s status [--json] [-r range] [picture]\n"
+                    "       hd60s capture [-n frames] [-o out.uyvy|-] [-a out.pcm] [-s hdmi|line|mix] [-g dB] [-m] [-r range] [--iso] [picture]\n"
                     "video: raw YUY2 (ffmpeg yuyv422); audio: 48 kHz s16le stereo\n"
                     "transfer: bulk by default, --iso for isochronous (flaky hubs)\n"
                     "audio: -s source (default hdmi), -g gain -12..12 dB in 0.5 steps (default -6), -m mute\n"
-                    "range: auto (default), standard, expanded (source is full-range RGB)\n");
+                    "range: auto (default), standard, expanded (source is full-range RGB)\n"
+                    "picture: --brightness N, --contrast N, --saturation N, --hue N, each -128..127 from Elgato's default (0)\n");
     return 2;
+}
+
+/* Takes --brightness/--contrast/--saturation/--hue N out of argv. 0, or -1 on a bad value. */
+static int picture_args(int *argc, char **argv, struct hd60s_picture *pic)
+{
+    static const char *const names[] = {"--brightness", "--contrast", "--saturation", "--hue"};
+    int8_t *const fields[] = {&pic->brightness, &pic->contrast, &pic->saturation, &pic->hue};
+    for (int i = 2; i < *argc; i++)
+        for (int k = 0; k < 4; k++) {
+            if (strcmp(argv[i], names[k]) != 0)
+                continue;
+            char *end;
+            long v = i + 1 < *argc ? strtol(argv[i + 1], &end, 10) : 0;
+            if (i + 1 >= *argc || *end || v < -128 || v > 127)
+                return -1;
+            *fields[k] = (int8_t)v;
+            memmove(&argv[i], &argv[i + 2], (size_t)(*argc - i - 1) * sizeof *argv);
+            *argc -= 2;
+            i--;
+            break;
+        }
+    return 0;
 }
 
 /* Reports without failing: a busy or missing device is a result, not an error. */
@@ -104,7 +127,9 @@ int main(int argc, char **argv)
     static uint8_t frame[FRAME_CAP];
     if (argc < 2)
         return usage();
-    struct hd60s_settings settings = {RANGE_AUTO};
+    struct hd60s_settings settings = {RANGE_AUTO, {0}};
+    if (picture_args(&argc, argv, &settings.picture) < 0)
+        return usage();
     if (strcmp(argv[1], "status") == 0) {
         int json = 0;
         for (int i = 2; i < argc; i++) {

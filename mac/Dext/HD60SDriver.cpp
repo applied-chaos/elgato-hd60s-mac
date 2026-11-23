@@ -59,7 +59,7 @@ struct HD60SDriver_IVars {
     Xfer xfers[kXfers];
     uint32_t generation = 0;
     bool streamFailed = false, stopping = false;
-    int range = RANGE_AUTO; /* written by the user client, read on the USB queue */
+    uint64_t settings = 0; /* packed by SetSettings: range, then the four picture deltas; 0 is auto and neutral */
 
     struct hd60s dev;
     struct hd60s_parser parser;
@@ -321,9 +321,21 @@ kern_return_t HD60SDriver::CopyFrameRing(IOMemoryDescriptor **memory)
     return kIOReturnSuccess;
 }
 
-void HD60SDriver::SetRange(int range)
+void HD60SDriver::SetSettings(int range, int brightness, int contrast, int saturation, int hue)
 {
-    __atomic_store_n(&ivars->range, range, __ATOMIC_RELAXED);
+    uint64_t packed = static_cast<uint64_t>(range) | static_cast<uint64_t>(static_cast<uint8_t>(brightness)) << 8 |
+                      static_cast<uint64_t>(static_cast<uint8_t>(contrast)) << 16 |
+                      static_cast<uint64_t>(static_cast<uint8_t>(saturation)) << 24 | static_cast<uint64_t>(static_cast<uint8_t>(hue)) << 32;
+    __atomic_store_n(&ivars->settings, packed, __ATOMIC_RELAXED);
+}
+
+static hd60s_settings loadSettings(const uint64_t *packed)
+{
+    uint64_t v = __atomic_load_n(packed, __ATOMIC_RELAXED);
+    hd60s_settings s = {};
+    s.range = static_cast<enum hd60s_range>(v & 0xff);
+    s.picture = {static_cast<int8_t>(v >> 8), static_cast<int8_t>(v >> 16), static_cast<int8_t>(v >> 24), static_cast<int8_t>(v >> 32)};
+    return s;
 }
 
 int HD60SDriver::Control(int in, uint8_t req, uint16_t val, uint16_t idx, uint8_t *buf, uint16_t len)
@@ -392,7 +404,7 @@ void HD60SDriver::BringUp()
 {
     auto *iv = ivars;
     memset(&iv->dev, 0, sizeof iv->dev);
-    iv->dev.settings.range = static_cast<enum hd60s_range>(__atomic_load_n(&iv->range, __ATOMIC_RELAXED));
+    iv->dev.settings = loadSettings(&iv->settings);
     iv->dev.usb = {this, HD60S_BULK, ctrlThunk, sleepThunk};
     iv->streamFailed = false;
     iv->generation++;
@@ -460,7 +472,7 @@ void IMPL(HD60SDriver, PolicyOccurred)
     case LINK_NONE: break;
     }
     if (iv->link.state == LINK_UP) {
-        iv->dev.settings.range = static_cast<enum hd60s_range>(__atomic_load_n(&iv->range, __ATOMIC_RELAXED));
+        iv->dev.settings = loadSettings(&iv->settings);
         hd60s_policy_tick(&iv->dev, &iv->parser, &iv->policy, static_cast<long>(nowMs(iv)));
     }
     if (static_cast<uint64_t>(now) - iv->lastAudioLog >= kAudioLogMs) {

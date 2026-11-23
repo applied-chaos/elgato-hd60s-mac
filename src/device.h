@@ -38,12 +38,19 @@ struct hd60s_usb {
     void (*sleep_ms)(void *ctx, int ms);
 };
 
+/* Picture controls as offsets from Elgato's defaults (device bytes 0x81, 0x80, 0x80, 0x80), so zero is neutral. */
+struct hd60s_picture {
+    int8_t brightness, contrast, saturation, hue;
+};
+
 /* User settings the device owner applies; the app writes them, the camera extension and dext read them. */
 struct hd60s_settings {
     enum hd60s_range range;
+    struct hd60s_picture picture;
 };
 
-/* Parses {"range":"auto|standard|expanded"}; out is untouched on failure. */
+/* Parses {"range":"auto|standard|expanded"} plus optional "brightness", "contrast", "saturation", "hue" integers
+ * in -128..127 (absent = 0); out is untouched on failure. */
 int hd60s_settings_parse(const char *json, struct hd60s_settings *out);
 void hd60s_settings_print(const struct hd60s_settings *s, char *buf, size_t n);
 /* Range for a name as above, or -1. */
@@ -54,6 +61,7 @@ struct hd60s_colour_cfg {
     int sd;
     enum hd60s_range range;
     int quant; /* AVI RGB quantisation range Q (b2:0x4A bits 3:2): 1 limited, 2 full */
+    struct hd60s_picture picture;
 };
 
 /* MST3367 CSC: bank 0 reg 0x92 mode and the 12 words written from reg 0x93. */
