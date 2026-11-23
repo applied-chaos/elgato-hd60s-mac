@@ -16,6 +16,8 @@ final class StatusPublisher {
 
     private let state = OSAllocatedUnfairLock(initialState: State())
     private let latest = OSAllocatedUnfairLock(initialState: Data?.none)
+    // CMIO caches property values in each client, so they only see new facts when told.
+    var onChange: ((String) -> Void)?
     private static let activeWithinNs: UInt64 = 1_000_000_000
 
     func setClient(pid: pid_t, signingID: String?) {
@@ -84,6 +86,7 @@ final class StatusPublisher {
         st.source = hd60s_link_type_from_link(hd60s_link(hdcp: s.hdcp ? 1 : 0, dvi: s.dvi ? 1 : 0, hdmi: 0), st.signal)
         let data = factsData(st)
         latest.withLock { $0 = data }
+        onChange?(String(decoding: data, as: UTF8.self))
     }
 
     var factsJSON: String? { latest.withLock { $0.map { String(decoding: $0, as: UTF8.self) } } }
@@ -91,6 +94,7 @@ final class StatusPublisher {
     func clear() {
         latest.withLock { $0 = nil }
         state.withLock { $0 = State() }
+        onChange?("")
     }
 
     // Outermost app bundle, so a browser's helper process reports as the browser.

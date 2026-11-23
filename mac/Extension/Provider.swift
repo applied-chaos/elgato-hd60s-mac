@@ -55,6 +55,7 @@ final class DeviceSource: NSObject, CMIOExtensionDeviceSource {
                                      deviceID: UUID(uuidString: "5A1F3C2E-60D5-4E8B-9C4A-0FD900740001")!,
                                      legacyDeviceID: "net.mintopia.hd60s", source: self)
         streamSource = StreamSource()
+        streamSource.notify = { [unowned self] in device.notifyPropertiesChanged($0) }
         do {
             try device.addStream(streamSource.stream)
         } catch {
@@ -87,9 +88,7 @@ final class DeviceSource: NSObject, CMIOExtensionDeviceSource {
             case .status: streamSource.factsJSON ?? ""
             case .quit: ""
             }
-            p.setPropertyState(CMIOExtensionPropertyState(value: value as NSString,
-                                                          attributes: c == .status ? .readOnlyPropertyAttribute : nil),
-                               forProperty: c.property)
+            p.setPropertyState(c.state(value), forProperty: c.property)
         }
         return p
     }
@@ -111,6 +110,10 @@ final class DeviceSource: NSObject, CMIOExtensionDeviceSource {
 
 extension CameraProperty {
     var property: CMIOExtensionProperty { CMIOExtensionProperty(rawValue: key) }
+
+    func state(_ value: String) -> CMIOExtensionPropertyState<AnyObject> {
+        CMIOExtensionPropertyState(value: value as NSString, attributes: self == .status ? .readOnlyPropertyAttribute : nil)
+    }
 }
 
 final class StreamSource: NSObject, CMIOExtensionStreamSource {
@@ -140,6 +143,7 @@ final class StreamSource: NSObject, CMIOExtensionStreamSource {
     private var lastPublishNs: UInt64 = 0
     private let dev = UnsafeMutablePointer<hd60s>.allocate(capacity: 1)
     private let settings = OSAllocatedUnfairLock(initialState: SettingsFile.load() ?? hd60s_settings())
+    var notify: (([CMIOExtensionProperty: CMIOExtensionPropertyState<AnyObject>]) -> Void)?
 
     override init() {
         var desc: CMFormatDescription?
@@ -160,6 +164,7 @@ final class StreamSource: NSObject, CMIOExtensionStreamSource {
         slate = makeSlate("Slate")
         unsupportedSlate = makeSlate("Unsupported")
         hdcpSlate = makeSlate("HDCP")
+        statusOut.onChange = { [unowned self] in notify?([CameraProperty.status.property: CameraProperty.status.state($0)]) }
         stream = CMIOExtensionStream(localizedName: "Elgato HD60 S", streamID: UUID(), direction: .source,
                                      clockType: .hostTime, source: self)
     }
@@ -406,6 +411,7 @@ final class StreamSource: NSObject, CMIOExtensionStreamSource {
         var latest = next
         guard hd60s_settings_equal(&previous, &latest) == 0 else { return }
         persistForRestart(next)
+        notify?([CameraProperty.settings.property: CameraProperty.settings.state(SettingsFile.json(next))])
         #if !DEXT
         hd60s_settings_publish(dev, &latest)
         #endif

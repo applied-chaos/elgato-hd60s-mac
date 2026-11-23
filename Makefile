@@ -106,6 +106,11 @@ build/test_camera_property: tests/test_camera_property.swift mac/Shared/CameraPr
 	@mkdir -p build
 	swiftc -parse-as-library -o $@ mac/Shared/CameraProperty.swift tests/test_camera_property.swift
 
+build/test_status_publisher: tests/test_status_publisher.swift mac/Extension/StatusPublisher.swift mac/Shared/StatusFacts.swift src/status.c src/status.h src/parser.c src/parser.h
+	@mkdir -p build/status_publisher
+	for f in status parser; do $(CC) $(CFLAGS) -c -o build/status_publisher/$$f.o src/$$f.c || exit 1; done
+	swiftc -parse-as-library -import-objc-header src/status.h -o $@ mac/Extension/StatusPublisher.swift mac/Shared/StatusFacts.swift tests/test_status_publisher.swift build/status_publisher/*.o
+
 build/test_frame_rates: tests/test_frame_rates.swift mac/Extension/FrameRate.swift
 	@mkdir -p build
 	swiftc -parse-as-library -o $@ mac/Extension/FrameRate.swift tests/test_frame_rates.swift
@@ -127,7 +132,7 @@ build/test_settings_model: tests/test_settings_model.swift mac/App/SettingsModel
 	for f in device audio tx parser colour link; do $(CC) $(CFLAGS) -c -o build/settings_model/$$f.o src/$$f.c || exit 1; done
 	swiftc -parse-as-library -import-objc-header src/device.h -Ibuild -o $@ mac/App/SettingsModel.swift mac/App/SettingsStore.swift mac/Shared/Settings.swift mac/Shared/AppGroup.swift tests/test_settings_model.swift build/settings_model/*.o
 
-test: build/test_parser build/test_device build/test_framering build/test_link build/test_tx build/test_audio build/test_deinterlace build/test_ring build/test_aclock build/test_status build/test_plugin build/test_audio_plugin build/test_frame_fit build/test_frame_rates build/test_camera_property build/test_camera_replace build/test_status_view build/test_settings_model
+test: build/test_parser build/test_device build/test_framering build/test_link build/test_tx build/test_audio build/test_deinterlace build/test_ring build/test_aclock build/test_status build/test_plugin build/test_audio_plugin build/test_frame_fit build/test_frame_rates build/test_camera_property build/test_status_publisher build/test_camera_replace build/test_status_view build/test_settings_model
 	build/test_parser
 	build/test_device
 	build/test_framering
@@ -143,6 +148,7 @@ test: build/test_parser build/test_device build/test_framering build/test_link b
 	build/test_frame_fit
 	build/test_frame_rates
 	build/test_camera_property
+	build/test_status_publisher
 	build/test_camera_replace
 	build/test_status_view
 	build/test_settings_model
