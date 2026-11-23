@@ -90,13 +90,13 @@ Work happens on `develop`; `main` holds releases. Pushing a `vX.Y.Z` tag builds,
 |---|---|
 | `MACOS_CERTIFICATE_P12` | Developer ID Application certificate and key, base64 `.p12` |
 | `MACOS_CERTIFICATE_PASSWORD` | Its password |
-| `MACOS_APP_PROFILE` | Developer ID provisioning profile for `net.mintopia.hd60s`, base64. Must include the `net.mintopia.hd60s` App Group |
-| `MACOS_CAMERA_PROFILE` | Developer ID provisioning profile for `net.mintopia.hd60s.camera`, base64. Must include the `net.mintopia.hd60s` App Group |
+| `MACOS_APP_PROFILE` | Developer ID provisioning profile for `net.mintopia.hd60s`, base64. Must authorise the App Group (made after enabling App Groups on the App ID) |
+| `MACOS_CAMERA_PROFILE` | Developer ID provisioning profile for `net.mintopia.hd60s.camera`, base64. Must authorise the App Group (made after enabling App Groups on the App ID) |
 | `ASC_KEY_P8` | App Store Connect API key, base64 `.p8`, for notarisation |
 | `ASC_KEY_ID` | Its key ID |
 | `ASC_ISSUER_ID` | Its issuer ID |
 
-The app and the camera extension share settings through the `net.mintopia.hd60s` App Group (`46A7P6HL4Z.net.mintopia.hd60s`), so both App IDs need the App Groups capability with that group, and both profiles must be generated after adding it. The release workflow fails early if either profile lacks it.
+The app and the camera extension share settings through the `net.mintopia.hd60s` App Group (`46A7P6HL4Z.net.mintopia.hd60s`), so both App IDs need the App Groups capability ticked. The group is team-prefixed, so it needs no registration under Identifiers → App Groups: profiles generated after ticking the capability authorise `46A7P6HL4Z.*`, which covers it. Regenerate any profile made before that. The release workflow fails early if either profile doesn't authorise the group.
 
 ### DriverKit DMG
 

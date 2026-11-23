@@ -238,10 +238,10 @@ check_profile() {
 GROUP="$TEAM.net.mintopia.hd60s"
 
 require_app_group() {
-  if security cms -D -i "$1" | plutil -extract Entitlements.com\\.apple\\.security\\.application-groups json -o - - 2>/dev/null | grep -q "\"$GROUP\""; then
+  if security cms -D -i "$1" | plutil -extract Entitlements.com\\.apple\\.security\\.application-groups json -o - - 2>/dev/null | grep -qE "\"($GROUP|$TEAM\\.\\*)\""; then
     return 0
   fi
-  warn "profile lacks the App Group $GROUP: add App Groups to the App ID with that group, then regenerate the profile"
+  warn "profile doesn't authorise the App Group $GROUP: enable App Groups on the App ID, then regenerate the profile"
   return 1
 }
 
@@ -298,7 +298,7 @@ say "Local Xcode builds usually registered both App IDs already. Check them:"
 open_url "https://developer.apple.com/account/resources/identifiers/list"
 step "net.mintopia.hd60s must exist, with System Extension and App Groups ticked under Capabilities."
 step "net.mintopia.hd60s.camera must exist, with App Groups ticked."
-step "Both App IDs need the App Group $GROUP (Configure next to App Groups; add the group first under Identifiers → App Groups if it isn't listed)."
+step "The group $GROUP is team-prefixed, so it needs no registration: ticking App Groups on both App IDs makes new profiles authorise $TEAM.*."
 step "The app and camera Developer ID profiles must include that group, so regenerate any profile made before you added it."
 step "If an App ID is missing: + → App IDs → App → Explicit Bundle ID, tick the capabilities, Register."
 pause "Press Enter once both are there"

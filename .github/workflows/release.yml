@@ -56,8 +56,8 @@ jobs:
             security cms -D -i "$file" > "$decoded"
             team="$(plutil -extract Entitlements.com\\.apple\\.developer\\.team-identifier raw "$decoded")"
             plutil -extract Entitlements.com\\.apple\\.security\\.application-groups json -o - "$decoded" 2>/dev/null \
-              | jq -e --arg g "$team.net.mintopia.hd60s" 'index($g)' >/dev/null \
-              || { echo "::error::$var profile lacks the App Group $team.net.mintopia.hd60s; add it to the App ID, regenerate the profile and re-run scripts/setup-signing.sh"; exit 1; }
+              | jq -e --arg g "$team.net.mintopia.hd60s" --arg w "$team.*" 'index($g) // index($w)' >/dev/null \
+              || { echo "::error::$var profile doesn't authorise the App Group $team.net.mintopia.hd60s; enable App Groups on the App ID, regenerate the profile and re-run scripts/setup-signing.sh"; exit 1; }
             name="$(plutil -extract Name raw "$decoded")"
             uuid="$(plutil -extract UUID raw "$decoded")"
             cp "$file" "$profiles/$uuid.provisionprofile"
