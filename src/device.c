@@ -295,6 +295,19 @@ struct hd60s_link hd60s_read_link(struct hd60s *d)
     return d->link = hd60s_link_from_regs(digital != 0, r01, r34);
 }
 
+enum { AVI_WAIT_POLLS = 20 };
+
+/* b2:0x0B bit3 is a latch that clears when read, so poll for it as Elgato does. */
+const struct tx_mode *hd60s_avi_mode(struct hd60s *d)
+{
+    for (int i = 0; i < AVI_WAIT_POLLS; i++) {
+        if (mst_read(d, 2, 0x0b) & 0x08)
+            return tx_mode_from_vic((unsigned)mst_read(d, 2, 0x4b) & 0x7f);
+        msleep(d, 5);
+    }
+    return NULL;
+}
+
 /* FUN_1caf4 (routing) and FUN_1ce18 (gain) for d->audio. */
 static void apply_audio(struct hd60s *d)
 {
@@ -598,6 +611,10 @@ void hd60s_policy_tick(struct hd60s *d, struct hd60s_parser *p, struct hd60s_pol
     if (now_ms - s->win_start >= MODE_WINDOW_MS) {
         double fps = s->frames * (s->interlaced ? 2000.0 : 1000.0) / (double)(now_ms - s->win_start);
         s->mode = s->frames && s->run * 4 >= s->frames * 3 ? tx_mode_find(s->w, s->h, s->interlaced, fps) : NULL;
+        if (d->link.hdcp) {
+            const struct tx_mode *m = hd60s_avi_mode(d);
+            s->mode = m ? m : s->mode;
+        }
         s->frames = 0;
         s->win_start = now_ms;
     }

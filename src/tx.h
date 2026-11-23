@@ -49,6 +49,8 @@ struct tx {
 
 /* NULL if the timing has no VIC. fps is the frame rate, fields counted for interlaced. */
 const struct tx_mode *tx_mode_find(int width, int height, int interlaced, double fps);
+/* NULL if the VIC is not one the transmitter can send. 16:9 SD VICs 3, 7, 18, 22 share the 4:3 timings. */
+const struct tx_mode *tx_mode_from_vic(unsigned vic);
 int tx_edid_parse(const uint8_t *edid, size_t len, struct tx_sink *out);
 void tx_avi(uint8_t out[6], enum tx_colour c, const struct tx_mode *m);
 /* N for a TMDS clock and sample rate (32, 44.1 or 48 kHz, the rates every HDMI sink must take); 0 if unsupported. */

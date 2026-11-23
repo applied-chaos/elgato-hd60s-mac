@@ -663,6 +663,20 @@ static void hdcp_tv(struct fake *f, int hdmi)
     for (uint8_t i = 0; i < 8; i++) f->reg[0][0x30 + i] = AN_SAMPLE[i];
 }
 
+static void test_hdcp_runs_for_register_derived_mode(void)
+{
+    struct fake f;
+    struct tx t;
+    struct tx_bus b;
+    assert(tx_mode_from_vic(16) == m1080p60() && tx_mode_from_vic(4)->vic == 4 && !tx_mode_from_vic(0) && !tx_mode_from_vic(99));
+    assert(tx_mode_from_vic(3)->wide && tx_mode_from_vic(3)->pclk_khz == 27000 && tx_mode_from_vic(22)->rep == 1);
+    setup(&f, &t, &b);
+    hdcp_tv(&f, 1);
+    tx_start(&t, &b);
+    tx_poll(&t, &b, tx_mode_from_vic(16), 0, 1);
+    assert(t.hdcp == HDCP_ON && f.reg[1][0x5b] == 16 && unmuted(&f));
+}
+
 static void test_hdcp_table(void)
 {
     assert(tx_hdcp_next(HDCP_OFF, 0, 0) == HDCP_NOP);
@@ -883,6 +897,7 @@ int main(void)
     test_init_when_lost();
     test_absent();
     test_hdcp_table();
+    test_hdcp_runs_for_register_derived_mode();
     test_hdcp_writes_allowed_and_ddc_read_only();
     test_hdcp_bad_bksv_retries();
     test_hdcp_failures();

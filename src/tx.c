@@ -29,6 +29,18 @@ const struct tx_mode *tx_mode_find(int width, int height, int interlaced, double
     return best;
 }
 
+const struct tx_mode *tx_mode_from_vic(unsigned vic)
+{
+    static const struct tx_mode wide_sd[] = {{3, 0, 1, 27000}, {7, 1, 1, 27000}, {18, 0, 1, 27000}, {22, 1, 1, 27000}};
+    for (size_t i = 0; i < sizeof modes / sizeof *modes; i++)
+        if (modes[i].m.vic == vic)
+            return &modes[i].m;
+    for (size_t i = 0; i < sizeof wide_sd / sizeof *wide_sd; i++)
+        if (wide_sd[i].vic == vic)
+            return &wide_sd[i];
+    return NULL;
+}
+
 static int block_ok(const uint8_t *b)
 {
     unsigned s = 0;
