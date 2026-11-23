@@ -1,7 +1,6 @@
 import CoreMediaIO
 import Foundation
 
-// App end of the custom CMIO properties the camera extension publishes on its device.
 enum CameraLink {
     private static let system = CMIOObjectID(kCMIOObjectSystemObject)
 
@@ -10,7 +9,6 @@ enum CameraLink {
                                   mElement: CMIOObjectPropertyElement(kCMIOObjectPropertyElementMain))
     }
 
-    /// The HD60 S camera device, found by the property only our extension carries.
     static func device() -> CMIOObjectID? {
         var a = address(UInt32(kCMIOHardwarePropertyDevices))
         var size: UInt32 = 0
@@ -18,8 +16,8 @@ enum CameraLink {
         var ids = [CMIOObjectID](repeating: 0, count: Int(size) / MemoryLayout<CMIOObjectID>.size)
         var used: UInt32 = 0
         guard CMIOObjectGetPropertyData(system, &a, 0, nil, size, &used, &ids) == noErr else { return nil }
-        var probe = address(CameraProperty.settings.selector)
-        return ids.first { CMIOObjectHasProperty($0, &probe) }
+        var ours = address(CameraProperty.settings.selector)
+        return ids.first { CMIOObjectHasProperty($0, &ours) }
     }
 
     static func get(_ p: CameraProperty) -> String? {

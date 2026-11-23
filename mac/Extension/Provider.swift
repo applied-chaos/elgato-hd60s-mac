@@ -83,7 +83,7 @@ final class DeviceSource: NSObject, CMIOExtensionDeviceSource {
         for c in CameraProperty.allCases where properties.contains(c.property) {
             let value = switch c {
             case .settings: SettingsFile.json(streamSource.currentSettings)
-            case .status: streamSource.statusJSON
+            case .status: streamSource.factsJSON ?? ""
             case .quit: ""
             }
             p.setPropertyState(CMIOExtensionPropertyState(value: value as NSString,
@@ -395,7 +395,7 @@ final class StreamSource: NSObject, CMIOExtensionStreamSource {
 
     var currentSettings: hd60s_settings { settings.withLock { $0 } }
 
-    var statusJSON: String { statusOut.snapshot }
+    var factsJSON: String? { statusOut.factsJSON }
 
     // Saved in this process's own container so a restart before the app next pushes keeps the user's choice.
     func apply(_ next: hd60s_settings) {

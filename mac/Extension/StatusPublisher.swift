@@ -86,8 +86,7 @@ final class StatusPublisher {
         latest.withLock { $0 = data }
     }
 
-    /// Last published facts JSON; empty while no stream runs.
-    var snapshot: String { latest.withLock { $0.map { String(decoding: $0, as: UTF8.self) } } ?? "" }
+    var factsJSON: String? { latest.withLock { $0.map { String(decoding: $0, as: UTF8.self) } } }
 
     func clear() {
         latest.withLock { $0 = nil }

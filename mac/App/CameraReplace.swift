@@ -24,8 +24,7 @@ enum CameraProcess {
 
     static func matches(path: String) -> Bool { path.contains(bundleName) }
 
-    /// Installed extension bundle for a running executable; nil for anything outside /Library/SystemExtensions.
-    static func bundle(ofExecutable path: String) -> String? {
+    static func installedBundle(ofExecutable path: String) -> String? {
         guard path.hasPrefix("/Library/SystemExtensions/"), let r = path.range(of: bundleName) else { return nil }
         return String(path[..<r.upperBound])
     }
@@ -49,7 +48,7 @@ enum CameraProcess {
         NSDictionary(contentsOfFile: path + "/Contents/Info.plist")?["CFBundleVersion"] as? String
     }
 
-    static func runningBuilds() -> [String] { runningPaths().compactMap(bundle(ofExecutable:)).compactMap(build(ofBundle:)) }
+    static func runningBuilds() -> [String] { runningPaths().compactMap(installedBundle(ofExecutable:)).compactMap(build(ofBundle:)) }
 
     // Polls on a background queue; false on timeout.
     static func waitUntil(timeout: TimeInterval, _ condition: @escaping () -> Bool) async -> Bool {

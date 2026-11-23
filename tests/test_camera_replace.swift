@@ -20,9 +20,9 @@ func check(_ ok: Bool, _ what: String, line: UInt = #line) {
         check(CameraProcess.matches(path: exe), "extension binary matches")
         check(!CameraProcess.matches(path: "/Applications/HD60S.app/Contents/MacOS/HD60S"), "app does not match")
         check(!CameraProcess.matches(path: "/usr/bin/true"), "other does not match")
-        check(CameraProcess.bundle(ofExecutable: exe) == "/Library/SystemExtensions/ABC/net.mintopia.hd60s.camera.systemextension",
+        check(CameraProcess.installedBundle(ofExecutable: exe) == "/Library/SystemExtensions/ABC/net.mintopia.hd60s.camera.systemextension",
               "bundle from executable")
-        check(CameraProcess.bundle(ofExecutable: "/Applications/HD60S.app/Contents/Library/SystemExtensions/net.mintopia.hd60s.camera.systemextension/Contents/MacOS/x") == nil,
+        check(CameraProcess.installedBundle(ofExecutable: "/Applications/HD60S.app/Contents/Library/SystemExtensions/net.mintopia.hd60s.camera.systemextension/Contents/MacOS/x") == nil,
               "copy inside the app is not the installed one")
 
         var polls = 0

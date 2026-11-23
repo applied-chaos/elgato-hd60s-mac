@@ -26,7 +26,6 @@ func check(_ ok: Bool, _ what: String, line: UInt = #line) {
         var desc: CMFormatDescription?
         CMVideoFormatDescriptionCreate(allocator: kCFAllocatorDefault, codecType: kCVPixelFormatType_422YpCbCr8_yuvs,
                                        width: 1920, height: 1080, extensions: nil, formatDescriptionOut: &desc)
-        // One format: AVFoundation folds formats sharing a description into the first, hiding the other rates.
         let f = FrameRate.streamFormat(desc!)
         check(f.minFrameDuration == FrameRate.ntsc.duration && f.maxFrameDuration == FrameRate.p24.duration, "range spans 59.94 to 24")
         check(f.validFrameDurations == d, "every rate is a valid duration")
