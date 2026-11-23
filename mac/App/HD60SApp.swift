@@ -28,7 +28,7 @@ enum Status: Equatable {
         case .working: "Waiting for macOS to finish the request."
         case .needsApproval: "Approve it in System Settings > General > Login Items & Extensions > Camera Extensions."
         case .installed: "The HD60 S now appears as a camera and microphone in your apps."
-        case .needsRestart: "Restart your Mac to finish."
+        case .needsRestart: "Restart your Mac to finish installing the camera."
         case .cancelled: "Administrator permission was not given. Nothing was changed."
         case .failed(let message): message
         }
@@ -203,19 +203,28 @@ final class Installer: NSObject, ObservableObject, OSSystemExtensionRequestDeleg
         switch step {
         case .deactivate: submit(.deactivationRequest(forExtensionWithIdentifier: extensionID, queue: .main))
         case .activate: submit(.activationRequest(forExtensionWithIdentifier: extensionID, queue: .main))
-        case .awaitExit:
+        case .requestQuit:
             status = .working
+            Task { @MainActor in advance(ok: await Task.detached { CameraLink.set(.quit, "") }.value) }
+        case .awaitExit:
+            Task { @MainActor in advance(ok: await CameraProcess.waitUntil(timeout: 5) { !CameraProcess.isRunning() }) }
+        case .verify:
+            let want = bundledCameraBuild
             Task { @MainActor in
-                if await CameraProcess.waitForExit() { advance() } else {
-                    steps = []
-                    status = .failed("The old camera extension did not stop. Restart your Mac, then install again.")
-                }
+                let running = await CameraProcess.waitUntil(timeout: 10) { CameraProcess.runningBuilds().contains { $0 == want } }
+                steps = []
+                status = running ? .installed : .needsRestart
             }
         }
     }
 
-    private func advance() {
-        steps.removeFirst()
+    private var bundledCameraBuild: String? {
+        CameraProcess.build(ofBundle: Bundle.main.bundlePath + "/Contents/Library/SystemExtensions/\(extensionID).systemextension")
+    }
+
+    private func advance(ok: Bool = true) {
+        let step = steps.removeFirst()
+        steps = CameraStep.after(step, ok: ok, rest: steps)
         if steps.isEmpty { status = installing ? .installed : .notInstalled } else { runCurrentStep() }
     }
 
@@ -268,10 +277,7 @@ final class Installer: NSObject, ObservableObject, OSSystemExtensionRequestDeleg
     }
 
     func request(_ request: OSSystemExtensionRequest, didFailWithError error: Error) {
-        if steps.first == .deactivate, (error as? OSSystemExtensionError)?.code == .extensionNotFound {
-            if installing { return advance() }
-            return refresh()
-        }
+        if steps.first == .deactivate, (error as? OSSystemExtensionError)?.code == .extensionNotFound { return refresh() }
         steps = []
         planOnQuery = false
         status = .failed(error.localizedDescription)

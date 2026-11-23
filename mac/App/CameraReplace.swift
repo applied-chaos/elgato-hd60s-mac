@@ -1,38 +1,61 @@
 import Darwin
 import Foundation
 
-// A running extension can't be replaced in place: launchd rejects the new job while the old one is still
-// being removed ("Operation already in progress"), leaving no extension until reboot. So deactivate first,
-// wait for the old process to exit, then activate.
+// Replacing a running extension races in launchd: the new job is refused while the old one is still being
+// removed ("Operation already in progress") and never runs until reboot. sysextd won't let us deactivate a
+// build other than our own, so the old process is asked to quit first, and the result is checked afterwards.
 enum CameraStep: Equatable {
-    case deactivate, awaitExit, activate
+    case requestQuit, awaitExit, activate, verify, deactivate
 
     static func install(cameraActive: Bool) -> [CameraStep] {
-        cameraActive ? [.deactivate, .awaitExit, .activate] : [.activate]
+        cameraActive ? [.requestQuit, .awaitExit, .activate, .verify] : [.activate, .verify]
     }
 
     static let uninstall: [CameraStep] = [.deactivate]
+
+    // Builds before the quit property refuse it, so there is nothing to wait for; a stuck exit still activates.
+    static func after(_ step: CameraStep, ok: Bool, rest: [CameraStep]) -> [CameraStep] {
+        step == .requestQuit && !ok ? rest.filter { $0 != .awaitExit } : rest
+    }
 }
 
 enum CameraProcess {
-    static func matches(path: String) -> Bool { path.contains("net.mintopia.hd60s.camera.systemextension") }
+    private static let bundleName = "net.mintopia.hd60s.camera.systemextension"
 
-    static func isRunning() -> Bool {
+    static func matches(path: String) -> Bool { path.contains(bundleName) }
+
+    /// Installed extension bundle for a running executable; nil for anything outside /Library/SystemExtensions.
+    static func bundle(ofExecutable path: String) -> String? {
+        guard path.hasPrefix("/Library/SystemExtensions/"), let r = path.range(of: bundleName) else { return nil }
+        return String(path[..<r.upperBound])
+    }
+
+    static func runningPaths() -> [String] {
         let count = proc_listallpids(nil, 0)
-        guard count > 0 else { return false }
+        guard count > 0 else { return [] }
         var pids = [pid_t](repeating: 0, count: Int(count) + 16)
         let filled = Int(proc_listallpids(&pids, Int32(pids.count * MemoryLayout<pid_t>.stride)))
         var buffer = [CChar](repeating: 0, count: 4096)
-        return pids.prefix(max(filled, 0)).contains { pid in
-            pid > 0 && proc_pidpath(pid, &buffer, UInt32(buffer.count)) > 0 && matches(path: String(cString: buffer))
+        return pids.prefix(max(filled, 0)).compactMap { pid in
+            guard pid > 0, proc_pidpath(pid, &buffer, UInt32(buffer.count)) > 0 else { return nil }
+            let path = String(cString: buffer)
+            return matches(path: path) ? path : nil
         }
     }
 
+    static func isRunning() -> Bool { !runningPaths().isEmpty }
+
+    static func build(ofBundle path: String) -> String? {
+        NSDictionary(contentsOfFile: path + "/Contents/Info.plist")?["CFBundleVersion"] as? String
+    }
+
+    static func runningBuilds() -> [String] { runningPaths().compactMap(bundle(ofExecutable:)).compactMap(build(ofBundle:)) }
+
     // Polls on a background queue; false on timeout.
-    static func waitForExit(timeout: TimeInterval = 10, isRunning: @escaping () -> Bool = isRunning) async -> Bool {
+    static func waitUntil(timeout: TimeInterval, _ condition: @escaping () -> Bool) async -> Bool {
         await Task.detached {
             let deadline = Date().addingTimeInterval(timeout)
-            while isRunning() {
+            while !condition() {
                 if Date() >= deadline { return false }
                 try? await Task.sleep(nanoseconds: 100_000_000)
             }
