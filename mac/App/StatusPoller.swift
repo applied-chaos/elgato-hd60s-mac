@@ -12,7 +12,10 @@ final class StatusPoller: ObservableObject {
     private let queue = DispatchQueue(label: "net.mintopia.hd60s.status")
     private var timer: DispatchSourceTimer?
     private var sampledFrames: UInt = 0, sampledDiscarded: UInt = 0
-    private var ringMark: (frames: UInt64, at: Date)?
+    private var ringMark: (number: UInt32, at: Date)?
+    // ponytail: frames counted over a window only just tell 60 from 59.94; pass the MST3367 vsync rate through the ring if it must be exact.
+    private var ringWindow: [(number: UInt32, at: Date)] = []
+    private static let fpsWindowSeconds = 30.0
     private var ringSize: (width: Int32, height: Int32) = (0, 0)
     private static let sampleSeconds = 0.8
     private static let restSeconds = 1.0
@@ -33,6 +36,7 @@ final class StatusPoller: ObservableObject {
             sampledFrames = 0
             sampledDiscarded = 0
             ringMark = nil
+            ringWindow = []
             ringSize = (0, 0)
             #if DEXT
             dext_feed_close()
@@ -90,20 +94,20 @@ final class StatusPoller: ObservableObject {
 
     #if DEXT
     private func fillFromRing(_ st: inout hd60s_status) {
-        var info = fr_frame(), counters = fr_counters()
-        guard dext_feed_peek(&info, &counters) != 0 else {
+        var info = fr_frame(), counters = fr_counters(), number: UInt32 = 0
+        guard dext_feed_peek(&info, &counters, &number) != 0 else {
             st.access = ACCESS_BUSY
             return
         }
         if ringMark == nil {
-            ringMark = (counters.frames, Date())
+            ringMark = (number, Date())
             Thread.sleep(forTimeInterval: 0.5)
-            guard dext_feed_peek(&info, &counters) != 0 else { return st.access = ACCESS_BUSY }
+            guard dext_feed_peek(&info, &counters, &number) != 0 else { return st.access = ACCESS_BUSY }
         }
         let now = Date()
-        let delta = counters.frames &- (ringMark?.frames ?? counters.frames)
+        let delta = number &- (ringMark?.number ?? number)
         let span = now.timeIntervalSince(ringMark?.at ?? now)
-        ringMark = (counters.frames, now)
+        ringMark = (number, now)
         st.access = ACCESS_OK
         st.frames = UInt(counters.frames)
         st.discarded = UInt(counters.discarded)
@@ -116,13 +120,17 @@ final class StatusPoller: ObservableObject {
         ringSize = (info.width, info.height)
         st.signal = hd60s_ring_signal(delta > 0 && span > 0 ? 1 : 0, Int32(counters.hdcp), info.width, info.height,
                                       prev.width, prev.height)
+        if st.signal != SIGNAL_ACTIVE || prev != ringSize { ringWindow = [] }
+        ringWindow.append((number, now))
+        ringWindow.removeAll { now.timeIntervalSince($0.at) > Self.fpsWindowSeconds }
         guard st.signal == SIGNAL_ACTIVE || st.signal == SIGNAL_UNSUPPORTED else { return }
         st.width = info.width
         st.height = info.height
         guard st.signal == SIGNAL_ACTIVE else { return }
         st.interlaced = info.interlaced
         st.field_order = counters.top_first != 0 ? FIELD_TOP_FIRST : FIELD_NONE
-        st.fps = Double(delta) / span
+        let first = ringWindow[0]
+        st.fps = ringWindow.count > 1 ? Double(number &- first.number) / now.timeIntervalSince(first.at) : Double(delta) / span
         st.colour = info.colour == Int32(COLOUR_BT601.rawValue) ? COLOUR_BT601 : COLOUR_BT709
         st.audio_rate = 48000
         st.audio_channels = 2

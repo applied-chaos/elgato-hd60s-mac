@@ -93,13 +93,13 @@ static int step(void)
     return session.state == LINK_UP;
 }
 
-int dext_feed_peek(struct fr_frame *info, struct fr_counters *counters)
+int dext_feed_peek(struct fr_frame *info, struct fr_counters *counters, uint32_t *number)
 {
     if (!step())
         return 0;
     *counters = fr_counters((const struct fr_header *)addr);
     *info = (struct fr_frame){0};
-    fr_latest((const struct fr_header *)addr, info);
+    *number = fr_latest((const struct fr_header *)addr, info);
     return 1;
 }
 
