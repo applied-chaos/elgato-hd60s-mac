@@ -3,12 +3,12 @@ import Foundation
 
 // Replacing a running extension races in launchd: the new job is refused while the old one is still being
 // removed ("Operation already in progress") and never runs until reboot. sysextd won't let us deactivate a
-// build other than our own.
+// build other than our own. The app's CMIO link dies with the old process and never reattaches, hence the relaunch.
 enum CameraStep: Equatable {
-    case requestQuit, awaitExit, activate, verify, deactivate
+    case requestQuit, awaitExit, activate, verify, relaunch, deactivate
 
     static func install(cameraActive: Bool) -> [CameraStep] {
-        cameraActive ? [.requestQuit, .awaitExit, .activate, .verify] : [.activate, .verify]
+        cameraActive ? [.requestQuit, .awaitExit, .activate, .verify, .relaunch] : [.activate, .verify]
     }
 
     static let uninstall: [CameraStep] = [.deactivate]

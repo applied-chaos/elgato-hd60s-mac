@@ -7,12 +7,13 @@ func check(_ ok: Bool, _ what: String, line: UInt = #line) {
 @main enum Tests {
     static func main() async {
         let replace = CameraStep.install(cameraActive: true)
-        check(replace == [.requestQuit, .awaitExit, .activate, .verify], "replace asks the old one to quit, waits, activates, verifies")
-        check(CameraStep.install(cameraActive: false) == [.activate, .verify], "fresh install activates and verifies")
+        check(replace == [.requestQuit, .awaitExit, .activate, .verify, .relaunch],
+              "replace asks the old one to quit, waits, activates, verifies, then relaunches the app off its dead CMIO link")
+        check(CameraStep.install(cameraActive: false) == [.activate, .verify], "fresh install activates and verifies, no relaunch")
         check(CameraStep.uninstall == [.deactivate], "uninstall only deactivates")
         check(!replace.contains(.deactivate), "install never deactivates")
-        check(CameraStep.remaining(Array(replace.dropFirst()), quitRefused: false) == [.awaitExit, .activate, .verify], "quit accepted waits")
-        check(CameraStep.remaining(Array(replace.dropFirst()), quitRefused: true) == [.activate, .verify], "older build without quit skips the wait")
+        check(CameraStep.remaining(Array(replace.dropFirst()), quitRefused: false) == [.awaitExit, .activate, .verify, .relaunch], "quit accepted waits")
+        check(CameraStep.remaining(Array(replace.dropFirst()), quitRefused: true) == [.activate, .verify, .relaunch], "older build without quit skips the wait")
         check(CameraStep.remaining([.activate, .verify], quitRefused: false) == [.activate, .verify], "exit timeout still activates")
 
         let exe = "/Library/SystemExtensions/ABC/net.mintopia.hd60s.camera.systemextension/Contents/MacOS/net.mintopia.hd60s.camera"
