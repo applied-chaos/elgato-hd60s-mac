@@ -49,8 +49,7 @@ enum CameraProcess {
 
     static func runningBuilds() -> [String] { runningPaths().compactMap(installedBundle(ofExecutable:)).compactMap(build(ofBundle:)) }
 
-    // Polls on a background queue; false on timeout.
-    static func waitUntil(timeout: TimeInterval, _ condition: @escaping () -> Bool) async -> Bool {
+    static func pollUntil(timeout: TimeInterval, _ condition: @escaping () -> Bool) async -> Bool {
         await Task.detached {
             let deadline = Date().addingTimeInterval(timeout)
             while !condition() {

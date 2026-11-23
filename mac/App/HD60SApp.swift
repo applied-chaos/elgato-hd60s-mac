@@ -160,7 +160,7 @@ final class Installer: NSObject, ObservableObject, OSSystemExtensionRequestDeleg
         installing = true
         let activate = {
             self.dext.activate()
-            self.queryThenInstall()
+            self.installFromFreshProperties()
         }
         switch flavour.installStep(audio: audio, plugInSource: bundledAudio?.path) {
         case .none: activate()
@@ -185,8 +185,7 @@ final class Installer: NSObject, ObservableObject, OSSystemExtensionRequestDeleg
         }
     }
 
-    // status may be stale (--install skips refresh), so the plan comes from a fresh properties query.
-    private func queryThenInstall() {
+    private func installFromFreshProperties() {
         planOnQuery = true
         let request = OSSystemExtensionRequest.propertiesRequest(forExtensionWithIdentifier: extensionID, queue: .main)
         query = request
@@ -207,11 +206,11 @@ final class Installer: NSObject, ObservableObject, OSSystemExtensionRequestDeleg
             status = .working
             Task { @MainActor in advance(ok: await Task.detached { CameraLink.set(.quit, "") }.value) }
         case .awaitExit:
-            Task { @MainActor in advance(ok: await CameraProcess.waitUntil(timeout: 5) { !CameraProcess.isRunning() }) }
+            Task { @MainActor in advance(ok: await CameraProcess.pollUntil(timeout: 5) { !CameraProcess.isRunning() }) }
         case .verify:
             let want = bundledCameraBuild
             Task { @MainActor in
-                let running = await CameraProcess.waitUntil(timeout: 10) { CameraProcess.runningBuilds().contains { $0 == want } }
+                let running = await CameraProcess.pollUntil(timeout: 10) { CameraProcess.runningBuilds().contains { $0 == want } }
                 steps = []
                 status = running ? .installed : .needsRestart
             }

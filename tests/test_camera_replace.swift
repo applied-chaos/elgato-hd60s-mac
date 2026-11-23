@@ -25,9 +25,9 @@ func check(_ ok: Bool, _ what: String, line: UInt = #line) {
               "copy inside the app is not the installed one")
 
         var polls = 0
-        let exited = await CameraProcess.waitUntil(timeout: 2) { polls += 1; return polls >= 3 }
+        let exited = await CameraProcess.pollUntil(timeout: 2) { polls += 1; return polls >= 3 }
         check(exited && polls == 3, "returns once the condition holds")
-        let stuck = await CameraProcess.waitUntil(timeout: 0.3) { false }
+        let stuck = await CameraProcess.pollUntil(timeout: 0.3) { false }
         check(!stuck, "times out while it never holds")
         print("camera replace tests passed")
     }

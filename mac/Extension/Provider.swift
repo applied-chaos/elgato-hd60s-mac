@@ -11,6 +11,7 @@ private let height = Int32(outputHeight)
 private let noFramesTimeoutNs: UInt64 = 200_000_000
 private let statsEveryTicks = 600
 private let publishIntervalNs: UInt64 = 1_000_000_000
+private let replyBeforeExitSeconds = 0.2
 private let log = Logger(subsystem: "net.mintopia.hd60s.camera", category: "capture")
 
 final class ProviderSource: NSObject, CMIOExtensionProviderSource {
@@ -103,8 +104,7 @@ final class DeviceSource: NSObject, CMIOExtensionDeviceSource {
         }
         if set[CameraProperty.quit.property] != nil {
             log.info("quit requested by the installer")
-            // Lets the property reply reach the app before the process goes.
-            DispatchQueue.global().asyncAfter(deadline: .now() + 0.2) { exit(0) }
+            DispatchQueue.global().asyncAfter(deadline: .now() + replyBeforeExitSeconds) { exit(0) }
         }
     }
 }
