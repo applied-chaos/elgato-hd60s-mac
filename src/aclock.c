@@ -35,7 +35,8 @@ uint64_t aclock_arrive(struct aclock *c, uint64_t h, uint32_t n, uint64_t *skipp
         c->next_sample = at;
         c->synced = 1;
         c->rephases++;
-        return c->next_sample += n, at;
+        c->next_sample += n;
+        return at;
     }
     double lim = CLAMP_SAMPLES * c->nominal_ticks_per_sample;
     if (e > lim) e = lim;

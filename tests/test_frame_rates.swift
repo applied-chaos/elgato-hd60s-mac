@@ -26,5 +26,6 @@ func check(_ ok: Bool, _ what: String, line: UInt = #line) {
         check(FrameRate(duration: CMTime(value: 1, timescale: 100)) == .ntsc, "far above snaps to 59.94")
         check(FrameRate(duration: .invalid) == nil && FrameRate(duration: .zero) == nil, "bad duration rejected")
         check(FrameRate.ntsc.index == 0 && FrameRate.pal.index == 1, "index round trip")
+        print("frame rate tests passed")
     }
 }
