@@ -241,6 +241,45 @@ static void policy_finds_mode_from_a_stable_window(void)
     assert(pol.mode && pol.mode->vic == 16);
 }
 
+static void policy_takes_mode_from_avi_vic_when_encrypted_and_no_frames(void)
+{
+    struct hd60s d;
+    struct hd60s_parser p = {0};
+    struct hd60s_policy pol;
+    boot(&d, 0);
+    assert(hd60s_init(&d) == 0 && hd60s_start(&d) == 0);
+    hd60s_policy_begin(&pol, 0);
+    fk.mst[0][0x51] = 0x80;
+    fk.mst[1][0x34] = 0x80;
+    fk.mst[2][0x0b] = 0x08;
+    fk.mst[2][0x4b] = 16;
+    hd60s_policy_tick(&d, &p, &pol, 1000);
+    hd60s_policy_tick(&d, &p, &pol, 2000);
+    assert(pol.mode && pol.mode->vic == 16);
+    fk.mst[2][0x4b] = 4;
+    hd60s_policy_tick(&d, &p, &pol, 4000);
+    assert(pol.mode && pol.mode->vic == 4);
+    fk.mst[2][0x0b] = 0;
+    hd60s_policy_tick(&d, &p, &pol, 6000);
+    assert(!pol.mode);
+}
+
+static void clear_source_ignores_avi_vic_without_frames(void)
+{
+    struct hd60s d;
+    struct hd60s_parser p = {0};
+    struct hd60s_policy pol;
+    boot(&d, 0);
+    assert(hd60s_init(&d) == 0 && hd60s_start(&d) == 0);
+    hd60s_policy_begin(&pol, 0);
+    fk.mst[0][0x51] = 0x80;
+    fk.mst[2][0x0b] = 0x08;
+    fk.mst[2][0x4b] = 16;
+    hd60s_policy_tick(&d, &p, &pol, 1000);
+    hd60s_policy_tick(&d, &p, &pol, 2000);
+    assert(!pol.mode);
+}
+
 static void start_routes_hdmi_audio_by_default(void)
 {
     struct hd60s d;
@@ -560,6 +599,8 @@ int main(void)
     policy_applies_audio_settings_live();
     policy_reads_aspect_once_a_second();
     policy_finds_mode_from_a_stable_window();
+    policy_takes_mode_from_avi_vic_when_encrypted_and_no_frames();
+    clear_source_ignores_avi_vic_without_frames();
     start_routes_hdmi_audio_by_default();
     audio_settings_apply_at_start_and_live();
     policy_reruns_routing_when_the_source_becomes_hdmi();

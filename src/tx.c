@@ -2,7 +2,7 @@
 
 #include <string.h>
 
-enum { INIT_MARK = 0xb2, EDID_RETRY_POLLS = 8, HD_MIN_PCLK_KHZ = 74250, AVI_C1C0_BT601 = 0x48, AVI_C1C0_BT709 = 0x88 };
+enum { INIT_MARK = 0xb2, EDID_RETRY_POLLS = 8, HDCP_BACKOFF_POLLS = 8, HDCP_KSV_ONES = 20, DDC_POLLS = 200, DDC_DONE = 0x80, DDC_ERR_MASK = 0x38, HD_MIN_PCLK_KHZ = 74250, AVI_C1C0_BT601 = 0x48, AVI_C1C0_BT709 = 0x88 };
 
 static const struct {
     int w, h, interlaced, fps;
@@ -27,6 +27,18 @@ const struct tx_mode *tx_mode_find(int width, int height, int interlaced, double
         }
     }
     return best;
+}
+
+const struct tx_mode *tx_mode_from_vic(unsigned vic)
+{
+    static const struct tx_mode wide_sd[] = {{3, 0, 1, 27000}, {7, 1, 1, 27000}, {18, 0, 1, 27000}, {22, 1, 1, 27000}};
+    for (size_t i = 0; i < sizeof modes / sizeof *modes; i++)
+        if (modes[i].m.vic == vic)
+            return &modes[i].m;
+    for (size_t i = 0; i < sizeof wide_sd / sizeof *wide_sd; i++)
+        if (wide_sd[i].vic == vic)
+            return &wide_sd[i];
+    return NULL;
 }
 
 static int block_ok(const uint8_t *b)
@@ -120,12 +132,28 @@ enum tx_state tx_next(enum tx_state s, struct tx_in in)
     return TX_IDLE;
 }
 
-/* Write allow-list: transmitter video, audio, DDC read and mute registers only. No HDCP (0x1F-0x46) or burst DDC. */
+enum tx_hdcp_op tx_hdcp_next(enum tx_hdcp s, int want, int retry_polls_left)
+{
+    static const enum tx_hdcp_op ops[3][2] = {
+        [HDCP_OFF] = {HDCP_NOP, HDCP_AUTH},
+        [HDCP_ON] = {HDCP_STOP, HDCP_NOP},
+        [HDCP_BACKOFF] = {HDCP_STOP, HDCP_AUTH},
+    };
+    if (s == HDCP_BACKOFF && want && retry_polls_left)
+        return HDCP_NOP;
+    return ops[s][!!want];
+}
+
+/* Write allow-list: transmitter video, audio, DDC read, mute and HDCP registers only. DDC is read-only: slaves 0xA0 and 0x74. */
 int tx_writable(uint8_t r, uint8_t v)
 {
     switch (r) {
-    case 0x10: return v == 1;
-    case 0x11: return v == 0xa0;
+    case 0x10: return v <= 1;
+    case 0x11: return v == 0xa0 || v == 0x74;
+    case 0x0c: return v == 0x1c || v == 4;
+    case 0x0d: case 0x22: return v == 0;
+    case 0x0e: case 0x1f: case 0x20: return v <= 1;
+    case 0x21: return v == 1;
     case 0x15: return v == 0 || v == 3 || v == 9 || v == 0x0f;
     case 0x65: return v == 0 || v == 2;
     case 0x0f: case 0xc0: case 0xc1: case 0xc6: return 1;
@@ -137,7 +165,7 @@ int tx_writable(uint8_t r, uint8_t v)
     case 0xe3: return v == 0;
     case 0xe4: return v == 0x08;
     }
-    return (r >= 0x04 && r <= 0x05) || (r >= 0x09 && r <= 0x0b) || (r >= 0x12 && r <= 0x14) ||
+    return (r >= 0x04 && r <= 0x05) || (r >= 0x28 && r <= 0x2f) || (r >= 0x09 && r <= 0x0b) || (r >= 0x12 && r <= 0x14) ||
            (r >= 0x33 && r <= 0x35) || (r >= 0x58 && r <= 0x6d) || (r >= 0x70 && r <= 0x87) || (r >= 0x90 && r <= 0xa3) ||
            (r >= 0xc9 && r <= 0xd0);
 }
@@ -171,6 +199,8 @@ static void unmute(const struct tx_bus *b)
     w(b, 0xc1, 0);
     w(b, 0xc6, 3);
 }
+
+static int muted_pending_hdcp(const struct tx *t) { return t->src_hdcp && t->sink.hdmi && t->hdcp != HDCP_ON; }
 
 static void audio_off(struct tx *t, const struct tx_bus *b)
 {
@@ -234,6 +264,8 @@ static void afe_off(struct tx *t, const struct tx_bus *b)
     w(b, 0x04, 0x1d);
     w(b, 0x61, 0x30);
     t->sent_vic = 0;
+    t->hdcp = HDCP_OFF;
+    t->hdcp_retry_polls_left = 0;
     memset(&t->sink, 0, sizeof t->sink);
 }
 
@@ -289,6 +321,144 @@ static int read_edid(const struct tx_bus *b, struct tx_sink *sink)
             else if (blk == 0 && c == 3)
                 n = 1 + (e[0x7e] > 4 ? 4 : e[0x7e]);
     return tx_edid_parse(e, n * 128, sink);
+}
+
+static int ddc_wait(const struct tx_bus *b)
+{
+    for (int i = 0; i < DDC_POLLS; i++) {
+        int s = rd(b, 0x16);
+        if (s & DDC_ERR_MASK)
+            return -1;
+        if (s & DDC_DONE)
+            return 0;
+        b->sleep_ms(b->ctx, 1);
+    }
+    return -1;
+}
+
+static int hdcp_read(const struct tx_bus *b, uint8_t off, uint8_t n)
+{
+    w(b, 0x10, 1);
+    w(b, 0x11, 0x74);
+    w(b, 0x12, off);
+    w(b, 0x13, n);
+    w(b, 0x15, 0);
+    return ddc_wait(b);
+}
+
+static void ddc_abort(const struct tx_bus *b)
+{
+    w(b, 0x65, 2);
+    w(b, 0x20, 0);
+    w(b, 0x04, (uint8_t)(rd(b, 0x04) | 1));
+    w(b, 0x10, 1);
+    for (int i = 0; i < 2; i++) {
+        w(b, 0x15, 0x0f);
+        ddc_wait(b);
+    }
+    w(b, 0x65, 0);
+}
+
+static void clear_ints(const struct tx_bus *b)
+{
+    rmw(b, 0x0a, 7, 0);
+    w(b, 0x0c, 0x1c);
+    w(b, 0x0d, 0);
+    w(b, 0x0e, 1);
+}
+
+static void hdcp_stop(const struct tx_bus *b)
+{
+    w(b, 0x22, 0);
+    w(b, 0x20, 0);
+    w(b, 0x04, (uint8_t)(rd(b, 0x04) | 1));
+    w(b, 0x10, 1);
+    clear_ints(b);
+    ddc_abort(b);
+}
+
+static int hdcp_auth(const struct tx_bus *b)
+{
+    uint8_t ksv[5], an[8];
+    int ones = 0, ok = 0;
+    if (!(rd(b, 0x0e) & 0x10))
+        return 0;
+    w(b, 0x04, (uint8_t)(rd(b, 0x04) | 1));
+    w(b, 0x20, 0);
+    w(b, 0x22, 0);
+    w(b, 0x10, 1);
+    w(b, 0x15, 9);
+    ddc_abort(b);
+    w(b, 0x0f, 0);
+    for (int i = 0; i < 40; i++) {
+        b->sleep_ms(b->ctx, 15);
+        if (hdcp_read(b, 0x40, 3))
+            return 0;
+        if ((rd(b, 0xc0) & 1) == (rd(b, 0x45) >> 4 & 1))
+            break;
+    }
+    if (hdcp_read(b, 0, 5) || b->read_n(b->ctx, 0x3b, ksv, 5) < 0)
+        return 0;
+    for (int i = 0; i < 5; i++)
+        for (int bit = 0; bit < 8; bit++)
+            ones += ksv[i] >> bit & 1;
+    if (ones != HDCP_KSV_ONES)
+        return 0;
+    w(b, 0x04, (uint8_t)(rd(b, 0x04) & ~1));
+    w(b, 0x1f, 1);
+    b->sleep_ms(b->ctx, 1);
+    w(b, 0x1f, 0);
+    if (b->read_n(b->ctx, 0x30, an, 8) < 0)
+        return 0;
+    for (uint8_t i = 0; i < 8; i++)
+        w(b, (uint8_t)(0x28 + i), an[i]);
+    w(b, 0x22, 0);
+    w(b, 0x20, 1);
+    clear_ints(b);
+    w(b, 0x10, 1);
+    w(b, 0x15, 9);
+    w(b, 0x10, 0);
+    w(b, 0x21, 1);
+    for (int i = 0; i < 100; i++) {
+        b->sleep_ms(b->ctx, 5);
+        if (rd(b, 0x46) & 0x80) {
+            ok = 1;
+            break;
+        }
+        if (rd(b, 0x07) & 1) {
+            w(b, 0x0c, 4);
+            w(b, 0x0d, 0);
+            w(b, 0x0e, 1);
+            w(b, 0x0e, 0);
+            break;
+        }
+    }
+    return ok;
+}
+
+static void hdcp_sync(struct tx *t, const struct tx_bus *b)
+{
+    int want = t->state == TX_RUNNING && t->want && t->sink.hdmi && t->src_hdcp;
+    if (t->hdcp_retry_polls_left)
+        t->hdcp_retry_polls_left--;
+    enum tx_hdcp_op op = tx_hdcp_next(t->hdcp, want, t->hdcp_retry_polls_left);
+    if (op == HDCP_STOP)
+        t->hdcp = HDCP_OFF;
+    if (op == HDCP_AUTH) {
+        mute(b);
+        if (hdcp_auth(b)) {
+            t->hdcp = HDCP_ON;
+            unmute(b);
+        } else {
+            hdcp_stop(b);
+            t->hdcp = HDCP_BACKOFF;
+            t->hdcp_retry_polls_left = HDCP_BACKOFF_POLLS;
+        }
+    } else if (op == HDCP_STOP) {
+        hdcp_stop(b);
+        if (t->state == TX_RUNNING && t->want && !muted_pending_hdcp(t))
+            unmute(b);
+    }
 }
 
 static const uint8_t csc_bt709[18] = {0x4f, 0x09, 0xba, 0x3b, 0x4b, 0x3e, 0x4f, 0x09, 0x56,
@@ -352,7 +522,8 @@ static void enable_output(struct tx *t, const struct tx_bus *b)
     w(b, 0x0f, 0);
     w(b, 0x61, 0x00);
     audio_sync(t, b);
-    unmute(b);
+    if (!muted_pending_hdcp(t))
+        unmute(b);
 }
 
 static struct tx_in act(struct tx *t, const struct tx_bus *b, struct tx_in in)
@@ -398,7 +569,7 @@ void tx_start(struct tx *t, const struct tx_bus *b)
         chip_init(b);
 }
 
-void tx_poll(struct tx *t, const struct tx_bus *b, const struct tx_mode *mode, int audio_hz)
+void tx_poll(struct tx *t, const struct tx_bus *b, const struct tx_mode *mode, int audio_hz, int src_hdcp)
 {
     if (!t->present)
         return;
@@ -408,9 +579,12 @@ void tx_poll(struct tx *t, const struct tx_bus *b, const struct tx_mode *mode, i
         t->audio_hz = 0;
         t->state = TX_IDLE;
         t->sent_vic = 0;
+        t->hdcp = HDCP_OFF;
+        t->hdcp_retry_polls_left = 0;
     }
     t->want = mode;
     t->want_hz = audio_hz;
+    t->src_hdcp = src_hdcp;
     if (!mode && t->sent_vic) {
         mute(b);
         t->sent_vic = 0;
@@ -430,16 +604,23 @@ void tx_poll(struct tx *t, const struct tx_bus *b, const struct tx_mode *mode, i
         if (next == s)
             break;
     }
+    hdcp_sync(t, b);
     if (t->state == TX_RUNNING && mode && audio_wanted(t) != t->audio_hz) {
         mute(b);
         audio_sync(t, b);
-        unmute(b);
+        if (!muted_pending_hdcp(t))
+            unmute(b);
     }
 }
 
 void tx_blank(struct tx *t, const struct tx_bus *b)
 {
-    if (t->present)
+    if (t->present) {
         mute(b);
+        if (t->hdcp != HDCP_OFF)
+            hdcp_stop(b);
+    }
+    t->hdcp = HDCP_OFF;
+    t->hdcp_retry_polls_left = 0;
     t->sent_vic = 0;
 }

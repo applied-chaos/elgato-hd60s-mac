@@ -136,6 +136,8 @@ void hd60s_policy_tick(struct hd60s *d, struct hd60s_parser *p, struct hd60s_pol
 int mst_read(struct hd60s *d, uint8_t bank, uint8_t reg);
 /* Reads the source link flags into d->link. */
 struct hd60s_link hd60s_read_link(struct hd60s *d);
+/* Mode from the source's AVI InfoFrame VIC (b2:0x4B), independent of frames; NULL if none or unsupported. */
+const struct tx_mode *hd60s_avi_mode(struct hd60s *d);
 /* Source audio rate from the receiver's ACR packet for the given video mode; 0 if no audio or no mode. */
 int hd60s_source_audio_hz(struct hd60s *d, const struct tx_mode *m);
 /* Vsync period counter for hd60s_rate_from_vsync; 0 if unreadable. */
