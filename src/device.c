@@ -626,7 +626,6 @@ void hd60s_settings_print(const struct hd60s_settings *s, char *buf, size_t n)
              hd60s_range_names[s->range], s->picture.brightness, s->picture.contrast, s->picture.saturation, s->picture.hue);
 }
 
-/* Value text after "key": in json, or NULL if the key is absent or has no colon. */
 static const char *json_value(const char *json, const char *key)
 {
     char pat[24];

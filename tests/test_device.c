@@ -397,6 +397,8 @@ static void picture_controls_follow_fun_103ea(void)
     }
 }
 
+enum { COMPRESS_OFFSET_WORD = 0x400, DEFAULT_BRIGHTNESS_WORD = 0x41, BRIGHT_63_WORD = 0x1401 };
+
 static void picture_controls_reach_hardware_live_and_survive_a_range_change(void)
 {
     struct hd60s d;
@@ -407,7 +409,7 @@ static void picture_controls_reach_hardware_live_and_survive_a_range_change(void
     p.last_w = 1920, p.last_h = 1080;
     hd60s_policy_begin(&pol, 0);
     hd60s_policy_tick(&d, &p, &pol, 0);
-    assert((fk.mst[0][0xa7] << 8 | fk.mst[0][0xa8]) == 0x41);
+    assert((fk.mst[0][0xa7] << 8 | fk.mst[0][0xa8]) == DEFAULT_BRIGHTNESS_WORD);
 
     d.settings.picture.brightness = 63;
     hd60s_policy_tick(&d, &p, &pol, 1000);
@@ -421,10 +423,10 @@ static void picture_controls_reach_hardware_live_and_survive_a_range_change(void
     fk.mst[2][0x0b] = 0x08;
     fk.mst[2][0x4a] = 0x08;
     hd60s_policy_tick(&d, &p, &pol, 2000);
-    assert((fk.mst[0][0xa7] << 8 | fk.mst[0][0xa8]) == 0x441); /* Elgato's 0x400 offset plus the default brightness */
+    assert((fk.mst[0][0xa7] << 8 | fk.mst[0][0xa8]) == COMPRESS_OFFSET_WORD + DEFAULT_BRIGHTNESS_WORD);
     d.settings.picture.brightness = 63;
     hd60s_policy_tick(&d, &p, &pol, 3000);
-    assert((fk.mst[0][0xa7] << 8 | fk.mst[0][0xa8]) == 0x1801);
+    assert((fk.mst[0][0xa7] << 8 | fk.mst[0][0xa8]) == COMPRESS_OFFSET_WORD + BRIGHT_63_WORD);
 }
 
 static void settings_round_trip_and_reject_bad_input(void)
