@@ -7,6 +7,17 @@ int audio_gain_clamp(int g)
     return g < AUDIO_GAIN_MIN ? AUDIO_GAIN_MIN : g > AUDIO_GAIN_MAX ? AUDIO_GAIN_MAX : g;
 }
 
+int audio_gain_from_db(double db)
+{
+    double half = db * 2;
+    return (int)(half < 0 ? half - 0.5 : half + 0.5);
+}
+
+double audio_gain_to_db(int gain_half_db)
+{
+    return gain_half_db / 2.0;
+}
+
 struct audio_settings audio_from_pref(struct audio_pref p)
 {
     return (struct audio_settings){p.source, audio_gain_clamp(AUDIO_DEFAULT.gain_half_db + p.gain_offset), p.mute != 0};
@@ -46,22 +57,22 @@ int audio_source_parse(const char *name, enum audio_source *out)
     return 0;
 }
 
-void audio_plan(const struct audio_settings *s, int dvi, const struct audio_regs *cur, struct audio_regs *out)
+void audio_plan(const struct audio_settings *s, int hdmi, const struct audio_regs *cur, struct audio_regs *out)
 {
     int steps = audio_gain_clamp(s->gain_half_db);
     uint8_t code = audio_gain_code(steps);
     int live[2] = {s->source == AUDIO_LINE || s->source == AUDIO_MIX, s->source == AUDIO_HDMI || s->source == AUDIO_MIX};
 
     *out = *cur;
-    out->r03 = dvi ? 0xa0 : 0xa1;
-    out->r04 = (uint8_t)((cur->r04 & 0xbc) | (dvi ? 0x02 : 0x40));
+    out->r03 = hdmi ? 0xa0 : 0xa1;
+    out->r04 = (uint8_t)((cur->r04 & 0xbc) | (hdmi ? 0x02 : 0x40));
     out->r07 = 0;
     for (int p = 0; p < 2; p++) {
-        uint8_t gain = dvi && p == 0 && live[p] ? code : (uint8_t)(cur->pair[2 * p] & 0x7f);
+        uint8_t gain = hdmi && p == 0 && live[p] ? code : (uint8_t)(cur->pair[2 * p] & 0x7f);
         uint8_t mute = !live[p] || s->mute ? 0x80 : 0;
         out->pair[2 * p] = out->pair[2 * p + 1] = (uint8_t)(gain | mute);
     }
-    if (dvi) {
+    if (hdmi) {
         memset(out->gain, 0, sizeof out->gain);
     } else if (s->source != AUDIO_HDMI) {
         int positive = 123 + steps > 0x7a; /* Elgato's v = 2x + 123 */

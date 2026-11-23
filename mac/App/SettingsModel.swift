@@ -68,7 +68,7 @@ struct PictureAudioSettings: Equatable {
     var saturationText: String { Self.signed(saturation) }
     var hueText: String { Self.signed(hue) + "°" }
     var gainText: String {
-        let db = Double(gainHalfDb) / 2
+        let db = audio_gain_to_db(Int32(gainHalfDb))
         return Self.signed(db == db.rounded() ? String(Int(abs(db))) : String(abs(db)), negative: db < 0, zero: db == 0) + " dB"
     }
 

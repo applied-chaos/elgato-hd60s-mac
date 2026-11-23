@@ -555,6 +555,10 @@ static void link_flags_decode_hdcp_and_dvi(void)
     assert(!l.hdcp && l.dvi);
     l = hd60s_link_from_regs(0, 0x00, 0x00);
     assert(!l.dvi);
+    /* hdmi is the digital HDMI-signalling case: neither flag is set on an analogue input. */
+    assert(hd60s_link_from_regs(1, 0x04, 0).hdmi && !hd60s_link_from_regs(1, 0x04, 0).dvi);
+    assert(!hd60s_link_from_regs(1, 0x00, 0).hdmi && hd60s_link_from_regs(1, 0x00, 0).dvi);
+    assert(!hd60s_link_from_regs(0, 0x04, 0).hdmi && !hd60s_link_from_regs(0, 0x04, 0).dvi);
 }
 
 static void policy_tracks_the_source_link(void)

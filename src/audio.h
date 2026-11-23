@@ -33,12 +33,15 @@ struct audio_regs {
 };
 
 int audio_gain_clamp(int gain_half_db);
+/* Half-dB steps for a gain in dB (rounded, not clamped), and back. */
+int audio_gain_from_db(double db);
+double audio_gain_to_db(int gain_half_db);
 /* Gain code Elgato writes (FUN_1ce18): 0.5 dB steps, 7-bit two's complement. Steps are clamped to +-12 dB. */
 uint8_t audio_gain_code(int gain_half_db);
 /* "hdmi", "line" or "mix". */
 const char *audio_source_name(enum audio_source s);
 int audio_source_parse(const char *name, enum audio_source *out);
-/* FUN_1caf4 + FUN_1ce18. dvi is the receiver's DVI flag; cur is what the codec holds now (r04, gain and pair gain bits are kept where Elgato keeps them). */
-void audio_plan(const struct audio_settings *s, int dvi, const struct audio_regs *cur, struct audio_regs *out);
+/* FUN_1caf4 + FUN_1ce18. hdmi is the receiver's HDMI-signalling flag (b1:0x01 bit 2 on a digital input); cur is what the codec holds now (r04, gain and pair gain bits are kept where Elgato keeps them). */
+void audio_plan(const struct audio_settings *s, int hdmi, const struct audio_regs *cur, struct audio_regs *out);
 
 #endif

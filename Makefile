@@ -20,8 +20,8 @@ build/libUB530.dylib:
 build/ub530_tables.h: tools/extract-tables.py build/libUB530.dylib
 	python3 -I tools/extract-tables.py build/libUB530.dylib > $@.tmp && mv $@.tmp $@
 
-build/hd60s: src/main.c src/device.c src/device_libusb.c src/device_libusb.h src/parser.c src/tx.c src/audio.c src/status.c src/status_probe.c src/status_sample.c src/device.h src/audio.h src/parser.h src/tx.h src/status.h build/ub530_tables.h
-	$(CC) $(CFLAGS) -o $@ src/main.c src/device.c src/device_libusb.c src/parser.c src/tx.c src/audio.c src/status.c src/status_probe.c src/status_sample.c $(LDLIBS) -framework IOKit -framework CoreFoundation
+build/hd60s: src/main.c src/device.c src/device_libusb.c src/device_libusb.h src/parser.c src/tx.c src/audio.c src/colour.c src/link.c src/status.c src/status_probe.c src/status_sample.c src/device.h src/colour.h src/link.h src/audio.h src/parser.h src/tx.h src/status.h build/ub530_tables.h
+	$(CC) $(CFLAGS) -o $@ src/main.c src/device.c src/device_libusb.c src/parser.c src/tx.c src/audio.c src/colour.c src/link.c src/status.c src/status_probe.c src/status_sample.c $(LDLIBS) -framework IOKit -framework CoreFoundation
 
 build/test_parser: tests/test_parser.c src/parser.c src/parser.h
 	@mkdir -p build
@@ -58,17 +58,17 @@ dist-dext: DEXT_CONFIG = Release
 dist-dext: dext-dev
 	$(call dmg,build/HD60S-dext.app,build/HD60S-DriverKit-$(VERSION).dmg)
 
-build/test_device: tests/test_device.c src/device.c src/tx.c src/audio.c src/parser.c src/device.h src/audio.h build/ub530_tables.h
+build/test_device: tests/test_device.c src/device.c src/tx.c src/audio.c src/colour.c src/link.c src/parser.c src/device.h src/colour.h src/link.h src/audio.h build/ub530_tables.h
 	@mkdir -p build
-	$(CC) $(CFLAGS) -fsanitize=address,undefined -o $@ tests/test_device.c src/device.c src/tx.c src/audio.c src/parser.c
+	$(CC) $(CFLAGS) -fsanitize=address,undefined -o $@ tests/test_device.c src/device.c src/tx.c src/audio.c src/colour.c src/link.c src/parser.c
 
 build/test_framering: tests/test_framering.c src/framering.c src/framering.h src/link.h
 	@mkdir -p build
 	$(CC) $(CFLAGS) -fsanitize=address,undefined -o $@ tests/test_framering.c src/framering.c
 
-build/test_link: tests/test_link.c src/link.c src/link.h
+build/test_link: tests/test_link.c src/link.c src/link.h src/device.c src/colour.c src/tx.c src/audio.c src/parser.c src/device.h src/colour.h build/ub530_tables.h
 	@mkdir -p build
-	$(CC) $(CFLAGS) -fsanitize=address,undefined -o $@ tests/test_link.c src/link.c
+	$(CC) $(CFLAGS) -fsanitize=address,undefined -o $@ tests/test_link.c src/link.c src/device.c src/colour.c src/tx.c src/audio.c src/parser.c
 
 build/test_deinterlace: tests/test_deinterlace.c src/deinterlace.c src/deinterlace.h
 	@mkdir -p build
@@ -114,9 +114,9 @@ build/test_frame_fit: tests/test_frame_fit.swift mac/Extension/FrameFit.swift
 	@mkdir -p build
 	swiftc -parse-as-library -o $@ mac/Extension/FrameFit.swift tests/test_frame_fit.swift
 
-build/test_settings_model: tests/test_settings_model.swift mac/App/SettingsModel.swift mac/App/SettingsStore.swift mac/Shared/Settings.swift mac/Shared/AppGroup.swift src/device.c src/audio.c src/tx.c src/parser.c src/device.h src/audio.h build/ub530_tables.h
+build/test_settings_model: tests/test_settings_model.swift mac/App/SettingsModel.swift mac/App/SettingsStore.swift mac/Shared/Settings.swift mac/Shared/AppGroup.swift src/device.c src/audio.c src/tx.c src/parser.c src/colour.c src/link.c src/device.h src/audio.h src/colour.h src/link.h build/ub530_tables.h
 	@mkdir -p build/settings_model
-	for f in device audio tx parser; do $(CC) $(CFLAGS) -c -o build/settings_model/$$f.o src/$$f.c || exit 1; done
+	for f in device audio tx parser colour link; do $(CC) $(CFLAGS) -c -o build/settings_model/$$f.o src/$$f.c || exit 1; done
 	swiftc -parse-as-library -import-objc-header src/device.h -Ibuild -o $@ mac/App/SettingsModel.swift mac/App/SettingsStore.swift mac/Shared/Settings.swift mac/Shared/AppGroup.swift tests/test_settings_model.swift build/settings_model/*.o
 
 test: build/test_parser build/test_device build/test_framering build/test_link build/test_tx build/test_audio build/test_deinterlace build/test_ring build/test_aclock build/test_status build/test_plugin build/test_audio_plugin build/test_frame_fit build/test_frame_rates build/test_status_view build/test_settings_model

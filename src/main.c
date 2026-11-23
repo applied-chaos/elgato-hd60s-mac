@@ -173,9 +173,9 @@ int main(int argc, char **argv)
                 return usage();
         } else if (opt == 'g') {
             double db = strtod(optarg, NULL);
-            if (db < AUDIO_GAIN_MIN / 2.0 || db > AUDIO_GAIN_MAX / 2.0)
+            if (db < audio_gain_to_db(AUDIO_GAIN_MIN) || db > audio_gain_to_db(AUDIO_GAIN_MAX))
                 return usage();
-            audio.gain_half_db = (int)lround(db * 2);
+            audio.gain_half_db = audio_gain_from_db(db);
         } else if (opt == 'm')
             audio.mute = 1;
         else
