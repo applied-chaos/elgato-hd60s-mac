@@ -489,7 +489,7 @@ struct MainWindow: View {
         .onDisappear { poller.stop() }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             guard HD60SApp.launchArguments.value(after: "--preview-state") == nil,
-                  ![.working, .cancelled].contains(installer.status), dext.status != .working else { return }
+                  ![.working, .cancelled, .needsRestart].contains(installer.status), dext.status != .working else { return }
             installer.refresh()
         }
         .onChange(of: tab) { _, new in new == .status ? poller.start() : poller.stop() }
