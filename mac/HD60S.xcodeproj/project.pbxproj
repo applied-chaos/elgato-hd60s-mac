@@ -27,11 +27,13 @@
 		56F2C184E36B4C0F6FCBE1AF /* ring.c in Sources */ = {isa = PBXBuildFile; fileRef = 82A96EFD70066EE24A64F776 /* ring.c */; };
 		59DFC7F8E006C47170E3D391 /* DextInstaller.swift in Sources */ = {isa = PBXBuildFile; fileRef = E474B4536D66208D95CEF6B3 /* DextInstaller.swift */; };
 		5B606E3204AC0D61EA14B6A6 /* status.c in Sources */ = {isa = PBXBuildFile; fileRef = F7E9D0509776EADA4824B1C7 /* status.c */; };
+		6002D813266EAFAC4DDF4C87 /* link.c in Sources */ = {isa = PBXBuildFile; fileRef = A3EEFFA09FD7829C73DC79AC /* link.c */; };
 		62A65E0AF29FCA7E5DB454FD /* status_probe.c in Sources */ = {isa = PBXBuildFile; fileRef = B66B23A57491009FCDACE3D3 /* status_probe.c */; };
 		68456F4805398A5E16120F98 /* AudioPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0BB1F64555B5906AFF622AED /* AudioPlugin.swift */; };
 		6D8F23DF5C095317BC066773 /* tx.c in Sources */ = {isa = PBXBuildFile; fileRef = 00CDD57C9B403777274C1494 /* tx.c */; };
 		717A4907EF90ADB8B070AEE9 /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8400EEE9F8976B5123BAA715 /* main.swift */; };
 		7628AFB946F041CEB503F1CB /* device_libusb.c in Sources */ = {isa = PBXBuildFile; fileRef = C294100439805B100F077570 /* device_libusb.c */; };
+		7A7FBB0E7D031DD35CBE7E4D /* link.c in Sources */ = {isa = PBXBuildFile; fileRef = A3EEFFA09FD7829C73DC79AC /* link.c */; };
 		8267FE541B528374F104CD66 /* SettingsModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = BE3DFA699ABAEDB876BD8713 /* SettingsModel.swift */; };
 		8655290E37C36989081E2B53 /* SettingsTab.swift in Sources */ = {isa = PBXBuildFile; fileRef = 24B8C70E72AF8DD5308ECB77 /* SettingsTab.swift */; };
 		868DB0A334D8F095951F5C12 /* HD60SAudio.c in Sources */ = {isa = PBXBuildFile; fileRef = 5CAE976973A9661138B5E396 /* HD60SAudio.c */; };
@@ -43,6 +45,7 @@
 		97F411CDE82413DF96975439 /* FrameFit.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6357F6F66A26419F5C78499F /* FrameFit.swift */; };
 		A042FF175789F53AC09AC388 /* Provider.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEB304182F383B96E72A3DA6 /* Provider.swift */; };
 		A0741C058C3F0F44A601E8B2 /* StatusPublisher.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA1A527633F29E5206403568 /* StatusPublisher.swift */; };
+		AABE7B51A0B40568D412F01E /* colour.c in Sources */ = {isa = PBXBuildFile; fileRef = 71F9866663354CDB03DE68D3 /* colour.c */; };
 		B1DDD38E14EBF1E10EF29F95 /* FrameRate.swift in Sources */ = {isa = PBXBuildFile; fileRef = D41EB16A58150036BD7A0F04 /* FrameRate.swift */; };
 		BC1C4C36F94DB9B7F13B524C /* Settings.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0070F65DFFCBFE343BD844F /* Settings.swift */; };
 		BD246132959F3785F1CF6769 /* parser.c in Sources */ = {isa = PBXBuildFile; fileRef = 58FCE89662E2C2249C89C7B2 /* parser.c */; };
@@ -53,6 +56,7 @@
 		D0B3BABAA43EB362330E7F6B /* AppGroup.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A4D06E6BBF80C33C6D4C29D /* AppGroup.swift */; };
 		DAD7E0861B71621C5880CEC2 /* HDCP.png in Resources */ = {isa = PBXBuildFile; fileRef = 2EC404EFF4FD16E652A0DE55 /* HDCP.png */; };
 		E2A40B2FADCE6E73189BED86 /* parser.c in Sources */ = {isa = PBXBuildFile; fileRef = 58FCE89662E2C2249C89C7B2 /* parser.c */; };
+		E43B601F2133BC4DC4E93788 /* colour.c in Sources */ = {isa = PBXBuildFile; fileRef = 71F9866663354CDB03DE68D3 /* colour.c */; };
 		E6161C4A5DAFF37A3B872C3C /* HD60SAudio.bundle in Embed Dependencies */ = {isa = PBXBuildFile; fileRef = 9F047EFF5D3A895B3B3B2B7D /* HD60SAudio.bundle */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		F10D372D0D5D5CD2655C2B57 /* status_sample.c in Sources */ = {isa = PBXBuildFile; fileRef = 8FDD3006DFE80D06FF09D1FE /* status_sample.c */; };
 /* End PBXBuildFile section */
@@ -119,6 +123,7 @@
 		5CAE976973A9661138B5E396 /* HD60SAudio.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = HD60SAudio.c; sourceTree = "<group>"; };
 		6357F6F66A26419F5C78499F /* FrameFit.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FrameFit.swift; sourceTree = "<group>"; };
 		7077DBB0AE4A216DE906C000 /* AudioFeed.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = AudioFeed.h; sourceTree = "<group>"; };
+		71F9866663354CDB03DE68D3 /* colour.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = colour.c; sourceTree = "<group>"; };
 		791CD22A7A5BCBF5CA41DEC9 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		82A96EFD70066EE24A64F776 /* ring.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = ring.c; sourceTree = "<group>"; };
 		8400EEE9F8976B5123BAA715 /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
@@ -129,6 +134,7 @@
 		9788A62CEE0CF0C4A1436A57 /* DextStatus.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DextStatus.swift; sourceTree = "<group>"; };
 		9F047EFF5D3A895B3B3B2B7D /* HD60SAudio.bundle */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = HD60SAudio.bundle; sourceTree = BUILT_PRODUCTS_DIR; };
 		A3E0C3F3545569814FC50DBC /* HD60S.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = HD60S.entitlements; sourceTree = "<group>"; };
+		A3EEFFA09FD7829C73DC79AC /* link.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = link.c; sourceTree = "<group>"; };
 		AFAB7175D82262FE4407375C /* Bridging.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = Bridging.h; sourceTree = "<group>"; };
 		B4395BC9C75FEE1900F4B5D8 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		B66B23A57491009FCDACE3D3 /* status_probe.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = status_probe.c; sourceTree = "<group>"; };
@@ -188,9 +194,11 @@
 			isa = PBXGroup;
 			children = (
 				8E26A3911F27BDDF09FCF87C /* audio.c */,
+				71F9866663354CDB03DE68D3 /* colour.c */,
 				38DF55540E5C678012FE392F /* deinterlace.c */,
 				C294100439805B100F077570 /* device_libusb.c */,
 				3D657EA2382F0CC167FE569B /* device.c */,
+				A3EEFFA09FD7829C73DC79AC /* link.c */,
 				58FCE89662E2C2249C89C7B2 /* parser.c */,
 				82A96EFD70066EE24A64F776 /* ring.c */,
 				B66B23A57491009FCDACE3D3 /* status_probe.c */,
@@ -419,8 +427,10 @@
 				CAF7FD7C368B2E54CDD46BD4 /* StatusPoller.swift in Sources */,
 				3A913A18036677F4C7B7146B /* StatusSnapshot.swift in Sources */,
 				06CE8B6E83B9A1A92D549046 /* audio.c in Sources */,
+				E43B601F2133BC4DC4E93788 /* colour.c in Sources */,
 				1C3D504FAF3E71657A6131BF /* device.c in Sources */,
 				0C9FB9218F38D58C6F93E755 /* device_libusb.c in Sources */,
+				7A7FBB0E7D031DD35CBE7E4D /* link.c in Sources */,
 				BD246132959F3785F1CF6769 /* parser.c in Sources */,
 				C8639514FFD7EF1DA6994A59 /* status.c in Sources */,
 				62A65E0AF29FCA7E5DB454FD /* status_probe.c in Sources */,
@@ -442,9 +452,11 @@
 				A0741C058C3F0F44A601E8B2 /* StatusPublisher.swift in Sources */,
 				0695B172DEC8713663941FD6 /* StatusSnapshot.swift in Sources */,
 				3EB0F22E0D9CAE0F9E6B99FD /* audio.c in Sources */,
+				AABE7B51A0B40568D412F01E /* colour.c in Sources */,
 				8A5FB167BBB7D6BE364E769C /* deinterlace.c in Sources */,
 				274C386DB52799C980E9E44C /* device.c in Sources */,
 				7628AFB946F041CEB503F1CB /* device_libusb.c in Sources */,
+				6002D813266EAFAC4DDF4C87 /* link.c in Sources */,
 				717A4907EF90ADB8B070AEE9 /* main.swift in Sources */,
 				E2A40B2FADCE6E73189BED86 /* parser.c in Sources */,
 				56F2C184E36B4C0F6FCBE1AF /* ring.c in Sources */,

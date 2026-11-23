@@ -6,7 +6,6 @@ targets:
     sources:
       - ExtensionDext/DextFeed.c
       - path: ../src/framering.c
-      - path: ../src/link.c
     settings:
       HD60S_FLAVOUR: driverkit
       SWIFT_ACTIVE_COMPILATION_CONDITIONS: DEXT
@@ -21,14 +20,9 @@ targets:
       - ExtensionDext
       - Shared
       - path: ../src/status.c
-      - path: ../src/device.c
       - path: ../src/device_libusb.c
-      - path: ../src/parser.c
       - path: ../src/deinterlace.c
-      - path: ../src/tx.c
-      - path: ../src/audio.c
       - path: ../src/framering.c
-      - path: ../src/link.c
     settings:
       SWIFT_ACTIVE_COMPILATION_CONDITIONS: DEXT
       SWIFT_OBJC_BRIDGING_HEADER: ExtensionDext/Bridging.h
@@ -40,17 +34,13 @@ targets:
         com.apple.security.application-groups: [$(TeamIdentifierPrefix)net.mintopia.hd60s]
         com.apple.security.temporary-exception.iokit-user-client-class: [IOUserUserClient]
   net.mintopia.hd60s.dext:
+    templates: [CoreC]
     type: driver-extension
     platform: macOS
     sources:
       - Dext
-      - path: ../src/device.c
-      - path: ../src/parser.c
-      - path: ../src/tx.c
-      - path: ../src/audio.c
       - path: ../src/aclock.c
       - path: ../src/framering.c
-      - path: ../src/link.c
     info:
       path: Dext/Info.plist
       properties:
