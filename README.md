@@ -76,7 +76,7 @@ build/hd60s capture --iso -n 300 -o out.yuv             # isochronous USB transf
 build/hd60s capture -o - | ffplay -f rawvideo -pixel_format yuyv422 -video_size 1920x1080 -framerate 60 -
 ```
 
-`-r auto|standard|expanded` sets the HDMI colour range (default `auto`). `expanded` compresses full-range RGB to limited, for sources that send 0-255. `auto` does the same only when the source's AVI InfoFrame says full range (some sources, such as the Raspberry Pi with this EDID, send full range without saying so; use `expanded` for them). The camera extension reads `{"range":"auto|standard|expanded"}` from `settings.json` in the app group container about once a second; the DriverKit flavour takes it through its user client (external method 0, eight scalars: range as 0 auto, 1 standard, 2 expanded, then brightness, contrast, saturation and hue as signed offsets, then audio source as 0 HDMI, 1 line in, 3 both, gain as a half-dB offset from -6 dB, and mute as 0 or 1).
+`-r auto|standard|expanded` sets the HDMI colour range (default `auto`). `expanded` compresses full-range RGB to limited, for sources that send 0-255. `auto` does the same only when the source's AVI InfoFrame signals full range. The HD60 S EDID has no quantisation-select bit, so sources that can't be told to signal it, such as a Raspberry Pi set to "Full", send full range without saying so: use `expanded` for them. The camera extension reads `{"range":"auto|standard|expanded"}` from `settings.json` in the app group container about once a second. In the DriverKit flavour it also pushes them to the driver extension when it connects and whenever the file changes, and the app pushes them after installing the driver and on every change. The driver takes one fixed-layout struct (`struct hd60s_settings_wire` in `src/device.h`, versioned) as the structure input of user-client external method 0, and refuses anything malformed.
 
 Picture controls (`--brightness N`, `--contrast N`, `--saturation N`, `--hue N` on `status` and `capture`) are Elgato's own, done in the receiver's colour matrix. Each is an integer from -128 to 127 away from Elgato's default, so 0 changes nothing. In `settings.json` they are the same-named integers beside `range`; leave them out for 0.
 
@@ -90,11 +90,13 @@ Work happens on `develop`; `main` holds releases. Pushing a `vX.Y.Z` tag builds,
 |---|---|
 | `MACOS_CERTIFICATE_P12` | Developer ID Application certificate and key, base64 `.p12` |
 | `MACOS_CERTIFICATE_PASSWORD` | Its password |
-| `MACOS_APP_PROFILE` | Developer ID provisioning profile for `net.mintopia.hd60s`, base64 |
-| `MACOS_CAMERA_PROFILE` | Developer ID provisioning profile for `net.mintopia.hd60s.camera`, base64 |
+| `MACOS_APP_PROFILE` | Developer ID provisioning profile for `net.mintopia.hd60s`, base64. Must include the `net.mintopia.hd60s` App Group |
+| `MACOS_CAMERA_PROFILE` | Developer ID provisioning profile for `net.mintopia.hd60s.camera`, base64. Must include the `net.mintopia.hd60s` App Group |
 | `ASC_KEY_P8` | App Store Connect API key, base64 `.p8`, for notarisation |
 | `ASC_KEY_ID` | Its key ID |
 | `ASC_ISSUER_ID` | Its issuer ID |
+
+The app and the camera extension share settings through the `net.mintopia.hd60s` App Group (`46A7P6HL4Z.net.mintopia.hd60s`), so both App IDs need the App Groups capability with that group, and both profiles must be generated after adding it. The release workflow fails early if either profile lacks it.
 
 ### DriverKit DMG
 
