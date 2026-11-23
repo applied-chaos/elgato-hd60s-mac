@@ -12,6 +12,7 @@ final class StatusPublisher {
         var firmware: UInt32 = 0
         var client = ""
         var hdcp = false, dvi = false
+        var odd = UnsupportedWatch(), oddWidth = 0, oddHeight = 0, oddNs: UInt64 = 0
     }
 
     private let state = OSAllocatedUnfairLock(initialState: State())
@@ -34,6 +35,13 @@ final class StatusPublisher {
 
     func frame(width: Int, height: Int, interlaced: Bool, topFirst: Bool, bt601: Bool, nowNs: UInt64) {
         state.withLock {
+            guard hd60s_size_standard(Int32(width), Int32(height)) != 0 else {
+                if $0.odd.note(width: width, height: height, known: false) {
+                    ($0.oddWidth, $0.oddHeight, $0.oddNs) = (width, height, nowNs)
+                }
+                return
+            }
+            _ = $0.odd.note(width: width, height: height, known: true)
             $0.width = width
             $0.height = height
             $0.interlaced = interlaced
@@ -70,6 +78,10 @@ final class StatusPublisher {
         st.long_lines = longLines
         if s.hdcp {
             st.signal = SIGNAL_HDCP
+        } else if s.oddNs > s.lastFrameNs, nowNs &- s.oddNs < Self.activeWithinNs {
+            st.signal = SIGNAL_UNSUPPORTED
+            st.width = Int32(s.oddWidth)
+            st.height = Int32(s.oddHeight)
         } else if s.lastFrameNs != 0, nowNs &- s.lastFrameNs < Self.activeWithinNs {
             st.signal = SIGNAL_ACTIVE
             st.width = Int32(s.width)

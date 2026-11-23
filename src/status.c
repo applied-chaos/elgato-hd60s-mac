@@ -135,6 +135,17 @@ int hd60s_size_standard(int w, int h)
     return parser_is_sd(w, h) >= 0;
 }
 
+enum hd60s_signal hd60s_ring_signal(int advanced, int hdcp, int w, int h, int prev_w, int prev_h)
+{
+    if (hdcp)
+        return SIGNAL_HDCP;
+    if (!advanced)
+        return SIGNAL_NONE;
+    if (hd60s_size_standard(w, h))
+        return SIGNAL_ACTIVE;
+    return w > 0 && h > 0 && w == prev_w && h == prev_h ? SIGNAL_UNSUPPORTED : SIGNAL_NONE;
+}
+
 static int fw_known(uint32_t v)
 {
     for (size_t i = 0; i < COUNT_OF(KNOWN_MCU_VERSIONS); i++)

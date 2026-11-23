@@ -197,5 +197,12 @@ int main(void)
         char *j = render(hd60s_print_json, &s);
         assert(strstr(j, "\"owner\":{\"kind\":\"") && !strstr(j, "\"kind\":\"\""));
     }
+    assert(hd60s_ring_signal(0, 0, 1920, 1080, 1920, 1080) == SIGNAL_NONE);
+    assert(hd60s_ring_signal(1, 0, 1920, 1080, 0, 0) == SIGNAL_ACTIVE);
+    assert(hd60s_ring_signal(1, 1, 1920, 1080, 1920, 1080) == SIGNAL_HDCP);
+    assert(hd60s_ring_signal(1, 0, 1120, 700, 1120, 700) == SIGNAL_UNSUPPORTED);
+    assert(hd60s_ring_signal(1, 0, 1280, 703, 1280, 12) == SIGNAL_NONE);
+    assert(hd60s_ring_signal(1, 0, 1280, 703, 0, 0) == SIGNAL_NONE);
+    assert(hd60s_ring_signal(1, 0, 0, 0, 0, 0) == SIGNAL_NONE);
     return 0;
 }

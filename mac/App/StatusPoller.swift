@@ -13,6 +13,7 @@ final class StatusPoller: ObservableObject {
     private var timer: DispatchSourceTimer?
     private var sampledFrames: UInt = 0, sampledDiscarded: UInt = 0
     private var ringMark: (frames: UInt64, at: Date)?
+    private var ringSize: (width: Int32, height: Int32) = (0, 0)
     private static let sampleSeconds = 0.8
     private static let restSeconds = 1.0
 
@@ -32,6 +33,7 @@ final class StatusPoller: ObservableObject {
             sampledFrames = 0
             sampledDiscarded = 0
             ringMark = nil
+            ringSize = (0, 0)
             #if DEXT
             dext_feed_close()
             #endif
@@ -110,13 +112,14 @@ final class StatusPoller: ObservableObject {
             st.fw_valid = 1
             st.mcu_version = counters.mcu_version
         }
-        guard delta > 0, span > 0, info.width > 0 else {
-            st.signal = SIGNAL_NONE
-            return
-        }
-        st.signal = SIGNAL_ACTIVE
+        let prev = ringSize
+        ringSize = (info.width, info.height)
+        st.signal = hd60s_ring_signal(delta > 0 && span > 0 ? 1 : 0, Int32(counters.hdcp), info.width, info.height,
+                                      prev.width, prev.height)
+        guard st.signal == SIGNAL_ACTIVE || st.signal == SIGNAL_UNSUPPORTED else { return }
         st.width = info.width
         st.height = info.height
+        guard st.signal == SIGNAL_ACTIVE else { return }
         st.interlaced = info.interlaced
         st.field_order = counters.top_first != 0 ? FIELD_TOP_FIRST : FIELD_NONE
         st.fps = Double(delta) / span

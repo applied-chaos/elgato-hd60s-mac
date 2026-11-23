@@ -55,6 +55,10 @@ int hd60s_size_standard(int width, int height);
 /* Source type from the link flags; unknown if there is no signal to describe. */
 enum hd60s_link_type hd60s_link_type_from_link(struct hd60s_link l, enum hd60s_signal signal);
 
+/* Signal from two frame-ring peeks a poll apart; an unknown size counts as unsupported only if it held across both,
+ * otherwise it is a mode-switch runt. */
+enum hd60s_signal hd60s_ring_signal(int advanced, int hdcp, int width, int height, int prev_width, int prev_height);
+
 /* Firmware read but not in the known list: informational, not a warning. */
 int hd60s_firmware_untested(const struct hd60s_status *s);
 uint32_t hd60s_warnings(const struct hd60s_status *s); /* bit per enum hd60s_warning */
