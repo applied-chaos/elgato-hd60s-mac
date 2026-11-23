@@ -126,11 +126,8 @@ final class StatusPoller: ObservableObject {
     }
 
     private static func readSnapshot() -> DeviceFacts? {
-        guard let url = StatusSnapshot.url(),
-              let modified = (try? url.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate,
-              -modified.timeIntervalSinceNow < StatusSnapshot.maxAge,
-              let data = try? Data(contentsOf: url) else { return nil }
-        return try? DeviceFacts(json: data)
+        guard let text = CameraLink.get(.status), !text.isEmpty else { return nil }
+        return try? DeviceFacts(json: Data(text.utf8))
     }
 
     private static func otherProcess(_ st: hd60s_status) -> String? {

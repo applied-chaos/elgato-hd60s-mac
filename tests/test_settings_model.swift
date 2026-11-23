@@ -87,18 +87,29 @@ func bytes(_ s: hd60s_settings) -> [UInt8] { var s = s; return withUnsafeBytes(o
         check(PictureAudioSettings(json: "nope") == nil, "preview json rejected")
 
         let store = dir.appendingPathComponent("store.json")
-        let live = SettingsStore(url: store)
+        var sent: [PictureAudioSettings] = []
+        let live = SettingsStore(url: store) { sent.append(PictureAudioSettings($0)) }
         check(live.value == d && !FileManager.default.fileExists(atPath: store.path), "fresh store holds defaults and writes nothing")
+        check(sent == [d], "fresh store sends its settings to the camera")
         live.value.brightness = 30
         live.value.mute = true
         check(PictureAudioSettings(SettingsFile.read(store)!) == live.value, "each change reaches the file")
+        check(sent.count == 3 && sent.last == live.value, "each change reaches the camera")
+        live.value.mute = true
+        check(sent.count == 3, "no send without a change")
+        live.push()
+        check(sent.count == 4 && sent.last == live.value, "explicit push resends, as when the camera reappears")
+        check(SettingsFile.parse(SettingsFile.json(live.value.device)).map(PictureAudioSettings.init) == live.value, "wire JSON round trip")
         let reopened = SettingsStore(url: store)
         check(reopened.value == live.value, "settings persist across launches")
         reopened.reset()
         check(reopened.value == d && PictureAudioSettings(SettingsFile.read(store)!) == d, "reset writes defaults")
-        let pinned = SettingsStore(url: store, preview: full)
+        sent = []
+        let pinned = SettingsStore(url: store, preview: full) { sent.append(PictureAudioSettings($0)) }
         pinned.value.hue = 5
+        pinned.push()
         check(pinned.value.hue == 5 && PictureAudioSettings(SettingsFile.read(store)!) == d, "preview store never writes")
+        check(sent.isEmpty, "preview store never sends")
         print("settings model tests passed")
     }
 }

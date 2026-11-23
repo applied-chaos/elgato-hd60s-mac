@@ -7,27 +7,27 @@ final class SettingsStore: ObservableObject {
     }
     private let url: URL?
     private let pinned: Bool
+    private let send: (hd60s_settings) -> Void
 
-        init(url: URL?, preview: PictureAudioSettings? = nil) {
+    init(url: URL?, preview: PictureAudioSettings? = nil, send: @escaping (hd60s_settings) -> Void = { _ in }) {
         self.url = preview == nil ? url : nil
         pinned = preview != nil
+        self.send = send
         value = preview ?? url.flatMap(SettingsFile.read).map(PictureAudioSettings.init) ?? PictureAudioSettings()
-        pushToDriver()
+        push()
     }
 
     func reset() { value = PictureAudioSettings() }
 
-    func pushToDriver() {
-        #if DEXT
+    // The app is the source of truth: the camera keeps only what it was last sent.
+    func push() {
         guard !pinned else { return }
-        var c = value.device
-        _ = dext_send_settings(&c)
-        #endif
+        send(value.device)
     }
 
     private func persist() {
         guard !pinned else { return }
         if let url { try? SettingsFile.write(value.device, to: url) }
-        pushToDriver()
+        push()
     }
 }

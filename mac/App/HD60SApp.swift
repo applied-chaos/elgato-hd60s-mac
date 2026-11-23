@@ -423,7 +423,7 @@ struct MainWindow: View {
     @StateObject private var installer = Installer.shared
     @StateObject private var dext = Installer.shared.dext
     @StateObject private var poller = StatusPoller(preview: HD60SApp.launchArguments.value(after: "--preview-facts").flatMap(PreviewFacts.init))
-    @StateObject private var settings = SettingsStore(url: SettingsFile.url(), preview: HD60SApp.launchArguments.value(after: "--preview-settings").flatMap(PictureAudioSettings.init(json:)))
+    @StateObject private var settings = SettingsStore(url: SettingsFile.url(), preview: HD60SApp.launchArguments.value(after: "--preview-settings").flatMap(PictureAudioSettings.init(json:)), send: CameraLink.send)
     @State private var tab = Tab.install
     @State private var chosen = HD60SApp.launchArguments.value(after: "--preview-tab") != nil
 
@@ -472,7 +472,8 @@ struct MainWindow: View {
         .onAppear {
             if let name = HD60SApp.launchArguments.value(after: "--preview-tab") { tab = name == "status" ? .status : name == "settings" ? .settings : .install }
             if tab == .status { poller.start() }
-            dext.resendSettingsOnActivation = { [settings] in settings.pushToDriver() }
+            dext.resendSettingsOnActivation = { [settings] in settings.push() }
+            CameraLink.watchDevices(queue: .main) { [settings] in settings.push() }
         }
         .onDisappear { poller.stop() }
         .onChange(of: tab) { _, new in new == .status ? poller.start() : poller.stop() }

@@ -15,6 +15,7 @@ final class StatusPublisher {
     }
 
     private let state = OSAllocatedUnfairLock(initialState: State())
+    private let latest = OSAllocatedUnfairLock(initialState: Data?.none)
     private static let activeWithinNs: UInt64 = 1_000_000_000
 
     func setClient(pid: pid_t, signingID: String?) {
@@ -81,11 +82,15 @@ final class StatusPublisher {
             st.signal = SIGNAL_NONE
         }
         st.source = hd60s_link_type_from_link(hd60s_link(hdcp: s.hdcp ? 1 : 0, dvi: s.dvi ? 1 : 0, hdmi: 0), st.signal)
-        if let url = StatusSnapshot.url() { try? factsData(st).write(to: url, options: .atomic) }
+        let data = factsData(st)
+        latest.withLock { $0 = data }
     }
 
+    /// Last published facts JSON; empty while no stream runs.
+    var snapshot: String { latest.withLock { $0.map { String(decoding: $0, as: UTF8.self) } } ?? "" }
+
     func clear() {
-        if let url = StatusSnapshot.url() { try? FileManager.default.removeItem(at: url) }
+        latest.withLock { $0 = nil }
         state.withLock { $0 = State() }
     }
 

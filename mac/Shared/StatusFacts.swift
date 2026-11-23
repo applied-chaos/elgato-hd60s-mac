@@ -1,12 +1,5 @@
 import Foundation
 
-enum StatusSnapshot {
-    static let fileName = "status.json"
-    static let maxAge: TimeInterval = 3
-
-    static func url() -> URL? { AppGroup.container?.appendingPathComponent(fileName) }
-}
-
 func factsData(_ st: hd60s_status) -> Data {
     var st = st
     var buffer: UnsafeMutablePointer<CChar>?

@@ -11,7 +11,6 @@ private let height = Int32(outputHeight)
 private let noFramesTimeoutNs: UInt64 = 200_000_000
 private let statsEveryTicks = 600
 private let publishIntervalNs: UInt64 = 1_000_000_000
-private let settingsEveryTicks = 30
 private let log = Logger(subsystem: "net.mintopia.hd60s.camera", category: "capture")
 
 final class ProviderSource: NSObject, CMIOExtensionProviderSource {
@@ -63,7 +62,7 @@ final class DeviceSource: NSObject, CMIOExtensionDeviceSource {
     }
 
     var availableProperties: Set<CMIOExtensionProperty> {
-        [.deviceTransportType, .deviceModel, .deviceLinkedCoreAudioDeviceUID]
+        Set([.deviceTransportType, .deviceModel, .deviceLinkedCoreAudioDeviceUID] + CameraProperty.allCases.map(\.property))
     }
 
     func deviceProperties(forProperties properties: Set<CMIOExtensionProperty>) throws -> CMIOExtensionDeviceProperties {
@@ -81,10 +80,37 @@ final class DeviceSource: NSObject, CMIOExtensionDeviceSource {
             p.linkedCoreAudioDeviceUID = "net.mintopia.hd60s.audio"
             #endif
         }
+        for c in CameraProperty.allCases where properties.contains(c.property) {
+            let value = switch c {
+            case .settings: SettingsFile.json(streamSource.currentSettings)
+            case .status: streamSource.statusJSON
+            case .quit: ""
+            }
+            p.setPropertyState(CMIOExtensionPropertyState(value: value as NSString,
+                                                          attributes: c == .status ? .readOnlyPropertyAttribute : nil),
+                               forProperty: c.property)
+        }
         return p
     }
 
-    func setDeviceProperties(_ deviceProperties: CMIOExtensionDeviceProperties) throws {}
+    func setDeviceProperties(_ deviceProperties: CMIOExtensionDeviceProperties) throws {
+        let set = deviceProperties.propertiesDictionary
+        if let state = set[CameraProperty.settings.property] {
+            guard let text = state.value as? String, let next = SettingsFile.parse(text) else {
+                throw NSError(domain: NSOSStatusErrorDomain, code: Int(kCMIOHardwareIllegalOperationError))
+            }
+            streamSource.apply(next)
+        }
+        if set[CameraProperty.quit.property] != nil {
+            log.info("quit requested by the installer")
+            // Lets the property reply reach the app before the process goes.
+            DispatchQueue.global().asyncAfter(deadline: .now() + 0.2) { exit(0) }
+        }
+    }
+}
+
+extension CameraProperty {
+    var property: CMIOExtensionProperty { CMIOExtensionProperty(rawValue: key) }
 }
 
 final class StreamSource: NSObject, CMIOExtensionStreamSource {
@@ -107,7 +133,7 @@ final class StreamSource: NSObject, CMIOExtensionStreamSource {
     private var timer: DispatchSourceTimer?
     private var ticks = 0
     #if DEXT
-    private var pushedConnections: UInt32?
+    private var pushed: (settings: hd60s_settings, connections: UInt32)?
     #endif
     private var scaler: VTPixelTransferSession?
     private let statusOut = StatusPublisher()
@@ -356,7 +382,9 @@ final class StreamSource: NSObject, CMIOExtensionStreamSource {
         }
         ticks += 1
         publishStatus()
-        if ticks % settingsEveryTicks == 0, let next = SettingsFile.load() { resendSettingsOnFileChangeOrReconnect(next) }
+        #if DEXT
+        resendSettingsOnChangeOrReconnect()
+        #endif
         if ticks % statsEveryTicks == 0 {
             // ponytail: unsynchronised reads of counters the capture thread writes; fine for logging.
             #if DEXT
@@ -370,22 +398,33 @@ final class StreamSource: NSObject, CMIOExtensionStreamSource {
         }
     }
 
-    private func resendSettingsOnFileChangeOrReconnect(_ next: hd60s_settings) {
+    var currentSettings: hd60s_settings { settings.withLock { $0 } }
+
+    var statusJSON: String { statusOut.snapshot }
+
+    // Saved in this process's own container so a restart before the app next pushes keeps the user's choice.
+    func apply(_ next: hd60s_settings) {
         var previous = settings.withLock { current in
             let p = current
             current = next
             return p
         }
         var latest = next
-        #if DEXT
-        let connections = dext_feed_connections()
-        if hd60s_settings_equal(&previous, &latest) == 0 || connections != pushedConnections {
-            pushedConnections = dext_send_settings(&latest) == 0 ? connections : nil
-        }
-        #else
+        guard hd60s_settings_equal(&previous, &latest) == 0 else { return }
+        if let url = SettingsFile.url() { try? SettingsFile.write(next, to: url) }
+        #if !DEXT
         hd60s_settings_publish(dev, &latest)
         #endif
     }
+
+    #if DEXT
+    private func resendSettingsOnChangeOrReconnect() {
+        var current = currentSettings
+        let connections = dext_feed_connections()
+        if var last = pushed?.settings, hd60s_settings_equal(&last, &current) != 0, pushed?.connections == connections { return }
+        pushed = dext_send_settings(&current) == 0 ? (current, connections) : nil
+    }
+    #endif
 
     private func publishStatus() {
         let now = hostNs()
