@@ -16,22 +16,15 @@ enum FrameRate: CaseIterable {
         }
     }
 
-    // Discrete valid duration so each format advertises exactly its own rate to AVFoundation.
-    func streamFormat(_ description: CMFormatDescription) -> CMIOExtensionStreamFormat {
-        CMIOExtensionStreamFormat(formatDescription: description, maxFrameDuration: duration,
-                                  minFrameDuration: duration, validFrameDurations: [duration])
+    // A single format carrying every rate; the client picks one by setting the stream frame duration.
+    static func streamFormat(_ description: CMFormatDescription) -> CMIOExtensionStreamFormat {
+        CMIOExtensionStreamFormat(formatDescription: description, maxFrameDuration: p24.duration,
+                                  minFrameDuration: ntsc.duration, validFrameDurations: all.map(\.duration))
     }
-
-    var index: Int { Self.allCases.firstIndex(of: self)! }
 
     static var all: [FrameRate] { allCases }
 
-    init?(index: Int) {
-        guard Self.allCases.indices.contains(index) else { return nil }
-        self = Self.allCases[index]
-    }
-
-    // Nearest advertised rate by fps, for apps that set a frame duration instead of a format index.
+    // Nearest advertised rate by fps.
     init?(duration: CMTime) {
         guard duration.isNumeric, duration.seconds > 0 else { return nil }
         let fps = 1 / duration.seconds

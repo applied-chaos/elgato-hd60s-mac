@@ -115,7 +115,7 @@ extension CameraProperty {
 
 final class StreamSource: NSObject, CMIOExtensionStreamSource {
     private(set) var stream: CMIOExtensionStream!
-    private let formatList: [CMIOExtensionStreamFormat]
+    private let format: CMIOExtensionStreamFormat
     private let rate = OSAllocatedUnfairLock(initialState: FrameRate.ntsc)
     private var pool: CVPixelBufferPool!
     private let stop = UnsafeMutablePointer<sig_atomic_t>.allocate(capacity: 1)
@@ -145,7 +145,7 @@ final class StreamSource: NSObject, CMIOExtensionStreamSource {
         var desc: CMFormatDescription?
         CMVideoFormatDescriptionCreate(allocator: kCFAllocatorDefault, codecType: kCVPixelFormatType_422YpCbCr8_yuvs,
                                        width: width, height: height, extensions: nil, formatDescriptionOut: &desc)
-        formatList = FrameRate.all.map { $0.streamFormat(desc!) }
+        format = FrameRate.streamFormat(desc!)
         let attrs: [String: Any] = [
             kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_422YpCbCr8_yuvs,
             kCVPixelBufferWidthKey as String: width,
@@ -164,28 +164,23 @@ final class StreamSource: NSObject, CMIOExtensionStreamSource {
                                      clockType: .hostTime, source: self)
     }
 
-    var formats: [CMIOExtensionStreamFormat] { formatList }
+    var formats: [CMIOExtensionStreamFormat] { [format] }
 
-    var availableProperties: Set<CMIOExtensionProperty> { [.streamActiveFormatIndex, .streamFrameDuration, .streamMaxFrameDuration] }
+    var availableProperties: Set<CMIOExtensionProperty> { [.streamActiveFormatIndex, .streamFrameDuration] }
 
     func streamProperties(forProperties properties: Set<CMIOExtensionProperty>) throws -> CMIOExtensionStreamProperties {
         let p = CMIOExtensionStreamProperties(dictionary: [:])
         if properties.contains(.streamActiveFormatIndex) {
-            p.activeFormatIndex = rate.withLock { $0.index }
+            p.activeFormatIndex = 0
         }
         if properties.contains(.streamFrameDuration) {
             p.frameDuration = rate.withLock { $0.duration }
-        }
-        if properties.contains(.streamMaxFrameDuration) {
-            p.maxFrameDuration = rate.withLock { $0.duration }
         }
         return p
     }
 
     func setStreamProperties(_ streamProperties: CMIOExtensionStreamProperties) throws {
-        let picked = streamProperties.activeFormatIndex.flatMap { FrameRate(index: $0) }
-            ?? streamProperties.frameDuration.flatMap { FrameRate(duration: $0) }
-        guard let picked, rate.withLock({ let changed = $0 != picked; $0 = picked; return changed }) else { return }
+        guard let picked = streamProperties.frameDuration.flatMap({ FrameRate(duration: $0) }), rate.withLock({ let changed = $0 != picked; $0 = picked; return changed }) else { return }
         log.info("rate set to \(picked.duration.seconds, format: .fixed(precision: 4)) s")
         if timer != nil { restartTimer() }
     }
