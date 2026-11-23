@@ -33,7 +33,7 @@ static int hue_table(const uint8_t *t, int i)
     return t[2 * i] | t[2 * i + 1] << 8;
 }
 
-static int hue_lerp(const uint8_t *t, int i, int quarter)
+static int hue_lerp_quarter_trunc(const uint8_t *t, int i, int quarter)
 {
     return (int16_t)((hue_table(t, i + 1) - hue_table(t, i)) * quarter / 4 + hue_table(t, i));
 }
@@ -62,7 +62,7 @@ static void apply_picture(uint16_t m[12], const struct hd60s_picture *p)
 
     uint8_t a = hue == 0 ? 0xff : (uint8_t)-hue;
     int negative = a >= 0x80, step = negative ? a ^ 0x80 : 0x80 - a;
-    int s = hue_lerp(ub530_hue_sin, step >> 2, step & 3), c = hue_lerp(ub530_hue_cos, step >> 2, step & 3);
+    int s = hue_lerp_quarter_trunc(ub530_hue_sin, step >> 2, step & 3), c = hue_lerp_quarter_trunc(ub530_hue_cos, step >> 2, step & 3);
     if (!negative)
         s = -s;
     for (int i = 0; i < 3; i++) {

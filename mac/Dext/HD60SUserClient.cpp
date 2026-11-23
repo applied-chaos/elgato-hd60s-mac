@@ -26,11 +26,13 @@ kern_return_t IMPL(HD60SUserClient, CopyClientMemoryForType)
     return driver->CopyFrameRing(memory);
 }
 
+static constexpr uint64_t kSettingsSelector = 0;
+
 kern_return_t HD60SUserClient::ExternalMethod(uint64_t selector, IOUserClientMethodArguments *arguments,
                                               const IOUserClientMethodDispatch *dispatch, OSObject *target, void *reference)
 {
     auto *driver = OSDynamicCast(HD60SDriver, GetProvider());
-    if (selector != 0 || !driver || !arguments || arguments->scalarInputCount || arguments->scalarOutputCount ||
+    if (selector != kSettingsSelector || !driver || !arguments || arguments->scalarInputCount || arguments->scalarOutputCount ||
         arguments->structureOutput || arguments->structureOutputDescriptor || arguments->structureInputDescriptor ||
         !arguments->structureInput || arguments->structureInput->getLength() != sizeof(hd60s_settings_wire))
         return kIOReturnBadArgument;

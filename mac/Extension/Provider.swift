@@ -356,7 +356,7 @@ final class StreamSource: NSObject, CMIOExtensionStreamSource {
         }
         ticks += 1
         publishStatus()
-        if ticks % settingsEveryTicks == 0, let next = SettingsFile.load() { applySettings(next) }
+        if ticks % settingsEveryTicks == 0, let next = SettingsFile.load() { resendSettingsOnFileChangeOrReconnect(next) }
         if ticks % statsEveryTicks == 0 {
             // ponytail: unsynchronised reads of counters the capture thread writes; fine for logging.
             #if DEXT
@@ -370,7 +370,7 @@ final class StreamSource: NSObject, CMIOExtensionStreamSource {
         }
     }
 
-    private func applySettings(_ next: hd60s_settings) {
+    private func resendSettingsOnFileChangeOrReconnect(_ next: hd60s_settings) {
         var previous = settings.withLock { current in
             let p = current
             current = next

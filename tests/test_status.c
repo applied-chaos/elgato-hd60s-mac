@@ -13,7 +13,7 @@ static struct hd60s_status healthy(void)
     s.access = ACCESS_OK;
     s.owner = OWNER_CLI;
     s.fw_valid = 1;
-    s.mcu_version = HD60S_DEV_MCU;
+    s.mcu_version = HD60S_TESTED_MCU;
     return s;
 }
 

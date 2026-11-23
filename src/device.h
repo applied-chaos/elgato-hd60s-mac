@@ -87,8 +87,8 @@ struct hd60s {
     uint8_t mst_saved[5];  /* MST3367 bank 1 reg 0x27 snapshot, restored on stop */
     int started;
     struct hd60s_colour_cfg colour;
-    struct hd60s_settings settings; /* write with hd60s_settings_publish once another thread may be reading */
-    _Atomic uint32_t settings_lock;
+    struct hd60s_settings published_settings;
+    _Atomic uint32_t published_settings_lock;
     struct tx tx;          /* HDMI-out transmitter state */
     struct audio_settings audio;
     int audio_routed_hdmi;

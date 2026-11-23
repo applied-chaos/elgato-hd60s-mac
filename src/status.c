@@ -57,7 +57,9 @@ static const struct named colours[] = {
 static const struct named inputs[] = {
     {INPUT_RGB, "rgb", "RGB"}, {INPUT_YCBCR444, "ycbcr444", "YCbCr 4:4:4"}, {INPUT_YCBCR422, "ycbcr422", "YCbCr 4:2:2"},
 };
-/* Warning text takes: 1 speed, 2 " (port ...)", 3 owner, 4 ": " or "", 5 owner process name. */
+struct warning_args {
+    const char *speed, *at, *owner, *owner_sep, *owner_name;
+};
 static const struct named warnings[] = {
     {WARN_NO_DEVICE, "no_device", "No HD60 S found. Check the USB cable and that the device is powered."},
     {WARN_NOT_SUPERSPEED, "not_superspeed",
@@ -66,18 +68,18 @@ static const struct named warnings[] = {
     {WARN_OPEN_FAILED, "open_failed", "Could not open the device. Unplug and replug it."},
 };
 
-_Static_assert(COUNT_OF(speeds) == SPEED_COUNT, "speeds table");
-_Static_assert(COUNT_OF(accesses) == ACCESS_COUNT, "accesses table");
-_Static_assert(COUNT_OF(owners) == OWNER_COUNT, "owners table");
-_Static_assert(COUNT_OF(signals) == SIGNAL_COUNT, "signals table");
-_Static_assert(COUNT_OF(sources) == SOURCE_COUNT, "sources table");
-_Static_assert(COUNT_OF(field_orders) == FIELD_COUNT, "field orders table");
-_Static_assert(COUNT_OF(colours) == COLOUR_COUNT, "colours table");
-_Static_assert(COUNT_OF(inputs) == INPUT_COUNT, "inputs table");
-_Static_assert(COUNT_OF(warnings) == WARN_COUNT, "warnings table");
+_Static_assert(COUNT_OF(speeds) == SPEED_COUNT, "every speeds value needs a name in its table");
+_Static_assert(COUNT_OF(accesses) == ACCESS_COUNT, "every accesses value needs a name in its table");
+_Static_assert(COUNT_OF(owners) == OWNER_COUNT, "every owners value needs a name in its table");
+_Static_assert(COUNT_OF(signals) == SIGNAL_COUNT, "every signals value needs a name in its table");
+_Static_assert(COUNT_OF(sources) == SOURCE_COUNT, "every sources value needs a name in its table");
+_Static_assert(COUNT_OF(field_orders) == FIELD_COUNT, "every field orders value needs a name in its table");
+_Static_assert(COUNT_OF(colours) == COLOUR_COUNT, "every colours value needs a name in its table");
+_Static_assert(COUNT_OF(inputs) == INPUT_COUNT, "every inputs value needs a name in its table");
+_Static_assert(COUNT_OF(warnings) == WARN_COUNT, "every warnings value needs a name in its table");
 _Static_assert(WARN_COUNT <= 32, "warnings are bits of a uint32_t");
 
-static const uint32_t known_mcu[] = {HD60S_DEV_MCU};
+static const uint32_t KNOWN_MCU_VERSIONS[] = {HD60S_TESTED_MCU};
 
 enum hd60s_speed hd60s_speed_from_libusb(int v)
 {
@@ -129,8 +131,8 @@ int hd60s_size_standard(int w, int h)
 
 static int fw_known(uint32_t v)
 {
-    for (size_t i = 0; i < COUNT_OF(known_mcu); i++)
-        if (known_mcu[i] == v)
+    for (size_t i = 0; i < COUNT_OF(KNOWN_MCU_VERSIONS); i++)
+        if (KNOWN_MCU_VERSIONS[i] == v)
             return 1;
     return 0;
 }
@@ -164,8 +166,9 @@ void hd60s_warning_message(enum hd60s_warning w, const struct hd60s_status *s, c
     char at[64] = "";
     if (s->port_path[0])
         snprintf(at, sizeof at, " (port %s)", s->port_path);
-    snprintf(buf, n, NAME_OF(warnings, w)->text, NAME_OF(speeds, s->speed)->text, at, NAME_OF(owners, s->owner)->text,
-             s->owner_name[0] ? ": " : "", s->owner_name);
+    const struct warning_args a = {NAME_OF(speeds, s->speed)->text, at, NAME_OF(owners, s->owner)->text,
+                                   s->owner_name[0] ? ": " : "", s->owner_name};
+    snprintf(buf, n, NAME_OF(warnings, w)->text, a.speed, a.at, a.owner, a.owner_sep, a.owner_name);
 }
 
 static void untested_message(const struct hd60s_status *s, char *buf, size_t n)

@@ -196,7 +196,7 @@ int main(int argc, char **argv)
     struct hd60s d;
     int rc = 1;
     hd60s_open_wait_ms = 4000;
-    if (hd60s_open(&d) == 0 && (settings.audio = audio_to_pref(audio), d.settings = settings, hd60s_set_audio(&d, &audio) == 0) && hd60s_start(&d) == 0) {
+    if (hd60s_open(&d) == 0 && (settings.audio = audio_to_pref(audio), hd60s_settings_publish(&d, &settings), hd60s_set_audio(&d, &audio) == 0) && hd60s_start(&d) == 0) {
         d.usb.transfer = transfer;
         if (info) {
             fprintf(stderr, "mcu firmware: %02x.%02x.%02x\n", d.mcu_version >> 16 & 0xff,

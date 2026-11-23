@@ -494,18 +494,18 @@ void hd60s_policy_tick(struct hd60s *d, struct hd60s_parser *p, struct hd60s_pol
 
 void hd60s_settings_publish(struct hd60s *d, const struct hd60s_settings *s)
 {
-    while (atomic_exchange_explicit(&d->settings_lock, 1, memory_order_acquire))
+    while (atomic_exchange_explicit(&d->published_settings_lock, 1, memory_order_acquire))
         ;
-    d->settings = *s;
-    atomic_store_explicit(&d->settings_lock, 0, memory_order_release);
+    d->published_settings = *s;
+    atomic_store_explicit(&d->published_settings_lock, 0, memory_order_release);
 }
 
 struct hd60s_settings hd60s_settings_snapshot(struct hd60s *d)
 {
-    while (atomic_exchange_explicit(&d->settings_lock, 1, memory_order_acquire))
+    while (atomic_exchange_explicit(&d->published_settings_lock, 1, memory_order_acquire))
         ;
-    struct hd60s_settings s = d->settings;
-    atomic_store_explicit(&d->settings_lock, 0, memory_order_release);
+    struct hd60s_settings s = d->published_settings;
+    atomic_store_explicit(&d->published_settings_lock, 0, memory_order_release);
     return s;
 }
 

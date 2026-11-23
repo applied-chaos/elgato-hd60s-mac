@@ -390,7 +390,7 @@ static void range_scaling_reaches_hardware_and_follows_the_source(void)
     hd60s_policy_begin(&pol, 0);
     hd60s_policy_tick(&d, &p, &pol, 0);
     uint16_t std0 = (uint16_t)(fk.mst[0][0x93] << 8 | fk.mst[0][0x94]);
-    assert(d.settings.range == RANGE_AUTO && fk.mst[0][0x92] == 0x40);
+    assert(d.published_settings.range == RANGE_AUTO && fk.mst[0][0x92] == 0x40);
 
     fk.mst[2][0x0b] = 0x08;
     fk.mst[2][0x4a] = 0x08; /* Q = 2, full range */
@@ -405,7 +405,7 @@ static void range_scaling_reaches_hardware_and_follows_the_source(void)
     hd60s_policy_tick(&d, &p, &pol, 2000);
     assert((uint16_t)(fk.mst[0][0x93] << 8 | fk.mst[0][0x94]) == std0);
 
-    d.settings.range = RANGE_EXPANDED;
+    d.published_settings.range = RANGE_EXPANDED;
     hd60s_policy_tick(&d, &p, &pol, 3000);
     assert((uint16_t)(fk.mst[0][0x93] << 8 | fk.mst[0][0x94]) == full0);
 }
@@ -451,20 +451,20 @@ static void picture_controls_reach_hardware_live_and_survive_a_range_change(void
     hd60s_policy_tick(&d, &p, &pol, 0);
     assert((fk.mst[0][0xa7] << 8 | fk.mst[0][0xa8]) == DEFAULT_BRIGHTNESS_WORD);
 
-    d.settings.picture.brightness = 63;
+    d.published_settings.picture.brightness = 63;
     hd60s_policy_tick(&d, &p, &pol, 1000);
     assert((fk.mst[0][0xa7] << 8 | fk.mst[0][0xa8]) == BRIGHT_63_WORD);
     int before = fk.requests;
     hd60s_policy_tick(&d, &p, &pol, 1100);
     assert(fk.requests == before);
 
-    d.settings.range = RANGE_EXPANDED;
-    d.settings.picture.brightness = 0;
+    d.published_settings.range = RANGE_EXPANDED;
+    d.published_settings.picture.brightness = 0;
     fk.mst[2][0x0b] = 0x08;
     fk.mst[2][0x4a] = 0x08;
     hd60s_policy_tick(&d, &p, &pol, 2000);
     assert((fk.mst[0][0xa7] << 8 | fk.mst[0][0xa8]) == COMPRESS_OFFSET_WORD + DEFAULT_BRIGHTNESS_WORD);
-    d.settings.picture.brightness = 63;
+    d.published_settings.picture.brightness = 63;
     hd60s_policy_tick(&d, &p, &pol, 3000);
     assert((fk.mst[0][0xa7] << 8 | fk.mst[0][0xa8]) == COMPRESS_OFFSET_WORD + BRIGHT_63_WORD);
 }
@@ -527,11 +527,11 @@ static void policy_applies_audio_settings_live(void)
     hd60s_policy_begin(&pol, 0);
     hd60s_policy_tick(&d, &p, &pol, 0);
     assert(fk.codec[0x03] == 0xa1 && d.audio.source == AUDIO_HDMI);
-    d.settings.audio = (struct audio_pref){AUDIO_LINE, 12, 0};
+    d.published_settings.audio = (struct audio_pref){AUDIO_LINE, 12, 0};
     hd60s_policy_tick(&d, &p, &pol, 10);
     assert(d.audio.source == AUDIO_LINE && d.audio.gain_half_db == 0);
     assert(!(fk.codec[0x0e] & 0x80) && fk.codec[0x10] & 0x80 && fk.codec[0x0c] == 0);
-    d.settings.audio.mute = 1;
+    d.published_settings.audio.mute = 1;
     hd60s_policy_tick(&d, &p, &pol, 20);
     assert(fk.codec[0x0e] & 0x80 && fk.codec[0x0f] & 0x80);
     int before = fk.requests;

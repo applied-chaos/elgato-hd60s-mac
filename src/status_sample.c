@@ -68,7 +68,7 @@ void hd60s_sample(struct hd60s_status *out, double seconds, struct hd60s_setting
         hd60s_quiet = 1;
         int opened = hd60s_open(&d) == 0;
         st->access = hd60s_access_from_error(d.open_err);
-        d.settings = settings;
+        hd60s_settings_publish(&d, &settings);
         if (opened) {
             struct audio_settings audio = audio_from_pref(settings.audio);
             (void)hd60s_set_audio(&d, &audio);

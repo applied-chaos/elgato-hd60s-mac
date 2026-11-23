@@ -16,7 +16,8 @@ enum hd60s_link_type { SOURCE_UNKNOWN, SOURCE_HDMI, SOURCE_DVI, SOURCE_COUNT };
 enum hd60s_field_order { FIELD_NONE, FIELD_TOP_FIRST, FIELD_COUNT };
 enum hd60s_warning { WARN_NO_DEVICE, WARN_NOT_SUPERSPEED, WARN_BUSY, WARN_OPEN_FAILED, WARN_COUNT };
 
-#define HD60S_DEV_MCU 0x110311
+#define MCU_PACK(a, b, c) ((a) << 16 | (b) << 8 | (c))
+#define HD60S_TESTED_MCU MCU_PACK(0x11, 0x03, 0x11)
 
 /* The status report shared by the CLI and the app (the app reads the JSON form). */
 struct hd60s_status {
