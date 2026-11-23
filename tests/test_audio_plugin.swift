@@ -18,6 +18,10 @@ func check(_ ok: Bool, _ what: String, line: UInt = #line) {
         check(DextStatus.found(enabled: true, awaitingApproval: true) == .installed, "enabled wins")
         check(DextStatus.found(enabled: false, awaitingApproval: false) == .notInstalled, "none")
         check(DextStatus.notBundled.label == nil && DextStatus.installed.label == "installed", "hidden unless bundled")
+        check(DextStatus.activated(runningBuilds: ["185"], bundled: "187") == .needsReplug, "old build still driving the device")
+        check(DextStatus.activated(runningBuilds: ["187"], bundled: "187") == .installed, "bundled build running")
+        check(DextStatus.activated(runningBuilds: [], bundled: "187") == .installed, "no device attached: nothing to replace")
+        check(DextStatus.needsReplug.label == "unplug and replug the HD60 S to finish", "replug label")
         check(Flavour(infoValue: "driverkit") == .driverKit && Flavour(infoValue: "userspace") == .userspace, "flavour parse")
         check(Flavour(infoValue: nil) == .userspace && Flavour(infoValue: "other") == .userspace, "flavour default")
         let plug = "/app/HD60SAudio.driver"
