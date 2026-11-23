@@ -13,7 +13,8 @@ final class StatusPoller: ObservableObject {
     private var timer: DispatchSourceTimer?
     private var sampledFrames: UInt = 0, sampledDiscarded: UInt = 0
     private var ringMark: (number: UInt32, at: Date)?
-    // ponytail: frames counted over a window only just tell 60 from 59.94; pass the MST3367 vsync rate through the ring if it must be exact.
+    // ponytail: frames counted over a window only just tell 60 from 59.94; pass the MST3367 vsync rate
+    // through the frame ring if it must be exact.
     private var ringWindow: [(number: UInt32, at: Date)] = []
     private static let fpsWindowSeconds = 30.0
     private var ringSize: (width: Int32, height: Int32) = (0, 0)
