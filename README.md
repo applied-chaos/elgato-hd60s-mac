@@ -76,9 +76,11 @@ build/hd60s capture --iso -n 300 -o out.yuv             # isochronous USB transf
 build/hd60s capture -o - | ffplay -f rawvideo -pixel_format yuyv422 -video_size 1920x1080 -framerate 60 -
 ```
 
-`-r auto|standard|expanded` sets the HDMI colour range (default `auto`). `expanded` compresses full-range RGB to limited, for sources that send 0-255. `auto` does the same only when the source's AVI InfoFrame says full range (some sources, such as the Raspberry Pi with this EDID, send full range without saying so; use `expanded` for them). The camera extension reads `{"range":"auto|standard|expanded"}` from `settings.json` in the app group container about once a second; the DriverKit flavour takes it through its user client (external method 0, five scalars: range as 0 auto, 1 standard, 2 expanded, then brightness, contrast, saturation and hue as signed offsets).
+`-r auto|standard|expanded` sets the HDMI colour range (default `auto`). `expanded` compresses full-range RGB to limited, for sources that send 0-255. `auto` does the same only when the source's AVI InfoFrame says full range (some sources, such as the Raspberry Pi with this EDID, send full range without saying so; use `expanded` for them). The camera extension reads `{"range":"auto|standard|expanded"}` from `settings.json` in the app group container about once a second; the DriverKit flavour takes it through its user client (external method 0, eight scalars: range as 0 auto, 1 standard, 2 expanded, then brightness, contrast, saturation and hue as signed offsets, then audio source as 0 HDMI, 1 line in, 3 both, gain as a half-dB offset from -6 dB, and mute as 0 or 1).
 
 Picture controls (`--brightness N`, `--contrast N`, `--saturation N`, `--hue N` on `status` and `capture`) are Elgato's own, done in the receiver's colour matrix. Each is an integer from -128 to 127 away from Elgato's default, so 0 changes nothing. In `settings.json` they are the same-named integers beside `range`; leave them out for 0.
+
+The app's Settings tab edits all of these live: colour range, the four picture sliders, audio source (HDMI, line in or both), gain (-12 to +12 dB, used by the 3.5 mm line in) and mute. It writes `settings.json` atomically on every change (`"source":"hdmi|line|mix"`, `"gain":` in half dB from -24 to 24, `"mute":true|false`; absent means HDMI, -6 dB, unmuted), and in the DriverKit build also sends them to the driver.
 
 ## Releasing
 

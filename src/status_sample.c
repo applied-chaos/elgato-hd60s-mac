@@ -69,6 +69,10 @@ void hd60s_sample(struct hd60s_status *out, double seconds, struct hd60s_setting
         int opened = hd60s_open(&d) == 0;
         st->access = hd60s_access_from_error(d.open_err);
         d.settings = settings;
+        if (opened) {
+            struct audio_settings audio = audio_from_pref(settings.audio);
+            (void)hd60s_set_audio(&d, &audio);
+        }
         if (opened && hd60s_start(&d) == 0) {
             st->owner = OWNER_CLI;
             st->owner_pid = 0;

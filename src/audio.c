@@ -7,20 +7,39 @@ int audio_gain_clamp(int g)
     return g < AUDIO_GAIN_MIN ? AUDIO_GAIN_MIN : g > AUDIO_GAIN_MAX ? AUDIO_GAIN_MAX : g;
 }
 
+struct audio_settings audio_from_pref(struct audio_pref p)
+{
+    return (struct audio_settings){p.source, audio_gain_clamp(AUDIO_DEFAULT.gain_half_db + p.gain_offset), p.mute != 0};
+}
+
+struct audio_pref audio_to_pref(struct audio_settings s)
+{
+    return (struct audio_pref){s.source, (int8_t)(audio_gain_clamp(s.gain_half_db) - AUDIO_DEFAULT.gain_half_db), s.mute != 0};
+}
+
 uint8_t audio_gain_code(int gain_half_db)
 {
     return (uint8_t)(audio_gain_clamp(gain_half_db) & 0x7f);
 }
 
+static const struct {
+    const char *name;
+    enum audio_source source;
+} source_names[] = {{"hdmi", AUDIO_HDMI}, {"line", AUDIO_LINE}, {"mix", AUDIO_MIX}};
+
+const char *audio_source_name(enum audio_source s)
+{
+    for (size_t i = 0; i < sizeof source_names / sizeof *source_names; i++)
+        if (source_names[i].source == s)
+            return source_names[i].name;
+    return source_names[0].name;
+}
+
 int audio_source_parse(const char *name, enum audio_source *out)
 {
-    static const struct {
-        const char *name;
-        enum audio_source source;
-    } names[] = {{"hdmi", AUDIO_HDMI}, {"line", AUDIO_LINE}, {"mix", AUDIO_MIX}};
-    for (size_t i = 0; name && i < sizeof names / sizeof *names; i++) {
-        if (!strcmp(name, names[i].name)) {
-            *out = names[i].source;
+    for (size_t i = 0; name && i < sizeof source_names / sizeof *source_names; i++) {
+        if (!strcmp(name, source_names[i].name)) {
+            *out = source_names[i].source;
             return 1;
         }
     }

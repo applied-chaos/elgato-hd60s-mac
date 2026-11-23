@@ -113,8 +113,28 @@ static void r04_keeps_unrelated_bits(void)
     assert(r.r04 == (0xbc | 0x02));
 }
 
+static void pref_zero_is_elgatos_default_and_round_trips(void)
+{
+    struct audio_pref zero = {0};
+    struct audio_settings d = audio_from_pref(zero);
+    assert(d.source == AUDIO_HDMI && d.gain_half_db == AUDIO_DEFAULT.gain_half_db && !d.mute);
+    struct audio_settings s = {AUDIO_MIX, 7, 1};
+    struct audio_pref p = audio_to_pref(s);
+    assert(p.gain_offset == 7 - AUDIO_DEFAULT.gain_half_db);
+    struct audio_settings back = audio_from_pref(p);
+    assert(back.source == AUDIO_MIX && back.gain_half_db == 7 && back.mute == 1);
+    s = (struct audio_settings){AUDIO_LINE, 99, 5};
+    back = audio_from_pref(audio_to_pref(s));
+    assert(back.gain_half_db == AUDIO_GAIN_MAX && back.mute == 1);
+    back = audio_from_pref((struct audio_pref){AUDIO_LINE, 127, 0});
+    assert(back.gain_half_db == AUDIO_GAIN_MAX);
+    back = audio_from_pref((struct audio_pref){AUDIO_LINE, -128, 0});
+    assert(back.gain_half_db == AUDIO_GAIN_MIN);
+}
+
 int main(void)
 {
+    pref_zero_is_elgatos_default_and_round_trips();
     gain_code_matches_elgato_mapping();
     default_is_hdmi_at_minus_6_db();
     parse_source_names();

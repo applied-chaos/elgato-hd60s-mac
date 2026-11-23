@@ -4,6 +4,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include "device.h"
 #include "framering.h"
 
 enum { DEXT_FRAME_BYTES = FR_SLOT_BYTES };
@@ -15,5 +16,7 @@ int dext_feed_poll(uint8_t *out, size_t cap, struct fr_frame *info);
 int dext_feed_peek(struct fr_frame *info, struct fr_counters *counters);
 struct fr_counters dext_feed_counters(void);
 void dext_feed_close(void);
+/* App side: sends settings to the driver (user-client method 0) on a connection of its own, reopened if the driver restarted. 0, or -1 when the driver isn't there. */
+int dext_send_settings(const struct hd60s_settings *s);
 
 #endif

@@ -473,7 +473,7 @@ static void settings_round_trip_and_reject_bad_input(void)
     char buf[128];
     struct hd60s_settings s;
     for (enum hd60s_range r = RANGE_AUTO; r <= RANGE_EXPANDED; r++) {
-        hd60s_settings_print(&(struct hd60s_settings){r, {0}}, buf, sizeof buf);
+        hd60s_settings_print(&(struct hd60s_settings){r, {0}, {0}}, buf, sizeof buf);
         assert(hd60s_settings_parse(buf, &s) == 0 && s.range == r);
     }
     assert(hd60s_settings_parse("{ \"range\" : \"expanded\" }", &s) == 0 && s.range == RANGE_EXPANDED);
@@ -484,13 +484,58 @@ static void settings_round_trip_and_reject_bad_input(void)
     assert(hd60s_range_from_name("auto") == RANGE_AUTO && hd60s_range_from_name("standard") == RANGE_STANDARD);
     assert(hd60s_range_from_name("full") < 0);
 
-    struct hd60s_settings pic = {RANGE_STANDARD, {-128, 5, 127, -1}};
+    struct hd60s_settings pic = {RANGE_STANDARD, {-128, 5, 127, -1}, {0}};
     hd60s_settings_print(&pic, buf, sizeof buf);
     assert(hd60s_settings_parse(buf, &s) == 0 && s.range == RANGE_STANDARD && memcmp(&s.picture, &pic.picture, sizeof pic.picture) == 0);
-    assert(hd60s_settings_parse("{\"range\":\"auto\"}", &s) == 0 && !s.picture.hue && !s.picture.brightness); /* older files */
+    assert(hd60s_settings_parse("{\"range\":\"auto\"}", &s) == 0 && !s.picture.hue && !s.picture.brightness);
     s.picture.hue = 9;
     assert(hd60s_settings_parse("{\"range\":\"auto\",\"hue\":128}", &s) < 0 && s.picture.hue == 9);
     assert(hd60s_settings_parse("{\"range\":\"auto\",\"contrast\":\"x\"}", &s) < 0);
+}
+
+static void audio_settings_round_trip_and_reject_bad_input(void)
+{
+    char buf[192];
+    struct hd60s_settings s = {0};
+    assert(hd60s_settings_parse("{\"range\":\"auto\"}", &s) == 0);
+    assert(s.audio.source == AUDIO_HDMI && s.audio.gain_offset == 0 && !s.audio.mute);
+    struct hd60s_settings in = {RANGE_EXPANDED, {1, 2, 3, 4}, {AUDIO_MIX, 10, 1}};
+    hd60s_settings_print(&in, buf, sizeof buf);
+    assert(strstr(buf, "\"source\":\"mix\"") && strstr(buf, "\"gain\":-2") && strstr(buf, "\"mute\":true"));
+    assert(hd60s_settings_parse(buf, &s) == 0 && memcmp(&s, &in, sizeof s) == 0);
+    hd60s_settings_print(&(struct hd60s_settings){0}, buf, sizeof buf);
+    assert(strstr(buf, "\"gain\":-12") && strstr(buf, "\"mute\":false"));
+    assert(hd60s_settings_parse("{\"range\":\"auto\",\"source\":\"line\",\"gain\":24,\"mute\":false}", &s) == 0);
+    assert(s.audio.source == AUDIO_LINE && s.audio.gain_offset == 36 && !s.audio.mute);
+    struct hd60s_settings keep = s;
+    assert(hd60s_settings_parse("{\"range\":\"auto\",\"source\":\"both\"}", &s) < 0);
+    assert(hd60s_settings_parse("{\"range\":\"auto\",\"gain\":25}", &s) < 0);
+    assert(hd60s_settings_parse("{\"range\":\"auto\",\"gain\":-25}", &s) < 0);
+    assert(hd60s_settings_parse("{\"range\":\"auto\",\"gain\":\"x\"}", &s) < 0);
+    assert(hd60s_settings_parse("{\"range\":\"auto\",\"mute\":1}", &s) < 0);
+    assert(memcmp(&s, &keep, sizeof s) == 0);
+}
+
+static void policy_applies_audio_settings_live(void)
+{
+    struct hd60s d;
+    struct hd60s_parser p = {0};
+    struct hd60s_policy pol;
+    boot(&d, 0);
+    assert(hd60s_init(&d) == 0 && hd60s_start(&d) == 0);
+    hd60s_policy_begin(&pol, 0);
+    hd60s_policy_tick(&d, &p, &pol, 0);
+    assert(fk.codec[0x03] == 0xa1 && d.audio.source == AUDIO_HDMI);
+    d.settings.audio = (struct audio_pref){AUDIO_LINE, 12, 0};
+    hd60s_policy_tick(&d, &p, &pol, 10);
+    assert(d.audio.source == AUDIO_LINE && d.audio.gain_half_db == 0);
+    assert(!(fk.codec[0x0e] & 0x80) && fk.codec[0x10] & 0x80 && fk.codec[0x0c] == 0);
+    d.settings.audio.mute = 1;
+    hd60s_policy_tick(&d, &p, &pol, 20);
+    assert(fk.codec[0x0e] & 0x80 && fk.codec[0x0f] & 0x80);
+    int before = fk.requests;
+    hd60s_policy_tick(&d, &p, &pol, 30);
+    assert(fk.requests == before);
 }
 
 static void link_flags_decode_hdcp_and_dvi(void)
@@ -550,6 +595,8 @@ int main(void)
     auto_range_follows_source_quantisation();
     range_scaling_reaches_hardware_and_follows_the_source();
     settings_round_trip_and_reject_bad_input();
+    audio_settings_round_trip_and_reject_bad_input();
+    policy_applies_audio_settings_live();
     policy_reads_aspect_once_a_second();
     policy_finds_mode_from_a_stable_window();
     policy_takes_mode_from_avi_vic_when_encrypted_and_no_frames();

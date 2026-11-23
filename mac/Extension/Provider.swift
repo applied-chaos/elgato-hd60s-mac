@@ -234,7 +234,11 @@ final class StreamSource: NSObject, CMIOExtensionStreamSource {
         while stop.pointee == 0 {
             hd60s_open_wait_ms = 4000
             let opened = hd60s_open(dev) == 0
-            if opened { dev.pointee.settings = settings.withLock { $0 } }
+            if opened {
+                dev.pointee.settings = settings.withLock { $0 }
+                var audio = audio_from_pref(dev.pointee.settings.audio)
+                _ = hd60s_set_audio(dev, &audio)
+            }
             if opened && hd60s_start(dev) == 0 {
                 log.info("capture started")
                 statusOut.setFirmware(dev.pointee.mcu_version)

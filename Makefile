@@ -114,7 +114,12 @@ build/test_frame_fit: tests/test_frame_fit.swift mac/Extension/FrameFit.swift
 	@mkdir -p build
 	swiftc -parse-as-library -o $@ mac/Extension/FrameFit.swift tests/test_frame_fit.swift
 
-test: build/test_parser build/test_device build/test_framering build/test_link build/test_tx build/test_audio build/test_deinterlace build/test_ring build/test_aclock build/test_status build/test_plugin build/test_audio_plugin build/test_frame_fit build/test_frame_rates build/test_status_view
+build/test_settings_model: tests/test_settings_model.swift mac/App/SettingsModel.swift mac/App/SettingsStore.swift mac/Shared/Settings.swift mac/Shared/AppGroup.swift src/device.c src/audio.c src/tx.c src/parser.c src/device.h src/audio.h build/ub530_tables.h
+	@mkdir -p build/settings_model
+	for f in device audio tx parser; do $(CC) $(CFLAGS) -c -o build/settings_model/$$f.o src/$$f.c || exit 1; done
+	swiftc -parse-as-library -import-objc-header src/device.h -Ibuild -o $@ mac/App/SettingsModel.swift mac/App/SettingsStore.swift mac/Shared/Settings.swift mac/Shared/AppGroup.swift tests/test_settings_model.swift build/settings_model/*.o
+
+test: build/test_parser build/test_device build/test_framering build/test_link build/test_tx build/test_audio build/test_deinterlace build/test_ring build/test_aclock build/test_status build/test_plugin build/test_audio_plugin build/test_frame_fit build/test_frame_rates build/test_status_view build/test_settings_model
 	build/test_parser
 	build/test_device
 	build/test_framering
@@ -130,6 +135,7 @@ test: build/test_parser build/test_device build/test_framering build/test_link b
 	build/test_frame_fit
 	build/test_frame_rates
 	build/test_status_view
+	build/test_settings_model
 
 clean:
 	rm -rf build

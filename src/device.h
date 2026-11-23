@@ -47,10 +47,12 @@ struct hd60s_picture {
 struct hd60s_settings {
     enum hd60s_range range;
     struct hd60s_picture picture;
+    struct audio_pref audio;
 };
 
 /* Parses {"range":"auto|standard|expanded"} plus optional "brightness", "contrast", "saturation", "hue" integers
- * in -128..127 (absent = 0); out is untouched on failure. */
+ * in -128..127 (absent = 0), "source" hdmi|line|mix, "gain" -24..24 half dB and "mute" true|false (absent = Elgato's
+ * default audio); out is untouched on failure. */
 int hd60s_settings_parse(const char *json, struct hd60s_settings *out);
 void hd60s_settings_print(const struct hd60s_settings *s, char *buf, size_t n);
 /* Range for a name as above, or -1. */
