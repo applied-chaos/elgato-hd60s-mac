@@ -66,6 +66,8 @@ private struct SettingSlider: View {
     var enabled = true
 
     private static let thumb: CGFloat = 14
+    private static let readoutWidth: CGFloat = 38
+    private static let readoutFitsChars = 6
 
     var body: some View {
         SettingRow(label: label, dimmed: !enabled) {
@@ -77,10 +79,9 @@ private struct SettingSlider: View {
         .disabled(!enabled)
     }
 
-    // Six characters ("+12 dB") fill the 38 pt column; longer gain values ("−10.5 dB") run on into the window margin so the track never resizes.
     private var readout: some View {
         Text(text).font(.text(12)).monospacedDigit().foregroundStyle(Color.neutral).lineLimit(1).fixedSize()
-            .frame(width: 38, alignment: text.count > 6 ? .leading : .trailing)
+            .frame(width: Self.readoutWidth, alignment: text.count > Self.readoutFitsChars ? .leading : .trailing)
     }
 
     private var track: some View {

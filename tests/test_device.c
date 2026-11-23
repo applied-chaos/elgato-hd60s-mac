@@ -487,7 +487,7 @@ static void settings_round_trip_and_reject_bad_input(void)
     struct hd60s_settings pic = {RANGE_STANDARD, {-128, 5, 127, -1}, {0}};
     hd60s_settings_print(&pic, buf, sizeof buf);
     assert(hd60s_settings_parse(buf, &s) == 0 && s.range == RANGE_STANDARD && memcmp(&s.picture, &pic.picture, sizeof pic.picture) == 0);
-    assert(hd60s_settings_parse("{\"range\":\"auto\"}", &s) == 0 && !s.picture.hue && !s.picture.brightness); /* older files */
+    assert(hd60s_settings_parse("{\"range\":\"auto\"}", &s) == 0 && !s.picture.hue && !s.picture.brightness);
     s.picture.hue = 9;
     assert(hd60s_settings_parse("{\"range\":\"auto\",\"hue\":128}", &s) < 0 && s.picture.hue == 9);
     assert(hd60s_settings_parse("{\"range\":\"auto\",\"contrast\":\"x\"}", &s) < 0);
@@ -498,7 +498,7 @@ static void audio_settings_round_trip_and_reject_bad_input(void)
     char buf[192];
     struct hd60s_settings s = {0};
     assert(hd60s_settings_parse("{\"range\":\"auto\"}", &s) == 0);
-    assert(s.audio.source == AUDIO_HDMI && s.audio.gain_offset == 0 && !s.audio.mute); /* older files */
+    assert(s.audio.source == AUDIO_HDMI && s.audio.gain_offset == 0 && !s.audio.mute);
     struct hd60s_settings in = {RANGE_EXPANDED, {1, 2, 3, 4}, {AUDIO_MIX, 10, 1}};
     hd60s_settings_print(&in, buf, sizeof buf);
     assert(strstr(buf, "\"source\":\"mix\"") && strstr(buf, "\"gain\":-2") && strstr(buf, "\"mute\":true"));

@@ -1,6 +1,5 @@
 import Foundation
 
-/// The Settings tab's state in the units people see. `device` and `init(_:)` map to and from settings.json's offsets.
 struct PictureAudioSettings: Equatable {
     enum Range: CaseIterable {
         case auto, standard, expanded
