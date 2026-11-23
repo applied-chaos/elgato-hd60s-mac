@@ -161,6 +161,7 @@ final class Installer: NSObject, ObservableObject, OSSystemExtensionRequestDeleg
     // One admin prompt; the extension request only follows if it succeeds, so a cancel changes nothing.
     func install() {
         installing = true
+        refreshAudio()
         let activate = {
             self.dext.activate()
             self.installFromFreshProperties()
