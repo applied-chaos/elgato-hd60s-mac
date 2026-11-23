@@ -35,8 +35,11 @@ enum CameraLink {
     static func set(_ p: CameraProperty, _ text: String) -> Bool {
         guard let id = device() else { return false }
         var a = address(p.selector)
-        var value = text as CFString
-        return CMIOObjectSetPropertyData(id, &a, 0, nil, UInt32(MemoryLayout<CFString>.size), &value) == noErr
+        let cf = text as CFString
+        var value = Unmanaged.passUnretained(cf)
+        return withExtendedLifetime(cf) {
+            CMIOObjectSetPropertyData(id, &a, 0, nil, UInt32(MemoryLayout<CFString>.size), &value) == noErr
+        }
     }
 
     /// Calls `changed` on `queue` whenever cameras come or go, including the extension restarting.
