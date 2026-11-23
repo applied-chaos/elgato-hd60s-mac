@@ -39,20 +39,36 @@ final class DextInstaller: NSObject, ObservableObject, OSSystemExtensionRequestD
     func request(_ request: OSSystemExtensionRequest, foundProperties properties: [OSSystemExtensionProperties]) {
         let live = properties.filter { !$0.isUninstalling }
         status = .found(enabled: live.contains { $0.isEnabled }, awaitingApproval: live.contains { $0.isAwaitingUserApproval })
+        if status == .installed { status = activatedStatus() }
+    }
+
+    private func activatedStatus() -> DextStatus {
+        let name = "\(Self.identifier).dext"
+        let running = CameraProcess.runningPaths(of: name).compactMap { path in
+            path.range(of: name).flatMap { NSDictionary(contentsOfFile: path[..<$0.upperBound] + "/Info.plist")?["CFBundleVersion"] as? String }
+        }
+        let bundled = Bundle(url: Bundle.main.bundleURL.appendingPathComponent("Contents/Library/SystemExtensions/\(name)"))?
+            .object(forInfoDictionaryKey: "CFBundleVersion") as? String
+        return .activated(runningBuilds: running, bundled: bundled)
     }
 
     func request(_ request: OSSystemExtensionRequest, actionForReplacingExtension existing: OSSystemExtensionProperties,
-                 withExtension ext: OSSystemExtensionProperties) -> OSSystemExtensionRequest.ReplacementAction { .replace }
+                 withExtension ext: OSSystemExtensionProperties) -> OSSystemExtensionRequest.ReplacementAction {
+        existing.bundleVersion == ext.bundleVersion ? .cancel : .replace
+    }
 
     func requestNeedsUserApproval(_ request: OSSystemExtensionRequest) { status = .needsApproval }
 
     func request(_ request: OSSystemExtensionRequest, didFinishWithResult result: OSSystemExtensionRequest.Result) {
-        status = installing ? .installed : .notInstalled
+        status = installing ? activatedStatus() : .notInstalled
         if installing { resendSettingsOnActivation?() }
     }
 
     func request(_ request: OSSystemExtensionRequest, didFailWithError error: Error) {
-        if !installing, (error as? OSSystemExtensionError)?.code == .extensionNotFound { return status = .notInstalled }
+        let code = (error as? OSSystemExtensionError)?.code
+        if !installing, code == .extensionNotFound { return status = .notInstalled }
+        // Cancelled replacing the same build, which is already active.
+        if installing, code == .requestCanceled { return status = activatedStatus() }
         status = .failed(error.localizedDescription)
     }
 }

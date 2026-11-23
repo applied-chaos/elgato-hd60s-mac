@@ -7,8 +7,9 @@ import Foundation
 enum CameraStep: Equatable {
     case requestQuit, awaitExit, activate, verify, relaunch, deactivate
 
-    static func install(cameraActive: Bool) -> [CameraStep] {
-        cameraActive ? [.requestQuit, .awaitExit, .activate, .verify, .relaunch] : [.activate, .verify]
+    static func install(active: String?, bundled: String?) -> [CameraStep] {
+        guard let active else { return [.activate, .verify] }
+        return active == bundled ? [] : [.requestQuit, .awaitExit, .activate, .verify, .relaunch]
     }
 
     static let uninstall: [CameraStep] = [.deactivate]
@@ -28,7 +29,7 @@ enum CameraProcess {
         return String(path[..<r.upperBound])
     }
 
-    static func runningPaths() -> [String] {
+    static func runningPaths(of bundle: String = bundleName) -> [String] {
         let count = proc_listallpids(nil, 0)
         guard count > 0 else { return [] }
         var pids = [pid_t](repeating: 0, count: Int(count) + 16)
@@ -37,7 +38,7 @@ enum CameraProcess {
         return pids.prefix(max(filled, 0)).compactMap { pid in
             guard pid > 0, proc_pidpath(pid, &buffer, UInt32(buffer.count)) > 0 else { return nil }
             let path = String(cString: buffer)
-            return matches(path: path) ? path : nil
+            return path.contains(bundle) ? path : nil
         }
     }
 

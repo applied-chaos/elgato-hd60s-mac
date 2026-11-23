@@ -6,10 +6,11 @@ func check(_ ok: Bool, _ what: String, line: UInt = #line) {
 
 @main enum Tests {
     static func main() async {
-        let replace = CameraStep.install(cameraActive: true)
+        let replace = CameraStep.install(active: "185", bundled: "186")
         check(replace == [.requestQuit, .awaitExit, .activate, .verify, .relaunch],
               "replace asks the old one to quit, waits, activates, verifies, then relaunches the app off its dead CMIO link")
-        check(CameraStep.install(cameraActive: false) == [.activate, .verify], "fresh install activates and verifies, no relaunch")
+        check(CameraStep.install(active: nil, bundled: "186") == [.activate, .verify], "fresh install activates and verifies, no relaunch")
+        check(CameraStep.install(active: "186", bundled: "186").isEmpty, "same build already active: nothing to do, so no duplicate staged copy")
         check(CameraStep.uninstall == [.deactivate], "uninstall only deactivates")
         check(!replace.contains(.deactivate), "install never deactivates")
         check(CameraStep.remaining(Array(replace.dropFirst()), quitRefused: false) == [.awaitExit, .activate, .verify, .relaunch], "quit accepted waits")

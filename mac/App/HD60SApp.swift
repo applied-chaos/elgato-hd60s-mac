@@ -137,7 +137,8 @@ final class Installer: NSObject, ObservableObject, OSSystemExtensionRequestDeleg
         let live = properties.filter { !$0.isUninstalling }
         if planOnQuery {
             planOnQuery = false
-            return run(CameraStep.install(cameraActive: live.contains { $0.isEnabled }))
+            let plan = CameraStep.install(active: live.first { $0.isEnabled }?.bundleVersion, bundled: bundledCameraBuild)
+            return plan.isEmpty ? (status = .installed) : run(plan)
         }
         status = live.contains { $0.isEnabled } ? .installed
             : live.contains { $0.isAwaitingUserApproval } ? .needsApproval : .notInstalled
@@ -272,7 +273,7 @@ final class Installer: NSObject, ObservableObject, OSSystemExtensionRequestDeleg
 
     func request(_ request: OSSystemExtensionRequest, actionForReplacingExtension existing: OSSystemExtensionProperties,
                  withExtension ext: OSSystemExtensionProperties) -> OSSystemExtensionRequest.ReplacementAction {
-        .replace
+        existing.bundleVersion == ext.bundleVersion ? .cancel : .replace
     }
 
     func requestNeedsUserApproval(_ request: OSSystemExtensionRequest) {
