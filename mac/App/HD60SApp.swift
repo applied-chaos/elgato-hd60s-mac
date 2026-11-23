@@ -4,8 +4,7 @@ import CoreText
 import SystemExtensions
 
 private let extensionID = "net.mintopia.hd60s.camera"
-// Marks the instance relaunched after a camera replace, which stays on the Install tab.
-private let replacedFlag = "--replaced"
+private let relaunchedAfterReplaceArg = "--replaced"
 let appName = "Elgato HD60 S"
 private let repoURL = URL(string: "https://github.com/applied-chaos/elgato-hd60s-mac")!
 private let siteURL = URL(string: "https://appliedentropy.dev")!
@@ -225,7 +224,7 @@ final class Installer: NSObject, ObservableObject, OSSystemExtensionRequestDeleg
             status = .installed
             let config = NSWorkspace.OpenConfiguration()
             config.createsNewApplicationInstance = true
-            config.arguments = [replacedFlag]
+            config.arguments = [relaunchedAfterReplaceArg]
             NSWorkspace.shared.openApplication(at: Bundle.main.bundleURL, configuration: config) { _, error in
                 if error == nil { DispatchQueue.main.async { NSApp.terminate(nil) } }
             }
@@ -445,7 +444,7 @@ struct MainWindow: View {
     @StateObject private var poller = StatusPoller(preview: HD60SApp.launchArguments.value(after: "--preview-facts").flatMap(PreviewFacts.init))
     @StateObject private var settings = SettingsStore(url: SettingsFile.url(), preview: HD60SApp.launchArguments.value(after: "--preview-settings").flatMap(PictureAudioSettings.init(json:)), send: CameraLink.send)
     @State private var tab = Tab.install
-    @State private var chosen = HD60SApp.launchArguments.value(after: "--preview-tab") != nil || HD60SApp.launchArguments.contains(replacedFlag)
+    @State private var chosen = HD60SApp.launchArguments.value(after: "--preview-tab") != nil || HD60SApp.launchArguments.contains(relaunchedAfterReplaceArg)
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
