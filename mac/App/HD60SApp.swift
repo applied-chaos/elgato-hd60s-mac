@@ -120,6 +120,7 @@ final class Installer: NSObject, ObservableObject, OSSystemExtensionRequestDeleg
     let flavour = Flavour.current
     private var installing = true
     private var steps: [CameraStep] = []
+    private var planOnQuery = false
     private var query: OSSystemExtensionRequest?
 
     func refresh() {
@@ -132,6 +133,10 @@ final class Installer: NSObject, ObservableObject, OSSystemExtensionRequestDeleg
 
     func request(_ request: OSSystemExtensionRequest, foundProperties properties: [OSSystemExtensionProperties]) {
         let live = properties.filter { !$0.isUninstalling }
+        if planOnQuery {
+            planOnQuery = false
+            return run(CameraStep.install(cameraActive: live.contains { $0.isEnabled }))
+        }
         status = live.contains { $0.isEnabled } ? .installed
             : live.contains { $0.isAwaitingUserApproval } ? .needsApproval : .notInstalled
     }
@@ -153,10 +158,9 @@ final class Installer: NSObject, ObservableObject, OSSystemExtensionRequestDeleg
     // One admin prompt; the extension request only follows if it succeeds, so a cancel changes nothing.
     func install() {
         installing = true
-        let plan = CameraStep.install(cameraActive: status == .installed)
         let activate = {
             self.dext.activate()
-            self.run(plan)
+            self.queryThenInstall()
         }
         switch flavour.installStep(audio: audio, plugInSource: bundledAudio?.path) {
         case .none: activate()
@@ -179,6 +183,14 @@ final class Installer: NSObject, ObservableObject, OSSystemExtensionRequestDeleg
         case .admin(let script): runAsAdmin(script, then: deactivate)
         case .none, .missingPlugIn: deactivate()
         }
+    }
+
+    // status may be stale (--install skips refresh), so the plan comes from a fresh properties query.
+    private func queryThenInstall() {
+        planOnQuery = true
+        let request = OSSystemExtensionRequest.propertiesRequest(forExtensionWithIdentifier: extensionID, queue: .main)
+        query = request
+        submit(request)
     }
 
     private func run(_ plan: [CameraStep]) {
@@ -261,6 +273,7 @@ final class Installer: NSObject, ObservableObject, OSSystemExtensionRequestDeleg
             return refresh()
         }
         steps = []
+        planOnQuery = false
         status = .failed(error.localizedDescription)
     }
 }
