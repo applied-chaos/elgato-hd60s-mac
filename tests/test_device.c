@@ -1,4 +1,5 @@
 #include <assert.h>
+#include <pthread.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -389,7 +390,7 @@ static void range_scaling_reaches_hardware_and_follows_the_source(void)
     hd60s_policy_begin(&pol, 0);
     hd60s_policy_tick(&d, &p, &pol, 0);
     uint16_t std0 = (uint16_t)(fk.mst[0][0x93] << 8 | fk.mst[0][0x94]);
-    assert(d.settings.range == RANGE_AUTO && fk.mst[0][0x92] == 0x40);
+    assert(d.published_settings.range == RANGE_AUTO && fk.mst[0][0x92] == 0x40);
 
     fk.mst[2][0x0b] = 0x08;
     fk.mst[2][0x4a] = 0x08; /* Q = 2, full range */
@@ -404,7 +405,7 @@ static void range_scaling_reaches_hardware_and_follows_the_source(void)
     hd60s_policy_tick(&d, &p, &pol, 2000);
     assert((uint16_t)(fk.mst[0][0x93] << 8 | fk.mst[0][0x94]) == std0);
 
-    d.settings.range = RANGE_EXPANDED;
+    d.published_settings.range = RANGE_EXPANDED;
     hd60s_policy_tick(&d, &p, &pol, 3000);
     assert((uint16_t)(fk.mst[0][0x93] << 8 | fk.mst[0][0x94]) == full0);
 }
@@ -450,20 +451,20 @@ static void picture_controls_reach_hardware_live_and_survive_a_range_change(void
     hd60s_policy_tick(&d, &p, &pol, 0);
     assert((fk.mst[0][0xa7] << 8 | fk.mst[0][0xa8]) == DEFAULT_BRIGHTNESS_WORD);
 
-    d.settings.picture.brightness = 63;
+    d.published_settings.picture.brightness = 63;
     hd60s_policy_tick(&d, &p, &pol, 1000);
     assert((fk.mst[0][0xa7] << 8 | fk.mst[0][0xa8]) == BRIGHT_63_WORD);
     int before = fk.requests;
     hd60s_policy_tick(&d, &p, &pol, 1100);
     assert(fk.requests == before);
 
-    d.settings.range = RANGE_EXPANDED;
-    d.settings.picture.brightness = 0;
+    d.published_settings.range = RANGE_EXPANDED;
+    d.published_settings.picture.brightness = 0;
     fk.mst[2][0x0b] = 0x08;
     fk.mst[2][0x4a] = 0x08;
     hd60s_policy_tick(&d, &p, &pol, 2000);
     assert((fk.mst[0][0xa7] << 8 | fk.mst[0][0xa8]) == COMPRESS_OFFSET_WORD + DEFAULT_BRIGHTNESS_WORD);
-    d.settings.picture.brightness = 63;
+    d.published_settings.picture.brightness = 63;
     hd60s_policy_tick(&d, &p, &pol, 3000);
     assert((fk.mst[0][0xa7] << 8 | fk.mst[0][0xa8]) == COMPRESS_OFFSET_WORD + BRIGHT_63_WORD);
 }
@@ -526,11 +527,11 @@ static void policy_applies_audio_settings_live(void)
     hd60s_policy_begin(&pol, 0);
     hd60s_policy_tick(&d, &p, &pol, 0);
     assert(fk.codec[0x03] == 0xa1 && d.audio.source == AUDIO_HDMI);
-    d.settings.audio = (struct audio_pref){AUDIO_LINE, 12, 0};
+    d.published_settings.audio = (struct audio_pref){AUDIO_LINE, 12, 0};
     hd60s_policy_tick(&d, &p, &pol, 10);
     assert(d.audio.source == AUDIO_LINE && d.audio.gain_half_db == 0);
     assert(!(fk.codec[0x0e] & 0x80) && fk.codec[0x10] & 0x80 && fk.codec[0x0c] == 0);
-    d.settings.audio.mute = 1;
+    d.published_settings.audio.mute = 1;
     hd60s_policy_tick(&d, &p, &pol, 20);
     assert(fk.codec[0x0e] & 0x80 && fk.codec[0x0f] & 0x80);
     int before = fk.requests;
@@ -555,6 +556,9 @@ static void link_flags_decode_hdcp_and_dvi(void)
     assert(!l.hdcp && l.dvi);
     l = hd60s_link_from_regs(0, 0x00, 0x00);
     assert(!l.dvi);
+    assert(hd60s_link_from_regs(1, 0x04, 0).hdmi && !hd60s_link_from_regs(1, 0x04, 0).dvi);
+    assert(!hd60s_link_from_regs(1, 0x00, 0).hdmi && hd60s_link_from_regs(1, 0x00, 0).dvi);
+    assert(!hd60s_link_from_regs(0, 0x04, 0).hdmi && !hd60s_link_from_regs(0, 0x04, 0).dvi);
 }
 
 static void policy_tracks_the_source_link(void)
@@ -576,6 +580,63 @@ static void policy_tracks_the_source_link(void)
     fk.mst[1][0x01] = 0x00;
     hd60s_policy_tick(&d, &p, &pol, 3000);
     assert(!d.link.hdcp && d.link.dvi);
+}
+
+static void settings_wire_round_trips_and_validates(void)
+{
+    assert(sizeof(struct hd60s_settings_wire) == 12);
+    struct hd60s_settings in = {RANGE_EXPANDED, {-128, 5, 127, -1}, {AUDIO_MIX, -7, 1}}, out = {0};
+    struct hd60s_settings_wire w;
+    hd60s_settings_to_wire(&in, &w);
+    assert(w.version == HD60S_SETTINGS_WIRE_VERSION && !w.reserved[0] && !w.reserved[1]);
+    assert(hd60s_settings_from_wire(&w, sizeof w, &out) == 0 && hd60s_settings_equal(&in, &out));
+    struct hd60s_settings zero = {0};
+    hd60s_settings_to_wire(&zero, &w);
+    assert(hd60s_settings_from_wire(&w, sizeof w, &out) == 0 && hd60s_settings_equal(&zero, &out));
+    assert(!hd60s_settings_equal(&in, &zero));
+
+    struct hd60s_settings keep = in, got = in;
+    hd60s_settings_to_wire(&in, &w);
+    struct hd60s_settings_wire bad = w;
+    assert(hd60s_settings_from_wire(&w, sizeof w - 1, &got) < 0 && hd60s_settings_from_wire(&w, sizeof w + 1, &got) < 0);
+    bad = w, bad.version = HD60S_SETTINGS_WIRE_VERSION + 1;
+    assert(hd60s_settings_from_wire(&bad, sizeof bad, &got) < 0);
+    bad = w, bad.range = RANGE_COUNT;
+    assert(hd60s_settings_from_wire(&bad, sizeof bad, &got) < 0);
+    bad = w, bad.audio_source = 2;
+    assert(hd60s_settings_from_wire(&bad, sizeof bad, &got) < 0);
+    bad = w, bad.mute = 2;
+    assert(hd60s_settings_from_wire(&bad, sizeof bad, &got) < 0);
+    bad = w, bad.reserved[1] = 1;
+    assert(hd60s_settings_from_wire(&bad, sizeof bad, &got) < 0);
+    assert(hd60s_settings_from_wire(NULL, sizeof w, &got) < 0 && hd60s_settings_equal(&got, &keep));
+}
+
+static const struct hd60s_settings pattern[2] = {
+    {RANGE_AUTO, {1, 1, 1, 1}, {AUDIO_HDMI, 1, 0}},
+    {RANGE_EXPANDED, {-2, -2, -2, -2}, {AUDIO_LINE, -2, 1}},
+};
+
+static void *flip_settings(void *arg)
+{
+    struct hd60s *d = arg;
+    for (int i = 0; i < 400000; i++)
+        hd60s_settings_publish(d, &pattern[i & 1]);
+    return NULL;
+}
+
+static void settings_snapshot_is_never_torn(void)
+{
+    struct hd60s d;
+    boot(&d, 0);
+    hd60s_settings_publish(&d, &pattern[0]);
+    pthread_t t;
+    pthread_create(&t, NULL, flip_settings, &d);
+    for (int i = 0; i < 400000; i++) {
+        struct hd60s_settings s = hd60s_settings_snapshot(&d);
+        assert(hd60s_settings_equal(&s, &pattern[0]) || hd60s_settings_equal(&s, &pattern[1]));
+    }
+    pthread_join(t, NULL);
 }
 
 int main(void)
@@ -606,6 +667,8 @@ int main(void)
     policy_reruns_routing_when_the_source_becomes_hdmi();
     link_flags_decode_hdcp_and_dvi();
     policy_tracks_the_source_link();
+    settings_wire_round_trips_and_validates();
+    settings_snapshot_is_never_torn();
     puts("test_device: ok");
     return 0;
 }

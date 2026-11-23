@@ -1,10 +1,13 @@
 #ifndef HD60S_DEVICE_H
 #define HD60S_DEVICE_H
 
+#include <stdatomic.h>
 #include <stddef.h>
 #include <stdint.h>
 
 #include "audio.h"
+#include "colour.h"
+#include "link.h"
 #include "parser.h"
 #include "tx.h"
 
@@ -38,11 +41,6 @@ struct hd60s_usb {
     void (*sleep_ms)(void *ctx, int ms);
 };
 
-/* Picture controls as offsets from Elgato's defaults (device bytes 0x81, 0x80, 0x80, 0x80), so zero is neutral. */
-struct hd60s_picture {
-    int8_t brightness, contrast, saturation, hue;
-};
-
 /* User settings the device owner applies; the app writes them, the camera extension and dext read them. */
 struct hd60s_settings {
     enum hd60s_range range;
@@ -57,40 +55,24 @@ int hd60s_settings_parse(const char *json, struct hd60s_settings *out);
 void hd60s_settings_print(const struct hd60s_settings *s, char *buf, size_t n);
 /* Range for a name as above, or -1. */
 int hd60s_range_from_name(const char *name);
+int hd60s_settings_equal(const struct hd60s_settings *a, const struct hd60s_settings *b);
 
-struct hd60s_colour_cfg {
-    enum hd60s_input_format input;
-    int sd;
-    enum hd60s_range range;
-    int quant; /* AVI RGB quantisation range Q (b2:0x4A bits 3:2): 1 limited, 2 full */
-    struct hd60s_picture picture;
+/* Settings as sent to the driver extension (user-client method 0, structure input): fixed layout, no padding, so both
+ * sides agree on the bytes. Bump the version when the layout changes. */
+#define HD60S_SETTINGS_WIRE_VERSION 1
+struct hd60s_settings_wire {
+    uint16_t version;
+    uint8_t range;
+    uint8_t audio_source;
+    uint8_t mute;         /* 0 or 1 */
+    int8_t brightness, contrast, saturation, hue, gain_offset;
+    uint8_t reserved[2];  /* zero */
 };
+_Static_assert(sizeof(struct hd60s_settings_wire) == 12, "wire layout");
 
-/* MST3367 CSC: bank 0 reg 0x92 mode and the 12 words written from reg 0x93. */
-struct hd60s_csc {
-    uint8_t mode;
-    uint16_t m[12];
-};
-
-/* What the source's AVI InfoFrame says: pixel format (b2:0x48 Y1Y0) and colorimetry (b2:0x49 C1C0). */
-struct hd60s_source {
-    enum hd60s_input_format format;
-    enum hd60s_colour colorimetry; /* COLOUR_UNKNOWN when unspecified or extended */
-    int quant;                     /* b2:0x4A bits 3:2 */
-};
-
-struct hd60s_source hd60s_parse_avi(int present, uint8_t db1, uint8_t db2, uint8_t db3);
-void hd60s_csc_plan(const struct hd60s_colour_cfg *c, struct hd60s_csc *out);
-/* Matrix of the frames leaving the device: its own for RGB input, else the source's with a size fallback. */
-enum hd60s_colour hd60s_frame_colour(const struct hd60s_colour_cfg *c, enum hd60s_colour colorimetry);
-
-/* Source link flags (FUN_125f7): HDCP encrypted, and DVI rather than HDMI signalling. */
-struct hd60s_link {
-    int hdcp, dvi;
-};
-
-/* digital: MST3367 b0:0x51 bit7. r01, r34: bank 1 regs 0x01 and 0x34. DVI is only meaningful on a digital input. */
-struct hd60s_link hd60s_link_from_regs(int digital, uint8_t r01, uint8_t r34);
+void hd60s_settings_to_wire(const struct hd60s_settings *s, struct hd60s_settings_wire *w);
+/* Checks length, version, every enum and the reserved bytes; out is untouched on failure. 0, or -1. */
+int hd60s_settings_from_wire(const struct hd60s_settings_wire *w, size_t len, struct hd60s_settings *out);
 
 struct libusb_context;
 struct libusb_device_handle;
@@ -105,10 +87,11 @@ struct hd60s {
     uint8_t mst_saved[5];  /* MST3367 bank 1 reg 0x27 snapshot, restored on stop */
     int started;
     struct hd60s_colour_cfg colour;
-    struct hd60s_settings settings;
+    struct hd60s_settings published_settings;
+    _Atomic uint32_t published_settings_lock;
     struct tx tx;          /* HDMI-out transmitter state */
     struct audio_settings audio;
-    int audio_routed_dvi;
+    int audio_routed_hdmi;
     struct hd60s_link link; /* refreshed by hd60s_policy_tick and hd60s_read_link */
 };
 
@@ -128,14 +111,17 @@ void hd60s_stop(struct hd60s *d);
 /* Gain is clamped to +-12 dB. Sent now if started, otherwise at hd60s_start. 0, or -1 on a transport error. */
 int hd60s_set_audio(struct hd60s *d, const struct audio_settings *s);
 
+/* Thread-safe hand-over of settings to the thread running hd60s_policy_tick: publish from any thread, and the
+ * tick reads one consistent snapshot. */
+void hd60s_settings_publish(struct hd60s *d, const struct hd60s_settings *s);
+struct hd60s_settings hd60s_settings_snapshot(struct hd60s *d);
+
 void hd60s_policy_begin(struct hd60s_policy *s, long now_ms);
 void hd60s_policy_frame(struct hd60s_policy *s, int w, int h, int interlaced);
 /* Issues control requests, so call it off the bulk completion path. */
 void hd60s_policy_tick(struct hd60s *d, struct hd60s_parser *p, struct hd60s_policy *s, long now_ms);
 
 int mst_read(struct hd60s *d, uint8_t bank, uint8_t reg);
-/* Reads the source link flags into d->link. */
-struct hd60s_link hd60s_read_link(struct hd60s *d);
 /* Mode from the source's AVI InfoFrame VIC (b2:0x4B), independent of frames; NULL if none or unsupported. */
 const struct tx_mode *hd60s_avi_mode(struct hd60s *d);
 /* Source audio rate from the receiver's ACR packet for the given video mode; 0 if no audio or no mode. */

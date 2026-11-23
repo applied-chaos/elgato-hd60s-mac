@@ -278,23 +278,6 @@ static void select_hdmi(struct hd60s *d)
     msleep(d, 100);
 }
 
-struct hd60s_link hd60s_link_from_regs(int digital, uint8_t r01, uint8_t r34)
-{
-    return (struct hd60s_link){.hdcp = r34 >> 7 | (r01 & 1), .dvi = digital && !(r01 >> 2 & 1)};
-}
-
-static int source_routing_flag(struct hd60s *d)
-{
-    return (mst_read(d, 0, 0x51) & 0x80) ? mst_read(d, 1, 0x01) >> 2 & 1 : 0;
-}
-
-struct hd60s_link hd60s_read_link(struct hd60s *d)
-{
-    int digital = mst_read(d, 0, 0x51) & 0x80;
-    uint8_t r01 = (uint8_t)mst_read(d, 1, 0x01), r34 = (uint8_t)mst_read(d, 1, 0x34);
-    return d->link = hd60s_link_from_regs(digital != 0, r01, r34);
-}
-
 enum { AVI_WAIT_POLLS = 20 };
 
 /* b2:0x0B bit3 is a latch that clears when read, so poll for it as Elgato does. */
@@ -308,20 +291,20 @@ const struct tx_mode *hd60s_avi_mode(struct hd60s *d)
     return NULL;
 }
 
-/* FUN_1caf4 (routing) and FUN_1ce18 (gain) for d->audio. */
+/* FUN_1caf4 (routing) and FUN_1ce18 (gain) for d->audio, routed by the source link in d->link. */
 static void apply_audio(struct hd60s *d)
 {
-    int dvi = source_routing_flag(d);
+    int hdmi = d->link.hdmi;
     struct audio_regs cur = {.r04 = (uint8_t)i2c_read(d, I2C_AUDIO, 0x04)}, r;
     for (int i = 0; i < 4; i++) {
         cur.gain[i] = (uint8_t)i2c_read(d, I2C_AUDIO, (uint8_t)(0x0a + i));
         cur.pair[i] = (uint8_t)i2c_read(d, I2C_AUDIO, (uint8_t)(0x0e + i));
     }
-    audio_plan(&d->audio, dvi, &cur, &r);
+    audio_plan(&d->audio, hdmi, &cur, &r);
     i2c_write(d, I2C_AUDIO, 0x09, 0x46);
-    mst_write(d, 2, 0x27, dvi ? 0x00 : 0xff);
+    mst_write(d, 2, 0x27, hdmi ? 0x00 : 0xff);
     i2c_write(d, I2C_AUDIO, 0x03, r.r03);
-    uint8_t mcu = dvi ? 0 : 1;
+    uint8_t mcu = hdmi ? 0 : 1;
     bridge_write(d, I2C_MCU, (uint8_t[]){0x12, 0x34, 0x90, 0x05, mcu}, 5);
     bridge_write(d, I2C_MCU, (uint8_t[]){0x12, 0x34, 0x90, 0x03, mcu}, 5);
     for (int i = 0; i < 4; i++) {
@@ -330,144 +313,18 @@ static void apply_audio(struct hd60s *d)
     }
     i2c_write(d, I2C_AUDIO, 0x04, r.r04);
     i2c_write(d, I2C_AUDIO, 0x07, r.r07);
-    d->audio_routed_dvi = dvi;
+    d->audio_routed_hdmi = hdmi;
 }
 
 int hd60s_set_audio(struct hd60s *d, const struct audio_settings *s)
 {
     d->audio = *s;
     d->audio.gain_half_db = audio_gain_clamp(s->gain_half_db);
-    if (d->started)
+    if (d->started) {
+        hd60s_read_link(d);
         apply_audio(d);
+    }
     return d->err ? -1 : 0;
-}
-
-/* FUN_103ea's clamp: words are 15-bit with bit 14 as sign, and the sign comes from the word before scaling. */
-static uint16_t coeff_clamp(uint16_t src, uint16_t v)
-{
-    if (src & 0x4000)
-        return v <= 0x4000 ? 0x4000 : v;
-    return v < 0x3fff ? v : 0x3fff;
-}
-
-/* FUN_103ea works on a word doubled into int16, scaled by x/10000 (truncating), then halved back to 15 bits. */
-static int wide(uint16_t w)
-{
-    return (int16_t)(w * 2);
-}
-
-static uint16_t narrow(int x)
-{
-    return (uint16_t)((uint16_t)(x / 10000) >> 1);
-}
-
-static uint16_t scale_word(uint16_t w, int k)
-{
-    return coeff_clamp(w, narrow(wide(w) * k));
-}
-
-static int hue_table(const uint8_t *t, int i)
-{
-    return t[2 * i] | t[2 * i + 1] << 8;
-}
-
-/* hue_table(t, i) interpolated a quarter step at a time, truncating towards zero. */
-static int hue_lerp(const uint8_t *t, int i, int quarter)
-{
-    return (int16_t)((hue_table(t, i + 1) - hue_table(t, i)) * quarter / 4 + hue_table(t, i));
-}
-
-static int pic_byte(int base, int8_t delta)
-{
-    int v = base + delta;
-    return v < 0 ? 0 : v > 255 ? 255 : v;
-}
-
-/* FUN_103ea: brightness is an offset, contrast scales the luma words, saturation the chroma words, hue rotates them. */
-static void apply_picture(uint16_t m[12], const struct hd60s_picture *p)
-{
-    int bri = pic_byte(0x81, p->brightness), con = pic_byte(0x80, p->contrast);
-    int sat = pic_byte(0x80, p->saturation), hue = pic_byte(0x80, p->hue);
-    if (sat == 0)
-        sat = 1;
-    int t = bri * 5 - 0x280;
-    m[10] = (uint16_t)((((t + (t < 0 ? 3 : 0)) * 16 & 0xffc0) + m[10]) & 0x7fc0) | 1;
-
-    static const int luma[3] = {1, 4, 7}, chroma[6] = {0, 3, 6, 2, 5, 8};
-    for (int i = 0; i < 3; i++)
-        m[luma[i]] = scale_word(m[luma[i]], con * 10000 >> 7);
-    for (int i = 0; i < 6; i++)
-        m[chroma[i]] = scale_word(m[chroma[i]], sat * 10000 >> 7);
-
-    uint8_t a = hue == 0 ? 0xff : (uint8_t)-hue;
-    int negative = a >= 0x80, step = negative ? a ^ 0x80 : 0x80 - a;
-    int s = hue_lerp(ub530_hue_sin, step >> 2, step & 3), c = hue_lerp(ub530_hue_cos, step >> 2, step & 3);
-    if (!negative)
-        s = -s;
-    for (int i = 0; i < 3; i++) {
-        int x = wide(m[chroma[i]]), y = wide(m[chroma[i + 3]]);
-        m[chroma[i]] = narrow(x * c - y * s);
-        m[chroma[i + 3]] = narrow(x * s + y * c);
-    }
-}
-
-/* AVI InfoFrame bytes as the MST3367 holds them. Elgato treats the reserved Y1Y0 = 3 as RGB. */
-struct hd60s_source hd60s_parse_avi(int present, uint8_t db1, uint8_t db2, uint8_t db3)
-{
-    struct hd60s_source s = {INPUT_RGB, COLOUR_UNKNOWN, 0};
-    if (!present)
-        return s;
-    int y = db1 >> 5 & 3, c = db2 >> 6;
-    s.format = y == 1 ? INPUT_YCBCR422 : y == 2 ? INPUT_YCBCR444 : INPUT_RGB;
-    s.colorimetry = c == 1 ? COLOUR_BT601 : c == 2 ? COLOUR_BT709 : COLOUR_UNKNOWN;
-    s.quant = db3 >> 2 & 3;
-    return s;
-}
-
-/* Elgato's dev+0x7c: one nibble per source Q (Q=0 bits 0-3, Q=1 bits 4-7, Q=2 bits 8-11). Bit 0 compresses, bit 1 expands. */
-static const uint32_t range_word[] = {[RANGE_AUTO] = 0x80000100, [RANGE_STANDARD] = 0x80000000, [RANGE_EXPANDED] = 0x80000111};
-
-static unsigned range_bits(enum hd60s_range r, int quant)
-{
-    return range_word[r] >> (quant == 2 ? 8 : quant == 1 ? 4 : 0) & 0xf;
-}
-
-/* FUN_10b6b + FUN_103ea: RGB input gets an RGB to YCbCr matrix (601 for SD, else 709); YCbCr input passes through. */
-void hd60s_csc_plan(const struct hd60s_colour_cfg *c, struct hd60s_csc *out)
-{
-    uint8_t raw[24];
-    memset(out, 0, sizeof *out);
-    if (c->input != INPUT_RGB) {
-        memcpy(raw, ub530_csc_rgb, 16);
-        memcpy(raw + 16, ub530_csc_rgb_tail, 8);
-        out->mode = 0x62;
-    } else {
-        memcpy(raw, c->sd ? ub530_csc_601 : ub530_csc_709, 16);
-        memcpy(raw + 16, c->sd ? ub530_csc_601_tail : ub530_csc_709_tail, 2);
-        memcpy(raw + 18, ub530_csc_rgb_tail + 2, 6);
-        out->mode = 0x40;
-    }
-    for (int i = 0; i < 12; i++)
-        out->m[i] = (uint16_t)(raw[2 * i] | raw[2 * i + 1] << 8);
-    unsigned bits = range_bits(c->range, c->quant);
-    uint32_t k = 0x1000;
-    if (bits & 2) {
-        k = 0x129e;
-        out->mode |= out->mode & 0x22 ? 4 : 0x15;
-    } else if (bits & 1) {
-        k = 0xdc0;
-        out->m[10] = 0x400;
-    }
-    for (int i = 0; i < 9; i++)
-        out->m[i] = (uint16_t)((uint32_t)((int16_t)out->m[i] * (int32_t)k) >> 12);
-    apply_picture(out->m, &c->picture);
-}
-
-enum hd60s_colour hd60s_frame_colour(const struct hd60s_colour_cfg *c, enum hd60s_colour colorimetry)
-{
-    if (c->input != INPUT_RGB && colorimetry != COLOUR_UNKNOWN)
-        return colorimetry;
-    return c->sd ? COLOUR_BT601 : COLOUR_BT709;
 }
 
 static void colour_convert(struct hd60s *d, const struct hd60s_colour_cfg *c)
@@ -527,6 +384,7 @@ int hd60s_init(struct hd60s *d)
 int hd60s_start(struct hd60s *d)
 {
     select_hdmi(d);
+    hd60s_read_link(d);
     apply_audio(d);
     i2c_write(d, I2C_BOARD, 0x20, 0x05);
 
@@ -540,7 +398,8 @@ int hd60s_start(struct hd60s *d)
             break;
         msleep(d, 5);
     }
-    d->colour = (struct hd60s_colour_cfg){INPUT_RGB, 0, d->settings.range, 0, d->settings.picture};
+    struct hd60s_settings settings = hd60s_settings_snapshot(d);
+    d->colour = (struct hd60s_colour_cfg){INPUT_RGB, 0, settings.range, 0, settings.picture};
     colour_convert(d, &d->colour);
     struct tx_bus tb = tx_bus(d);
     tx_start(&d->tx, &tb);
@@ -583,7 +442,8 @@ void hd60s_policy_frame(struct hd60s_policy *s, int w, int h, int interlaced)
 
 void hd60s_policy_tick(struct hd60s *d, struct hd60s_parser *p, struct hd60s_policy *s, long now_ms)
 {
-    struct audio_settings audio = audio_from_pref(d->settings.audio);
+    struct hd60s_settings settings = hd60s_settings_snapshot(d);
+    struct audio_settings audio = audio_from_pref(settings.audio);
     if (memcmp(&audio, &d->audio, sizeof audio))
         hd60s_set_audio(d, &audio);
     if (now_ms - s->aspect_at >= ASPECT_POLL_MS) {
@@ -594,7 +454,7 @@ void hd60s_policy_tick(struct hd60s *d, struct hd60s_parser *p, struct hd60s_pol
         s->src = hd60s_parse_avi(present, db1, db2, db3);
         p->wide = present && (db2 >> 4 & 3) == 2;
         hd60s_read_link(d);
-        if (source_routing_flag(d) != d->audio_routed_dvi)
+        if (d->link.hdmi != d->audio_routed_hdmi)
             apply_audio(d);
     }
     struct hd60s_colour_cfg want = d->colour;
@@ -602,9 +462,9 @@ void hd60s_policy_tick(struct hd60s *d, struct hd60s_parser *p, struct hd60s_pol
     if (sd >= 0)
         want.sd = sd;
     want.input = s->src.format;
-    want.range = d->settings.range;
+    want.range = settings.range;
     want.quant = s->src.quant;
-    want.picture = d->settings.picture;
+    want.picture = settings.picture;
     if (memcmp(&want, &d->colour, sizeof want)) {
         colour_convert(d, &want);
         d->colour = want;
@@ -632,9 +492,51 @@ void hd60s_policy_tick(struct hd60s *d, struct hd60s_parser *p, struct hd60s_pol
     }
 }
 
+void hd60s_settings_publish(struct hd60s *d, const struct hd60s_settings *s)
+{
+    while (atomic_exchange_explicit(&d->published_settings_lock, 1, memory_order_acquire))
+        ;
+    d->published_settings = *s;
+    atomic_store_explicit(&d->published_settings_lock, 0, memory_order_release);
+}
+
+struct hd60s_settings hd60s_settings_snapshot(struct hd60s *d)
+{
+    while (atomic_exchange_explicit(&d->published_settings_lock, 1, memory_order_acquire))
+        ;
+    struct hd60s_settings s = d->published_settings;
+    atomic_store_explicit(&d->published_settings_lock, 0, memory_order_release);
+    return s;
+}
+
+int hd60s_settings_equal(const struct hd60s_settings *a, const struct hd60s_settings *b)
+{
+    return a->range == b->range && a->picture.brightness == b->picture.brightness && a->picture.contrast == b->picture.contrast &&
+           a->picture.saturation == b->picture.saturation && a->picture.hue == b->picture.hue && a->audio.source == b->audio.source &&
+           a->audio.gain_offset == b->audio.gain_offset && !a->audio.mute == !b->audio.mute;
+}
+
+void hd60s_settings_to_wire(const struct hd60s_settings *s, struct hd60s_settings_wire *w)
+{
+    *w = (struct hd60s_settings_wire){HD60S_SETTINGS_WIRE_VERSION, (uint8_t)s->range, (uint8_t)s->audio.source, s->audio.mute != 0,
+                                      s->picture.brightness, s->picture.contrast, s->picture.saturation, s->picture.hue,
+                                      s->audio.gain_offset, {0, 0}};
+}
+
+int hd60s_settings_from_wire(const struct hd60s_settings_wire *w, size_t len, struct hd60s_settings *out)
+{
+    if (!w || len != sizeof *w || w->version != HD60S_SETTINGS_WIRE_VERSION || w->range >= RANGE_COUNT ||
+        !audio_source_valid(w->audio_source) || w->mute > 1 || w->reserved[0] || w->reserved[1])
+        return -1;
+    *out = (struct hd60s_settings){(enum hd60s_range)w->range,
+                                   {w->brightness, w->contrast, w->saturation, w->hue},
+                                   {(enum audio_source)w->audio_source, w->gain_offset, (int8_t)w->mute}};
+    return 0;
+}
+
 int hd60s_range_from_name(const char *name)
 {
-    for (int r = RANGE_AUTO; r <= RANGE_EXPANDED; r++)
+    for (int r = 0; r < RANGE_COUNT; r++)
         if (name && strcmp(name, hd60s_range_names[r]) == 0)
             return r;
     return -1;

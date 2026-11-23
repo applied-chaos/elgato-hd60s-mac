@@ -6,6 +6,7 @@ final class DextInstaller: NSObject, ObservableObject, OSSystemExtensionRequestD
     static let identifier = "net.mintopia.hd60s.dext"
     @Published var status = DextStatus.notBundled
     private var installing = true
+    var resendSettingsOnActivation: (() -> Void)?
 
     var bundled: Bool {
         let url = Bundle.main.bundleURL.appendingPathComponent("Contents/Library/SystemExtensions/\(Self.identifier).dext")
@@ -47,6 +48,7 @@ final class DextInstaller: NSObject, ObservableObject, OSSystemExtensionRequestD
 
     func request(_ request: OSSystemExtensionRequest, didFinishWithResult result: OSSystemExtensionRequest.Result) {
         status = installing ? .installed : .notInstalled
+        if installing { resendSettingsOnActivation?() }
     }
 
     func request(_ request: OSSystemExtensionRequest, didFailWithError error: Error) {

@@ -16,6 +16,13 @@ static void gain_code_matches_elgato_mapping(void)
     assert(audio_gain_code(-100) == 0x68 && audio_gain_code(100) == 0x18);
 }
 
+static void gain_converts_between_db_and_half_db_steps(void)
+{
+    assert(audio_gain_from_db(-6) == -12 && audio_gain_from_db(0.5) == 1 && audio_gain_from_db(3.4) == 7);
+    assert(audio_gain_from_db(0.25) == 1 && audio_gain_from_db(-0.25) == -1 && audio_gain_from_db(-12.2) == -24);
+    assert(audio_gain_to_db(7) == 3.5 && audio_gain_to_db(AUDIO_GAIN_MIN) == -12.0 && audio_gain_to_db(0) == 0.0);
+}
+
 static void default_is_hdmi_at_minus_6_db(void)
 {
     struct audio_settings d = AUDIO_DEFAULT;
@@ -31,7 +38,7 @@ static void parse_source_names(void)
     assert(!audio_source_parse("both", &s) && !audio_source_parse(NULL, &s));
 }
 
-static void hdmi_in_hdmi_mode_routes_hdmi_pair_only(void)
+static void hdmi_audio_without_hdmi_link_routes_hdmi_pair_only(void)
 {
     struct audio_settings s = AUDIO_DEFAULT;
     struct audio_regs r;
@@ -42,7 +49,7 @@ static void hdmi_in_hdmi_mode_routes_hdmi_pair_only(void)
     assert(!memcmp(r.gain, cur.gain, 4));
 }
 
-static void hdmi_in_dvi_mode_keeps_hdmi_gain(void)
+static void hdmi_audio_over_hdmi_link_keeps_hdmi_gain(void)
 {
     struct audio_settings s = AUDIO_DEFAULT;
     struct audio_regs r;
@@ -53,7 +60,7 @@ static void hdmi_in_dvi_mode_keeps_hdmi_gain(void)
     assert(!r.gain[0] && !r.gain[1] && !r.gain[2] && !r.gain[3]);
 }
 
-static void line_in_in_dvi_mode_sets_line_pair_gain(void)
+static void line_in_over_hdmi_link_sets_line_pair_gain(void)
 {
     struct audio_settings s = {AUDIO_LINE, 6, 0};
     struct audio_regs r;
@@ -71,7 +78,7 @@ static void mix_sets_gain_on_line_pair_only(void)
     assert(r.pair[0] == 0x74 && r.pair[1] == 0x74 && r.pair[2] == 0x13 && r.pair[3] == 0x13);
 }
 
-static void line_in_in_hdmi_mode_uses_gain_registers(void)
+static void line_in_without_hdmi_link_uses_gain_registers(void)
 {
     struct audio_regs r;
     struct audio_settings s = {AUDIO_LINE, 6, 0}; /* 0x7a < v: positive gain goes to a/b */
@@ -136,13 +143,14 @@ int main(void)
 {
     pref_zero_is_elgatos_default_and_round_trips();
     gain_code_matches_elgato_mapping();
+    gain_converts_between_db_and_half_db_steps();
     default_is_hdmi_at_minus_6_db();
     parse_source_names();
-    hdmi_in_hdmi_mode_routes_hdmi_pair_only();
-    hdmi_in_dvi_mode_keeps_hdmi_gain();
-    line_in_in_dvi_mode_sets_line_pair_gain();
+    hdmi_audio_without_hdmi_link_routes_hdmi_pair_only();
+    hdmi_audio_over_hdmi_link_keeps_hdmi_gain();
+    line_in_over_hdmi_link_sets_line_pair_gain();
     mix_sets_gain_on_line_pair_only();
-    line_in_in_hdmi_mode_uses_gain_registers();
+    line_in_without_hdmi_link_uses_gain_registers();
     mute_sets_bit7_on_every_live_pair();
     r04_keeps_unrelated_bits();
     return 0;

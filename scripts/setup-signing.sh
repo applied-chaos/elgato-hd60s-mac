@@ -235,6 +235,16 @@ check_profile() {
   fi
 }
 
+GROUP="$TEAM.net.mintopia.hd60s"
+
+require_app_group() {
+  if security cms -D -i "$1" | plutil -extract Entitlements.com\\.apple\\.security\\.application-groups json -o - - 2>/dev/null | grep -q "\"$GROUP\""; then
+    return 0
+  fi
+  warn "profile lacks the App Group $GROUP: add App Groups to the App ID with that group, then regenerate the profile"
+  return 1
+}
+
 banner "HD60S release signing secrets"
 
 stage "Preflight"
@@ -286,9 +296,11 @@ pause
 stage "App IDs"
 say "Local Xcode builds usually registered both App IDs already. Check them:"
 open_url "https://developer.apple.com/account/resources/identifiers/list"
-step "net.mintopia.hd60s must exist, with System Extension ticked under Capabilities."
-step "net.mintopia.hd60s.camera must exist (no extra capabilities needed)."
-step "If either is missing: + → App IDs → App → Explicit Bundle ID, tick the capability, Register."
+step "net.mintopia.hd60s must exist, with System Extension and App Groups ticked under Capabilities."
+step "net.mintopia.hd60s.camera must exist, with App Groups ticked."
+step "Both App IDs need the App Group $GROUP (Configure next to App Groups; add the group first under Identifiers → App Groups if it isn't listed)."
+step "The app and camera Developer ID profiles must include that group, so regenerate any profile made before you added it."
+step "If an App ID is missing: + → App IDs → App → Explicit Bundle ID, tick the capabilities, Register."
 pause "Press Enter once both are there"
 
 stage "Provisioning profile: app"
@@ -298,7 +310,7 @@ step "App ID: net.mintopia.hd60s → Continue."
 step "Select the Developer ID Application certificate you just exported → Continue."
 step "Name it 'HD60S App Developer ID' → Generate → Download."
 until ask_file APP_PROFILE_FILE "Path to the downloaded profile:" "$HOME/Downloads/HD60S_App_Developer_ID.provisionprofile" \
-      && check_profile "$APP_PROFILE_FILE" net.mintopia.hd60s; do :; done
+      && check_profile "$APP_PROFILE_FILE" net.mintopia.hd60s && require_app_group "$APP_PROFILE_FILE"; do :; done
 security cms -D -i "$APP_PROFILE_FILE" | grep -q "com.apple.developer.system-extension.install" \
   || warn "profile lacks the System Extension entitlement: tick it on the App ID and regenerate"
 set_secret MACOS_APP_PROFILE "$(base64 -i "$APP_PROFILE_FILE")"
@@ -311,7 +323,7 @@ step "App ID: net.mintopia.hd60s.camera → Continue."
 step "Select the same Developer ID Application certificate → Continue."
 step "Name it 'HD60S Camera Developer ID' → Generate → Download."
 until ask_file CAMERA_PROFILE_FILE "Path to the downloaded profile:" "$HOME/Downloads/HD60S_Camera_Developer_ID.provisionprofile" \
-      && check_profile "$CAMERA_PROFILE_FILE" net.mintopia.hd60s.camera; do :; done
+      && check_profile "$CAMERA_PROFILE_FILE" net.mintopia.hd60s.camera && require_app_group "$CAMERA_PROFILE_FILE"; do :; done
 set_secret MACOS_CAMERA_PROFILE "$(base64 -i "$CAMERA_PROFILE_FILE")"
 pause
 

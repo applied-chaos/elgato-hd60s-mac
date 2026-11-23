@@ -10,8 +10,18 @@ settings:
     ENABLE_HARDENED_RUNTIME: YES
     SWIFT_VERSION: "5.0"
     ARCHS: arm64
+targetTemplates:
+  CoreC:
+    sources:
+      - path: ../src/device.c
+      - path: ../src/parser.c
+      - path: ../src/tx.c
+      - path: ../src/audio.c
+      - path: ../src/colour.c
+      - path: ../src/link.c
 targets:
   HD60S:
+    templates: [CoreC]
     type: application
     platform: macOS
     sources:
@@ -20,11 +30,7 @@ targets:
       - path: ../src/status.c
       - path: ../src/status_probe.c
       - path: ../src/status_sample.c
-      - path: ../src/audio.c
-      - path: ../src/device.c
       - path: ../src/device_libusb.c
-      - path: ../src/parser.c
-      - path: ../src/tx.c
     info:
       path: App/Info.plist
       properties:
@@ -55,19 +61,16 @@ targets:
         copy:
           destination: plugins
   net.mintopia.hd60s.camera:
+    templates: [CoreC]
     type: system-extension
     platform: macOS
     sources:
       - Extension
       - Shared
-      - path: ../src/device.c
       - path: ../src/device_libusb.c
-      - path: ../src/parser.c
       - path: ../src/deinterlace.c
       - path: ../src/ring.c
-      - path: ../src/tx.c
       - path: ../src/status.c
-      - path: ../src/audio.c
     info:
       path: Extension/Info.plist
       properties:

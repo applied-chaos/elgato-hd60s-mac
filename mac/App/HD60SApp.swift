@@ -422,6 +422,7 @@ struct MainWindow: View {
         .onAppear {
             if let name = HD60SApp.launchArguments.value(after: "--preview-tab") { tab = name == "status" ? .status : name == "settings" ? .settings : .install }
             if tab == .status { poller.start() }
+            dext.resendSettingsOnActivation = { [settings] in settings.pushToDriver() }
         }
         .onDisappear { poller.stop() }
         .onChange(of: tab) { _, new in new == .status ? poller.start() : poller.stop() }
