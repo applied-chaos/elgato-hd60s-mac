@@ -11,6 +11,24 @@
         ],
         "createdAt": "2026-11-21T14:05:09.774Z",
         "reason": "agent measured: #9CA3AF on plain Ink behind every text box, 7.63:1"
+      },
+      {
+        "rule": "low-contrast",
+        "value": "*",
+        "files": [
+          "tools/slate/slate-hdcp.html"
+        ],
+        "createdAt": "2026-11-23T00:52:11.395Z",
+        "reason": "agent measured: only #9CA3AF and #F8FAFC on plain #0B0D17, 7.63:1 minimum, same as slate-a"
+      },
+      {
+        "rule": "low-contrast",
+        "value": "*",
+        "files": [
+          "tools/slate/slate-b.html"
+        ],
+        "createdAt": "2026-11-23T00:52:11.410Z",
+        "reason": "agent measured: only #9CA3AF and #F8FAFC on plain #0B0D17, 7.63:1 minimum, same as slate-a"
       }
     ]
   }
