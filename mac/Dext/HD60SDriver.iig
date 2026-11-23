@@ -26,7 +26,7 @@ public:
     void Audio(const uint8_t *pcm, size_t len) LOCALONLY;
     void Deliver(uint64_t host) LOCALONLY;
     virtual void ZeroTimestampOccurred(OSAction *action TARGET, uint64_t time) TYPE(IOTimerDispatchSource::TimerOccurred) QUEUENAME(USB);
-    virtual void PolicyOccurred(OSAction *action TARGET, uint64_t time) TYPE(IOTimerDispatchSource::TimerOccurred) QUEUENAME(Policy);
+    virtual void PolicyOccurred(OSAction *action TARGET, uint64_t time) TYPE(IOTimerDispatchSource::TimerOccurred) QUEUENAME(Control);
     virtual void BulkDone(OSAction *action TARGET, IOReturn status, uint32_t actualByteCount, uint64_t completionTimestamp)
         TYPE(IOUSBHostPipe::CompleteAsyncIO) QUEUENAME(USB);
 };
