@@ -34,10 +34,21 @@ int main(void)
     push_ramp(r, 100, 4);
     assert(ring_pull(r, out, 4, 8) == 0);
 
-    /* Too much buffered: skip ahead so only the target is left, across the wrap. */
+    /* Too much buffered: skip ahead so the target is left after the pull, across the wrap. */
     push_ramp(r, 200, 28);
     assert(ring_pull(r, out, 2, 4) == 2);
-    assert(out[0] == 224 / 32768.0f);
+    assert(out[0] == 222 / 32768.0f);
+
+    /* Latency stays put: jitter within a quarter of the target is kept, but the extra a late burst leaves after
+     * an underrun is trimmed rather than delaying everything after it. */
+    struct ring *steady = ring_create(256);
+    push_ramp(steady, 1, 40);
+    assert(ring_pull(steady, out, 8, 32) == 8); /* 32 left */
+    push_ramp(steady, 41, 8 + 7);
+    assert(ring_pull(steady, out, 8, 32) == 8 && out[0] == 9 / 32768.0f); /* 39 left: jitter kept */
+    push_ramp(steady, 56, 8 + 20);
+    assert(ring_pull(steady, out, 8, 32) == 8 && out[0] == 44 / 32768.0f); /* 67 queued: trimmed to 32 after */
+    ring_free(steady);
 
     /* A push that does not fit is dropped rather than overwriting unread audio. */
     struct ring *small = ring_create(8);

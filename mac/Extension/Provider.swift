@@ -146,7 +146,7 @@ final class StreamSource: NSObject, CMIOExtensionStreamSource {
     #if DEXT
     private static let calibratedVideoOffsetMs = 0.0
     #else
-    private static let calibratedVideoOffsetMs = 6.5
+    private static let calibratedVideoOffsetMs = 0.0
     #endif
     private let videoOffset = OSAllocatedUnfairLock(initialState: CMTime(seconds: calibratedVideoOffsetMs / 1000, preferredTimescale: 1_000_000))
     #if DEXT

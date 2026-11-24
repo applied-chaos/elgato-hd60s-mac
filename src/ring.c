@@ -54,9 +54,10 @@ size_t ring_pull(struct ring *r, float *out, size_t frames, size_t target)
     size_t fill = wr - rd;
     if (!r->primed && fill >= target)
         r->primed = 1;
-    if (fill > 4 * target) {
-        rd = wr - target;
-        fill = target;
+    size_t keep = target + frames;
+    if (r->primed && fill > keep + target / 4) {
+        rd = wr - keep;
+        fill = keep;
     }
     size_t n = r->primed ? (fill < frames ? fill : frames) : 0;
     for (size_t i = 0; i < n * 2; i++)

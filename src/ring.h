@@ -15,7 +15,8 @@ void ring_free(struct ring *r);
 /* Producer: drops the whole push if it does not fit. */
 void ring_push(struct ring *r, const int16_t *pcm, size_t frames);
 /* Consumer: fills out with frames of float stereo, padding with silence. Holds silence until
- * target frames are buffered, and skips ahead to target when more than 4x target builds up.
+ * target frames are buffered, then keeps the latency at target: when more than a quarter of target extra builds up
+ * (a late burst after an underrun, or clock drift), skips ahead so target frames are left after this pull.
  * Returns the number of real frames written. */
 size_t ring_pull(struct ring *r, float *out, size_t frames, size_t target);
 
