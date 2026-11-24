@@ -116,3 +116,57 @@ struct fr_counters fr_counters(const struct fr_header *h)
         atomic_load_explicit(&h->dvi, memory_order_relaxed),
     };
 }
+
+static void lock(struct fr_reader *r)
+{
+    while (atomic_flag_test_and_set_explicit(&r->busy, memory_order_acquire))
+        ;
+}
+
+static void unlock(struct fr_reader *r) { atomic_flag_clear_explicit(&r->busy, memory_order_release); }
+
+void fr_reader_attach(struct fr_reader *r, const struct fr_header *h, size_t mapped)
+{
+    lock(r);
+    r->h = h;
+    r->mapped = mapped;
+    r->seen = 0;
+    unlock(r);
+}
+
+const struct fr_header *fr_reader_detach(struct fr_reader *r)
+{
+    lock(r);
+    const struct fr_header *h = r->h;
+    r->h = NULL;
+    r->mapped = 0;
+    unlock(r);
+    return h;
+}
+
+uint32_t fr_reader_take(struct fr_reader *r, uint8_t *out, size_t cap, struct fr_frame *info)
+{
+    lock(r);
+    uint32_t n = r->h ? fr_take(r->h, r->seen, out, cap, info) : 0;
+    if (n)
+        r->seen = n;
+    unlock(r);
+    return n;
+}
+
+int fr_reader_counters(struct fr_reader *r, struct fr_counters *c)
+{
+    lock(r);
+    int attached = r->h != NULL;
+    *c = attached ? fr_counters(r->h) : (struct fr_counters){.link = LINK_DOWN};
+    unlock(r);
+    return attached;
+}
+
+uint32_t fr_reader_latest(struct fr_reader *r, struct fr_frame *info)
+{
+    lock(r);
+    uint32_t n = r->h ? fr_latest(r->h, info) : 0;
+    unlock(r);
+    return n;
+}

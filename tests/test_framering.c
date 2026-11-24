@@ -106,6 +106,63 @@ static void concurrent_reader_never_sees_a_torn_frame(struct fr_header *h)
     assert(got > 0);
 }
 
+static atomic_int reader_stop;
+static struct fr_reader shared_reader;
+
+static void *reader_loop(void *arg)
+{
+    (void)arg;
+    static uint8_t copy[FR_SLOT_BYTES];
+    struct fr_frame info;
+    struct fr_counters c;
+    while (!atomic_load(&reader_stop)) {
+        fr_reader_take(&shared_reader, copy, sizeof copy, &info);
+        fr_reader_counters(&shared_reader, &c);
+    }
+    return NULL;
+}
+
+/* A replug unmaps the old ring while the camera keeps polling: detach must make the reader stop touching it. */
+static void reader_detach_while_polling(void)
+{
+    struct fr_frame info;
+    struct fr_counters c;
+    assert(fr_reader_take(&shared_reader, out, sizeof out, &info) == 0);
+    assert(!fr_reader_counters(&shared_reader, &c) && c.link == LINK_DOWN);
+    pthread_t t;
+    pthread_create(&t, NULL, reader_loop, NULL);
+    for (int i = 0; i < 200; i++) {
+        void *mem = calloc(1, fr_bytes());
+        struct fr_header *h = fr_init(mem);
+        fill((uint8_t)i);
+        fr_publish(h, frame, 64, 4, 0, 0, 0);
+        fr_reader_attach(&shared_reader, h, fr_bytes());
+        for (volatile int spin = 0; spin < 20000; spin++)
+            ;
+        assert(fr_reader_detach(&shared_reader) == h);
+        free(mem); /* ASan reports any read the reader makes after this */
+    }
+    atomic_store(&reader_stop, 1);
+    pthread_join(t, NULL);
+
+    void *mem = calloc(1, fr_bytes());
+    struct fr_header *h = fr_init(mem);
+    fill(7);
+    fr_publish(h, frame, 64, 4, 0, 0, 0);
+    fr_reader_attach(&shared_reader, h, fr_bytes());
+    assert(fr_reader_take(&shared_reader, out, sizeof out, &info) == 1);
+    assert(fr_reader_take(&shared_reader, out, sizeof out, &info) == 0);
+    fr_reader_detach(&shared_reader);
+    void *again = calloc(1, fr_bytes());
+    struct fr_header *h2 = fr_init(again);
+    fr_publish(h2, frame, 64, 4, 0, 0, 0);
+    fr_reader_attach(&shared_reader, h2, fr_bytes());
+    assert(fr_reader_take(&shared_reader, out, sizeof out, &info) == 1); /* a new driver numbers from 1 again */
+    fr_reader_detach(&shared_reader);
+    free(mem);
+    free(again);
+}
+
 int main(void)
 {
     void *mem = aligned_alloc(4096, fr_bytes());
@@ -118,6 +175,7 @@ int main(void)
     status_reaches_the_reader(h);
     concurrent_reader_never_sees_a_torn_frame(fr_init(mem));
     free(mem);
+    reader_detach_while_polling();
     puts("test_framering: ok");
     return 0;
 }

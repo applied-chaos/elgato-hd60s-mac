@@ -57,4 +57,22 @@ void fr_status(struct fr_header *h, enum link_state link, uint64_t frames, uint6
 void fr_device(struct fr_header *h, uint32_t mcu_version, int top_first, int hdcp, int dvi);
 struct fr_counters fr_counters(const struct fr_header *h);
 
+/* Reader side of a mapping that another queue attaches and detaches, so a reader never waits on the IOKit
+ * calls that map or unmap it. */
+struct fr_reader {
+    atomic_flag busy;
+    const struct fr_header *h;
+    size_t mapped;
+    uint32_t seen;
+};
+void fr_reader_attach(struct fr_reader *r, const struct fr_header *h, size_t mapped);
+/* Returns the ring that was attached; no reader touches it once this returns, so it can be unmapped. */
+const struct fr_header *fr_reader_detach(struct fr_reader *r);
+/* fr_take against the attached ring; 0 when detached. */
+uint32_t fr_reader_take(struct fr_reader *r, uint8_t *out, size_t cap, struct fr_frame *info);
+/* Counters of the attached ring; returns 0 and link down when detached. */
+int fr_reader_counters(struct fr_reader *r, struct fr_counters *c);
+/* fr_latest against the attached ring; 0 when detached or no frame yet. */
+uint32_t fr_reader_latest(struct fr_reader *r, struct fr_frame *info);
+
 #endif

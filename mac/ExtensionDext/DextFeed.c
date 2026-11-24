@@ -17,8 +17,8 @@ static mach_vm_size_t size;
 static IONotificationPortRef port;
 static io_object_t interest;
 static atomic_int lost;
-static uint32_t seen;
 static atomic_uint connections;
+static struct fr_reader reader;
 
 static long now_ms(void) { return (long)(clock_gettime_nsec_np(CLOCK_UPTIME_RAW) / 1000000); }
 
@@ -42,6 +42,7 @@ static io_service_t find_driver(void)
 
 static void tear_down(void)
 {
+    fr_reader_detach(&reader);
     if (interest)
         IOObjectRelease(interest);
     if (port)
@@ -76,13 +77,13 @@ static int bring_up(void)
         os_log(OS_LOG_DEFAULT, "hd60s: driver extension connect failed 0x%x", kr);
         return -1;
     }
-    seen = 0;
+    fr_reader_attach(&reader, (const struct fr_header *)addr, size);
     atomic_fetch_add(&connections, 1);
     os_log(OS_LOG_DEFAULT, "hd60s: connected to driver extension");
     return 0;
 }
 
-static int step(void)
+void dext_feed_maintain(void)
 {
     long now = now_ms();
     enum link_action a = link_step(&session, session.state == LINK_UP && atomic_load(&lost) ? LINK_LOST : LINK_TICK, now);
@@ -90,28 +91,22 @@ static int step(void)
         a = link_step(&session, bring_up() == 0 ? LINK_UP_OK : LINK_UP_FAILED, now);
     if (a == LINK_TEAR_DOWN)
         tear_down();
-    return session.state == LINK_UP;
 }
 
 int dext_feed_peek(struct fr_frame *info, struct fr_counters *counters, uint32_t *number)
 {
-    if (!step())
-        return 0;
-    *counters = fr_counters((const struct fr_header *)addr);
+    dext_feed_maintain();
     *info = (struct fr_frame){0};
-    *number = fr_latest((const struct fr_header *)addr, info);
+    *number = 0;
+    if (!fr_reader_counters(&reader, counters))
+        return 0;
+    *number = fr_reader_latest(&reader, info);
     return 1;
 }
 
 int dext_feed_poll(uint8_t *out, size_t cap, struct fr_frame *info)
 {
-    if (!step())
-        return 0;
-    uint32_t n = fr_take((const struct fr_header *)addr, seen, out, cap, info);
-    if (!n)
-        return 0;
-    seen = n;
-    return 1;
+    return fr_reader_take(&reader, out, cap, info) != 0;
 }
 
 unsigned dext_feed_connections(void)
@@ -121,8 +116,9 @@ unsigned dext_feed_connections(void)
 
 struct fr_counters dext_feed_counters(void)
 {
-    struct fr_counters none = {LINK_DOWN, 0, 0, 0, 0, 0, 0, 0, 0};
-    return session.state == LINK_UP ? fr_counters((const struct fr_header *)addr) : none;
+    struct fr_counters c;
+    fr_reader_counters(&reader, &c);
+    return c;
 }
 
 void dext_feed_close(void)
