@@ -10,7 +10,8 @@ func check(_ ok: Bool, _ what: String, line: UInt = #line) {
         check(AudioPlugin.status(installed: nil, bundled: "12") == .notInstalled, "missing")
         check(AudioPlugin.status(installed: "12", bundled: "12") == .installed, "same")
         check(AudioPlugin.status(installed: "9", bundled: "12") == .outdated, "numeric, not lexical")
-        check(AudioPlugin.status(installed: "1.10.0", bundled: "1.9") == .installed, "newer installed")
+        check(AudioPlugin.status(installed: "1.10.0", bundled: "1.9") == .outdated, "any other version is replaced")
+        check(AudioPlugin.status(installed: "1.2", bundled: "1.2.0") == .installed, "trailing zero is the same")
         check(AudioPlugin.status(installed: "1.2", bundled: "1.2.1") == .outdated, "missing component is zero")
         // driver extension status from system extension properties
         check(DextStatus.found(enabled: true, awaitingApproval: false) == .installed, "enabled")
@@ -29,6 +30,7 @@ func check(_ ok: Bool, _ what: String, line: UInt = #line) {
         check(Flavour.userspace.installStep(audio: .notInstalled, plugInSource: plug) == .admin(AudioPlugin.installScript(source: plug)), "userspace installs")
         check(Flavour.userspace.installStep(audio: .outdated, plugInSource: plug) == .admin(AudioPlugin.installScript(source: plug)), "userspace updates")
         check(Flavour.userspace.installStep(audio: .notInstalled, plugInSource: nil) == .missingPlugIn, "userspace needs the bundled plug-in")
+        check(Flavour.userspace.installStep(audio: .installed, plugInSource: plug) == .none, "userspace: current plug-in kept, so no admin prompt or Core Audio restart")
         check(Flavour.driverKit.installStep(audio: .notInstalled, plugInSource: nil) == .none, "driverkit: nothing to remove")
         check(Flavour.driverKit.installStep(audio: .installed, plugInSource: nil) == .admin(uninstall), "driverkit removes plug-in")
         check(Flavour.userspace.uninstallStep(audio: .notInstalled) == .admin(uninstall), "userspace uninstall always runs")

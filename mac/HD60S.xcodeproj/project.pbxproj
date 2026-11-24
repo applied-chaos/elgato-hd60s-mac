@@ -498,6 +498,7 @@
 		23DCF3CA38C1F80775BA8958 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				AUDIO_PLUGIN_VERSION = 1;
 				COMBINE_HIDPI_IMAGES = YES;
 				INFOPLIST_FILE = Audio/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -520,6 +521,7 @@
 		38632F59D17ED88F321BCB22 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				AUDIO_PLUGIN_VERSION = 1;
 				COMBINE_HIDPI_IMAGES = YES;
 				INFOPLIST_FILE = Audio/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (

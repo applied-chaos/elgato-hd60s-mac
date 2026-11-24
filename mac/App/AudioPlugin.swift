@@ -52,6 +52,7 @@ enum Flavour: String {
 
     func installStep(audio: AudioStatus, plugInSource: String?) -> InstallStep {
         switch self {
+        case .userspace where audio == .installed: .none
         case .userspace: plugInSource.map { .admin(AudioPlugin.installScript(source: $0)) } ?? .missingPlugIn
         case .driverKit: uninstallStep(audio: audio)
         }
@@ -83,7 +84,7 @@ enum AudioPlugin {
         let n = max(a.count, b.count)
         a += Array(repeating: 0, count: n - a.count)
         b += Array(repeating: 0, count: n - b.count)
-        return a.lexicographicallyPrecedes(b) ? .outdated : .installed
+        return a == b ? .installed : .outdated
     }
 
     // osascript reports a dismissed admin prompt as error -128.
