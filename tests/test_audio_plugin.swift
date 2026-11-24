@@ -60,6 +60,11 @@ func check(_ ok: Bool, _ what: String, line: UInt = #line) {
         check(ran(AudioPlugin.uninstallScript(directory: hal, restart: "true")) == 0, "uninstall runs")
         check(!fm.fileExists(atPath: hal + "/HD60SAudio.driver"), "removed")
         check(ran(AudioPlugin.uninstallScript(directory: hal, restart: "true")) == 0, "uninstall idempotent")
+        check(AudioPlugin.restartCoreAudio == "pkill -9 -x -f /usr/libexec/AirPlayXPCHelper || true\nkillall coreaudiod",
+              "restart resets AirPlayXPCHelper, which ignores SIGTERM and doubles its registrations per coreaudiod restart")
+        let helperGone = AudioPlugin.restartCoreAudio.replacingOccurrences(of: "/usr/libexec/AirPlayXPCHelper", with: "/no/such/helper")
+            .replacingOccurrences(of: "killall coreaudiod", with: "true")
+        check(ran("set -e\n" + helperGone) == 0, "restart tolerates no running helper")
         check(AudioPlugin.notInstalledHint(appPath: "/Applications/HD60S.app") == "Click Install.", "in Applications")
         check(AudioPlugin.notInstalledHint(appPath: "/Users/x/Downloads/HD60S.app") == "Move the app to Applications, then click Install.", "elsewhere")
         let plist = { (info: [String: String]) in

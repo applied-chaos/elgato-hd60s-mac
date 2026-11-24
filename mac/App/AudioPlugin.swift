@@ -66,7 +66,9 @@ enum Flavour: String {
 enum AudioPlugin {
     static let name = "HD60SAudio.driver"
     static let halDirectory = "/Library/Audio/Plug-Ins/HAL"
-    static let restartCoreAudio = "killall coreaudiod"
+    // AirPlayXPCHelper doubles its driver registrations on every coreaudiod restart (4096 after 12) and ignores
+    // SIGTERM; killing it too resets it to one. launchd relaunches it on demand.
+    static let restartCoreAudio = "pkill -9 -x -f /usr/libexec/AirPlayXPCHelper || true\nkillall coreaudiod"
 
     // macOS only activates a system extension from an app in /Applications.
     static func notInstalledHint(appPath: String) -> String {
