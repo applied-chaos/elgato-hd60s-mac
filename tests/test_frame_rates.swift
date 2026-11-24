@@ -69,6 +69,10 @@ func check(_ ok: Bool, _ what: String, line: UInt = #line) {
         var dropped = frames(fps: 60, seconds: 20); dropped.remove(at: 600)
         do { let v = strayMs(dropped, after: 60); check(v < tolerance, "one dropped source frame: no lasting error (\(v))") }
         let steady = frames(fps: 60, seconds: 2, jitterMs: 0)
+        var r = FrameClock()
+        check(r.stamp(arrivalNs: 1_000_000_000).resync, "first frame starts a new line")
+        check(!r.stamp(arrivalNs: 1_016_666_667).resync, "next frame continues it")
+        check(r.stamp(arrivalNs: 2_000_000_000).resync, "frame after a gap starts a new line")
         var c = FrameClock(), last = CMTime.zero
         for (i, f) in steady.enumerated() {
             let t = c.stamp(arrivalNs: f.arrivalNs)

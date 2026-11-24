@@ -9,6 +9,10 @@ import VideoToolbox
 private let width = Int32(outputWidth)
 private let height = Int32(outputHeight)
 private let noFramesTimeoutNs: UInt64 = 200_000_000
+private let deviceReopenNs: UInt64 = 600_000_000
+// AVCaptureSession anchors its video timeline on the first samples, so slates there would set a session-long offset
+// on the live frames.
+private let slateHoldAtStartNs = deviceReopenNs + 900_000_000
 private let statsEveryTicks = 600
 private let publishIntervalNs: UInt64 = 1_000_000_000
 private let replyBeforeExitSeconds = 0.2
@@ -222,7 +226,7 @@ final class StreamSource: NSObject, CMIOExtensionStreamSource {
     func startStream() throws {
         guard timer == nil else { return }
         refreshVideoOffset()
-        lastFrameNs.withLock { $0 = 0 }
+        lastFrameNs.withLock { $0 = hostNs() + slateHoldAtStartNs - noFramesTimeoutNs }
         // Polling only at the output rate beats against a 60 Hz source and drops about 2 frames a second.
         let poll = DispatchSource.makeTimerSource(queue: outputQueue)
         poll.schedule(deadline: .now(), repeating: .milliseconds(2), leeway: .microseconds(500))
@@ -263,7 +267,7 @@ final class StreamSource: NSObject, CMIOExtensionStreamSource {
         t.name = "hd60s capture"
         worker = t
         t.start()
-        lastFrameNs.withLock { $0 = 0 }
+        lastFrameNs.withLock { $0 = hostNs() + slateHoldAtStartNs - noFramesTimeoutNs }
         restartTimer()
     }
 
@@ -422,7 +426,7 @@ final class StreamSource: NSObject, CMIOExtensionStreamSource {
     private func tick() {
         refreshLink()
         let protected = hdcp.withLock { $0 }
-        if protected || hostNs() &- lastFrameNs.withLock({ $0 }) > noFramesTimeoutNs {
+        if protected || hostNs() > lastFrameNs.withLock({ $0 }) + noFramesTimeoutNs {
             let odd = hostNs() &- unsupportedNs.withLock({ $0 }) < 1_000_000_000
             if let s = protected ? hdcpSlate : odd ? unsupportedSlate : slate { emit(s) }
         }
@@ -548,7 +552,7 @@ final class StreamSource: NSObject, CMIOExtensionStreamSource {
 
     private func hostNs() -> UInt64 { UInt64(CMClockGetTime(CMClockGetHostTimeClock()).seconds * 1e9) }
 
-    private func emit(_ pb: CVPixelBuffer, timing live: (pts: CMTime, duration: CMTime)? = nil) {
+    private func emit(_ pb: CVPixelBuffer, timing live: (pts: CMTime, duration: CMTime, resync: Bool)? = nil) {
         let now = (live?.pts ?? CMClockGetTime(CMClockGetHostTimeClock())) + videoOffset.withLock { $0 }
         var timing = CMSampleTimingInfo(duration: live?.duration ?? rate.withLock { $0.duration }, presentationTimeStamp: now, decodeTimeStamp: .invalid)
         var desc: CMFormatDescription?
@@ -559,6 +563,6 @@ final class StreamSource: NSObject, CMIOExtensionStreamSource {
                                                  makeDataReadyCallback: nil, refcon: nil, formatDescription: desc,
                                                  sampleTiming: &timing, sampleBufferOut: &sample) == noErr,
               let sample else { return }
-        stream.send(sample, discontinuity: [], hostTimeInNanoseconds: UInt64(now.seconds * Double(NSEC_PER_SEC)))
+        stream.send(sample, discontinuity: live?.resync == true ? .time : [], hostTimeInNanoseconds: UInt64(now.seconds * Double(NSEC_PER_SEC)))
     }
 }
