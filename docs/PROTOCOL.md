@@ -536,6 +536,16 @@ Raw EDID (256 bytes, base block then CTA block):
 - Long run (IOProc, 45 min before the source rebooted): 129.6 M samples in 337,496 contiguous 512-frame cycles, no silence and no discontinuity; -9 to -10 ppm throughout, 0 pads, 0 late, 0 overflow, no re-phase, max lateness 2.05 to 2.12 ms per 10 s window.
 - A/V offset (one AVCaptureSession, Pi framebuffer flash plus a 20 ms beep on the same second): beep minus flash +2.4 to +4.4 ms when the flash's first frame is caught (later-caught flashes read -30 ms). The Pi's own audio path lags its framebuffer write by an unknown 0 to ~20 ms, which only raises this figure, so the capture offset is within a few ms of zero; proving it is 0 or less needs a calibrated source.
 
+## A/V alignment (Pi 4 at 1080p60, 2026-11-24)
+Reference is the HDMI stream itself: audio and video arrive interleaved on the same bulk stream and the parser emits both in order, so a flash frame and a beep can be placed on the stream's own audio-sample clock.
+- Source: the Pi writes a white frame to `/dev/fb0` and a 20 ms 1 kHz beep to `aplay` once a second. With a 10 ms ALSA buffer its own beep-after-flash wanders with aplay underruns (26.5 to 43 ms between and within boots); with a 50 ms buffer the pipeline stays full and it holds +65.4 to +66.1 ms over tens of minutes.
+- In-stream offset (libusb, parser callbacks): flash start = audio samples delivered when the frame before the flash completes; beep = first sample over threshold. Spread within a run is under 0.1 ms.
+- App-observed offset: one AVCaptureSession with the camera and the "Elgato HD60 S" input, beep minus flash presentation times, flash detected at the same luma threshold as the stream tool. Compared only against an in-stream reference taken just before and after (the device can't serve both at once).
+- HAL plug-in: an impulse written to the feed device at output time T is presented by the input device at T (0.00 ms in every session), so the plug-in adds no timestamp offset.
+- Userspace build, against the Pi's write times (Pi clock NTP-synced, constant offset): audio presentation latency is constant across sessions (114.0 to 115.8 ms) since the jitter buffer primes at an exact level and trims back to its target; the camera's frames reach a client a constant ~13 ms after the write. The app-observed offset still varies between sessions (-25.6, +30.7, +20.6 ms against the stream on build 210): with audio in the session, AVCaptureSession re-times video onto the audio device clock and the video presentation times move by about two frames between sessions. Unresolved.
+- DriverKit build: one clean session, -51 ms against the stream (audio early); not yet repeated.
+- Video timestamps carry a per-flavour offset (`calibratedVideoOffsetMs`, 0 for both until the offsets repeat), overridable per camera with the `hvof` property; it takes effect at the next stream start.
+
 ## PC modes (Pi forced with `kmstest` modelines, `hd60s status` and `capture -n 20`)
 The Pi's EDID lists no PC timings, so each was forced with an explicit modeline (`kmstest -c HDMI-A-1 -r <pclk Hz>,<hact>/<hfp>/<hsw>/<hbp>/<hsp>,<vact>/<vfp>/<vsw>/<vbp>/<vsp> -T smpte`; `--dmt` lookups by name fail on the Pi). The unmodified driver detects and frames all of them, with 0 discarded frames and 0 long lines:
 
