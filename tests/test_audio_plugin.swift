@@ -6,13 +6,11 @@ func check(_ ok: Bool, _ what: String, line: UInt = #line) {
 
 @main enum Tests {
     static func main() {
-        // status: installed vs bundled version
-        check(AudioPlugin.status(installed: nil, bundled: "12") == .notInstalled, "missing")
-        check(AudioPlugin.status(installed: "12", bundled: "12") == .installed, "same")
-        check(AudioPlugin.status(installed: "9", bundled: "12") == .outdated, "numeric, not lexical")
-        check(AudioPlugin.status(installed: "1.10.0", bundled: "1.9") == .outdated, "any other version is replaced")
-        check(AudioPlugin.status(installed: "1.2", bundled: "1.2.0") == .installed, "trailing zero is the same")
-        check(AudioPlugin.status(installed: "1.2", bundled: "1.2.1") == .outdated, "missing component is zero")
+        // status: installed vs bundled source hash
+        check(AudioPlugin.status(installed: nil, bundled: "ab12") == .notInstalled, "missing")
+        check(AudioPlugin.status(installed: "ab12", bundled: "ab12") == .installed, "same sources")
+        check(AudioPlugin.status(installed: "cd34", bundled: "ab12") == .outdated, "other sources")
+        check(AudioPlugin.status(installed: "", bundled: "ab12") == .outdated, "plug-in from before the hash")
         // driver extension status from system extension properties
         check(DextStatus.found(enabled: true, awaitingApproval: false) == .installed, "enabled")
         check(DextStatus.found(enabled: false, awaitingApproval: true) == .needsApproval, "approval")
@@ -65,16 +63,18 @@ func check(_ ok: Bool, _ what: String, line: UInt = #line) {
         check(ran(AudioPlugin.uninstallScript(directory: hal, restart: "true")) == 0, "uninstall idempotent")
         check(AudioPlugin.notInstalledHint(appPath: "/Applications/HD60S.app") == "Click Install.", "in Applications")
         check(AudioPlugin.notInstalledHint(appPath: "/Users/x/Downloads/HD60S.app") == "Move the app to Applications, then click Install.", "elsewhere")
-        let plist = { (v: String) in
+        let plist = { (info: [String: String]) in
             try! fm.createDirectory(atPath: hal + "/HD60SAudio.driver/Contents", withIntermediateDirectories: true)
-            (["CFBundleVersion": v] as NSDictionary).write(toFile: hal + "/HD60SAudio.driver/Contents/Info.plist", atomically: true)
+            (info as NSDictionary).write(toFile: hal + "/HD60SAudio.driver/Contents/Info.plist", atomically: true)
         }
-        plist("188")
-        check(AudioPlugin.installedVersion(directory: hal) == "188", "reads installed version")
+        plist(["CFBundleVersion": "215"])
+        check(AudioPlugin.installedSourceHash(directory: hal) == "", "plug-in from before the hash reads as present")
+        plist(["CFBundleVersion": "216", AudioPlugin.sourceHashKey: "ab12"])
+        check(AudioPlugin.installedSourceHash(directory: hal) == "ab12", "reads installed hash")
         try! fm.removeItem(atPath: hal + "/HD60SAudio.driver")
-        check(AudioPlugin.installedVersion(directory: hal) == nil, "removed plug-in reads as absent")
-        plist("191")
-        check(AudioPlugin.installedVersion(directory: hal) == "191", "replaced plug-in reads its new version")
+        check(AudioPlugin.installedSourceHash(directory: hal) == nil, "removed plug-in reads as absent")
+        plist(["CFBundleVersion": "217", AudioPlugin.sourceHashKey: "cd34"])
+        check(AudioPlugin.installedSourceHash(directory: hal) == "cd34", "replaced plug-in reads its new hash")
         try? fm.removeItem(atPath: tmp)
 
         check(AudioPlugin.appleScript(for: #"echo "a\b""#) == #"do shell script "echo \"a\\b\"" with administrator privileges"#, "applescript escaping")

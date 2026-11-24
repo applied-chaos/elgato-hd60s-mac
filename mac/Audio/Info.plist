@@ -15,7 +15,7 @@
 	<key>CFBundleShortVersionString</key>
 	<string>$(MARKETING_VERSION)</string>
 	<key>CFBundleVersion</key>
-	<string>$(AUDIO_PLUGIN_VERSION)</string>
+	<string>$(CURRENT_PROJECT_VERSION)</string>
 	<key>CFPlugInFactories</key>
 	<dict>
 		<key>9C1D5B3E-60D5-4E8B-9C4A-0FD900740002</key>
@@ -28,5 +28,7 @@
 			<string>9C1D5B3E-60D5-4E8B-9C4A-0FD900740002</string>
 		</array>
 	</dict>
+	<key>HD60SSourceHash</key>
+	<string>$(AUDIO_SOURCE_HASH)</string>
 </dict>
 </plist>

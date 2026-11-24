@@ -73,18 +73,17 @@ enum AudioPlugin {
         appPath.hasPrefix("/Applications/") ? "Click Install." : "Move the app to Applications, then click Install."
     }
 
+    static let sourceHashKey = "HD60SSourceHash"
+
     // Not Bundle(path:): it caches Info.plist per path, so a removed or replaced plug-in reads as before.
-    static func installedVersion(directory: String = halDirectory) -> String? {
-        NSDictionary(contentsOfFile: directory + "/" + name + "/Contents/Info.plist")?["CFBundleVersion"] as? String
+    // "" is a plug-in built before the hash existed.
+    static func installedSourceHash(directory: String = halDirectory) -> String? {
+        NSDictionary(contentsOfFile: directory + "/" + name + "/Contents/Info.plist").map { $0[sourceHashKey] as? String ?? "" }
     }
 
     static func status(installed: String?, bundled: String) -> AudioStatus {
         guard let installed else { return .notInstalled }
-        var (a, b) = (components(installed), components(bundled))
-        let n = max(a.count, b.count)
-        a += Array(repeating: 0, count: n - a.count)
-        b += Array(repeating: 0, count: n - b.count)
-        return a == b ? .installed : .outdated
+        return installed == bundled ? .installed : .outdated
     }
 
     // osascript reports a dismissed admin prompt as error -128.
@@ -115,5 +114,4 @@ enum AudioPlugin {
 
     private static func quote(_ s: String) -> String { "'" + s.replacingOccurrences(of: "'", with: "'\\''") + "'" }
 
-    private static func components(_ version: String) -> [Int] { version.split(separator: ".").map { Int($0) ?? 0 } }
 }

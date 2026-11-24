@@ -147,8 +147,8 @@ final class Installer: NSObject, ObservableObject, OSSystemExtensionRequestDeleg
     }
 
     func refreshAudio() {
-        let bundled = bundledAudio.flatMap { Bundle(url: $0)?.object(forInfoDictionaryKey: "CFBundleVersion") as? String } ?? "0"
-        audio = AudioPlugin.status(installed: AudioPlugin.installedVersion(), bundled: bundled)
+        let bundled = bundledAudio.flatMap { Bundle(url: $0)?.object(forInfoDictionaryKey: AudioPlugin.sourceHashKey) as? String } ?? ""
+        audio = AudioPlugin.status(installed: AudioPlugin.installedSourceHash(), bundled: bundled)
     }
 
     private var bundledAudio: URL? { Bundle.main.builtInPlugInsURL?.appendingPathComponent(AudioPlugin.name) }

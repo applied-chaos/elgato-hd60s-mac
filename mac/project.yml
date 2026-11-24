@@ -107,14 +107,15 @@ targets:
       properties:
         CFBundleName: HD60SAudio
         CFBundleShortVersionString: $(MARKETING_VERSION)
-        CFBundleVersion: $(AUDIO_PLUGIN_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        HD60SSourceHash: $(AUDIO_SOURCE_HASH)
         CFPlugInFactories:
           9C1D5B3E-60D5-4E8B-9C4A-0FD900740002: HD60S_Create
         CFPlugInTypes:
           443ABAB8-E7B3-491A-B985-BEB9187030DB: [9C1D5B3E-60D5-4E8B-9C4A-0FD900740002]
     settings:
       PRODUCT_BUNDLE_IDENTIFIER: net.mintopia.hd60s.audio
-      AUDIO_PLUGIN_VERSION: "1"
+      AUDIO_SOURCE_HASH: unset
       WRAPPER_EXTENSION: driver
       OTHER_CFLAGS: [-std=c17]
       OTHER_LDFLAGS: [-framework, CoreFoundation]
