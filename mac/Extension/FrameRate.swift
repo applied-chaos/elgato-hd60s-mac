@@ -1,8 +1,7 @@
 import CoreMedia
 import CoreMediaIO
 
-// Advertised camera rates. Frames are always stamped at arrival, so the choice only sets the nominal
-// duration and slate pacing; a source at the other rate still flows through without drops or repeats.
+// Advertised camera rates.
 enum FrameRate: CaseIterable {
     case ntsc, pal, p30, p25, p24
 
@@ -28,5 +27,20 @@ enum FrameRate: CaseIterable {
         guard duration.isNumeric, duration.seconds > 0 else { return nil }
         let fps = 1 / duration.seconds
         self = Self.allCases.min { abs(1 / $0.duration.seconds - fps) < abs(1 / $1.duration.seconds - fps) }!
+    }
+}
+
+// With audio in the session, AVCaptureSession moves each video timestamp to at least the previous one plus its
+// duration, so a duration longer than the real frame interval pushes video ahead of audio.
+struct FrameInterval {
+    static let margin = 0.98
+    private static let resetNs = 100_000_000.0
+    private var lastNs: UInt64 = 0, meanNs = 0.0
+
+    mutating func duration(atNs now: UInt64) -> CMTime {
+        let gap = lastNs == 0 ? .infinity : Double(now &- lastNs)
+        lastNs = now
+        if gap > Self.resetNs { meanNs = 1e9 / 60 } else { meanNs += (gap - meanNs) / 32 }
+        return CMTime(value: CMTimeValue(min(meanNs, gap) * Self.margin), timescale: 1_000_000_000)
     }
 }

@@ -29,6 +29,40 @@ func check(_ ok: Bool, _ what: String, line: UInt = #line) {
         let f = FrameRate.streamFormat(desc!)
         check(f.minFrameDuration == FrameRate.ntsc.duration && f.maxFrameDuration == FrameRate.p24.duration, "range spans 59.94 to 24")
         check(f.validFrameDurations == d, "every rate is a valid duration")
+        frameIntervals()
         print("frame rate tests passed")
+    }
+
+    // AVCaptureSession with audio moves each video pts to at least the previous pts plus its duration.
+    static func worstPush(_ arrivalsNs: [UInt64], after skip: Int = 0) -> (pushMs: Double, durations: [Double]) {
+        var clock = FrameInterval(), prev: Double?, worst = 0.0, durations = [Double]()
+        for ns in arrivalsNs {
+            let own = Double(ns) / 1e6, d = clock.duration(atNs: ns).seconds * 1000
+            let shown = max(own, prev ?? own)
+            if durations.count >= skip { worst = max(worst, shown - own) }
+            prev = shown + d
+            durations.append(d)
+        }
+        return (worst, durations)
+    }
+
+    static func frameIntervals() {
+        var rng = SystemRandomNumberGenerator()
+        func arrivals(fps: Double, seconds: Double, from startNs: UInt64 = 1_000_000_000, jitterMs: Double = 2) -> [UInt64] {
+            (0..<Int(fps * seconds)).map { UInt64(Double(startNs) + (Double($0) / fps + Double.random(in: 0...jitterMs, using: &rng) / 1000) * 1e9) }
+        }
+        let p60 = worstPush(arrivals(fps: 60, seconds: 600))
+        check(p60.pushMs < 2, "60 Hz with 2 ms jitter: video never pushed 2 ms ahead (\(p60.pushMs))")
+        let settled = p60.durations.dropFirst(120)
+        check(settled.allSatisfy { $0 > 14 && $0 < 1000 / 60.0 }, "60 Hz durations within jitter under the real interval")
+        let p30 = worstPush(arrivals(fps: 30, seconds: 60))
+        check(p30.pushMs < 2, "30 Hz source: no push (\(p30.pushMs))")
+        check(p30.durations.dropFirst(120).allSatisfy { $0 > 30 && $0 < 1000 / 30.0 }, "30 Hz durations settle near 33 ms")
+        let up = arrivals(fps: 30, seconds: 5) + arrivals(fps: 60, seconds: 5, from: 6_000_000_000)
+        check(worstPush(up).pushMs < 1000 / 30.0, "30 to 60 Hz switch: under one 30 Hz frame")
+        check(worstPush(up, after: 150 + 60).pushMs < 3, "30 to 60 Hz switch: back within jitter in a second")
+        let gap = worstPush(arrivals(fps: 60, seconds: 2) + arrivals(fps: 60, seconds: 2, from: 4_000_000_000))
+        check(gap.pushMs < 2, "resume after a gap: no push (\(gap.pushMs))")
+        check(abs(worstPush([1_000_000_000]).durations[0] - 1000 / 60.0 * FrameInterval.margin) < 0.001, "first frame: shortest carried rate")
     }
 }

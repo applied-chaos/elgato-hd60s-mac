@@ -143,6 +143,7 @@ final class StreamSource: NSObject, CMIOExtensionStreamSource {
     private var timer: DispatchSourceTimer?
     private let outputQueue = DispatchQueue(label: "hd60s output")
     private var ticks = 0
+    private var frameInterval = FrameInterval()
     #if DEXT
     private static let calibratedVideoOffsetMs = 0.0
     #else
@@ -359,8 +360,9 @@ final class StreamSource: NSObject, CMIOExtensionStreamSource {
         }
         CVPixelBufferUnlockBaseAddress(pb, [])
         tag709(pb)
-        lastFrameNs.withLock { $0 = hostNs() }
-        emit(pb)
+        let now = hostNs()
+        lastFrameNs.withLock { $0 = now }
+        emit(pb, duration: frameInterval.duration(atNs: now))
     }
 
     // Wraps the parser buffer and the target rectangle as pixel buffers for VideoToolbox; bars are filled black.
@@ -546,9 +548,9 @@ final class StreamSource: NSObject, CMIOExtensionStreamSource {
 
     private func hostNs() -> UInt64 { UInt64(CMClockGetTime(CMClockGetHostTimeClock()).seconds * 1e9) }
 
-    private func emit(_ pb: CVPixelBuffer) {
+    private func emit(_ pb: CVPixelBuffer, duration: CMTime? = nil) {
         let now = CMClockGetTime(CMClockGetHostTimeClock()) + videoOffset.withLock { $0 }
-        var timing = CMSampleTimingInfo(duration: rate.withLock { $0.duration }, presentationTimeStamp: now, decodeTimeStamp: .invalid)
+        var timing = CMSampleTimingInfo(duration: duration ?? rate.withLock { $0.duration }, presentationTimeStamp: now, decodeTimeStamp: .invalid)
         var desc: CMFormatDescription?
         var sample: CMSampleBuffer?
         guard CMVideoFormatDescriptionCreateForImageBuffer(allocator: kCFAllocatorDefault, imageBuffer: pb,
