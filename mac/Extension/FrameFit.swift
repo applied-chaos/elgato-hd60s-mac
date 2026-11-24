@@ -34,3 +34,10 @@ func fitRect(width: Int, height: Int, wide: Bool = false) -> Rect? {
     let h = min(outputHeight, outputWidth * d / n) & ~1
     return Rect(x: (outputWidth - w) / 2 & ~1, y: (outputHeight - h) / 2, w: w, h: h)
 }
+
+// Shift added to video timestamps so apps line audio up with the picture as the HDMI stream carries it, measured
+// per flavour (docs/PROTOCOL.md, "A/V alignment"). An override file in the App Group recalibrates without a rebuild.
+func videoOffsetMs(override: String?, fallback: Double) -> Double {
+    guard let text = override?.trimmingCharacters(in: .whitespacesAndNewlines), let v = Double(text) else { return fallback }
+    return min(100, max(-100, v))
+}

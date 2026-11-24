@@ -33,6 +33,10 @@ func check(_ ok: Bool, _ what: String, line: UInt = #line) {
         for (w, h) in [(1280, 12), (1280, 703), (1920, 1045), (720, 1080), (0, 0)] {
             check(fitRect(width: w, height: h) == nil, "\(w)x\(h) rejected")
         }
+        check(videoOffsetMs(override: nil, fallback: 6.5) == 6.5, "no override uses the flavour's calibration")
+        check(videoOffsetMs(override: " -12.5\n", fallback: 6.5) == -12.5, "override parsed")
+        check(videoOffsetMs(override: "junk", fallback: 6.5) == 6.5, "bad override ignored")
+        check(videoOffsetMs(override: "900", fallback: 0) == 100 && videoOffsetMs(override: "-900", fallback: 0) == -100, "clamped")
         print("frame fit tests passed")
     }
 }

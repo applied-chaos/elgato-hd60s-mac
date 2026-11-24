@@ -87,6 +87,7 @@ final class DeviceSource: NSObject, CMIOExtensionDeviceSource {
             case .settings: SettingsFile.json(streamSource.currentSettings)
             case .status: streamSource.factsJSON ?? ""
             case .quit: ""
+            case .videoOffset: String(streamSource.currentVideoOffsetMs)
             }
             p.setPropertyState(c.state(value), forProperty: c.property)
         }
@@ -100,6 +101,12 @@ final class DeviceSource: NSObject, CMIOExtensionDeviceSource {
                 throw NSError(domain: NSOSStatusErrorDomain, code: Int(kCMIOHardwareIllegalOperationError))
             }
             streamSource.apply(next)
+        }
+        if let state = set[CameraProperty.videoOffset.property] {
+            guard let text = state.value as? String else {
+                throw NSError(domain: NSOSStatusErrorDomain, code: Int(kCMIOHardwareIllegalOperationError))
+            }
+            streamSource.overrideVideoOffset(text)
         }
         if set[CameraProperty.quit.property] != nil {
             log.info("quit requested by the installer")
@@ -136,6 +143,12 @@ final class StreamSource: NSObject, CMIOExtensionStreamSource {
     private var timer: DispatchSourceTimer?
     private let outputQueue = DispatchQueue(label: "hd60s output")
     private var ticks = 0
+    #if DEXT
+    private static let calibratedVideoOffsetMs = 0.0
+    #else
+    private static let calibratedVideoOffsetMs = 6.5
+    #endif
+    private let videoOffset = OSAllocatedUnfairLock(initialState: CMTime(seconds: calibratedVideoOffsetMs / 1000, preferredTimescale: 1_000_000))
     #if DEXT
     private var pushed: (settings: hd60s_settings, connections: UInt32)?
     #endif
@@ -200,6 +213,10 @@ final class StreamSource: NSObject, CMIOExtensionStreamSource {
     private let dextFrame = UnsafeMutablePointer<UInt8>.allocate(capacity: Int(DEXT_FRAME_BYTES))
 
     private var pollTimer: DispatchSourceTimer?
+    // IOKit requests to a driver that is going away can block for seconds; they stay off the output queue so the
+    // slate keeps flowing and clients don't stall across a replug.
+    private let linkQueue = DispatchQueue(label: "hd60s driver link")
+    private var linkTimer: DispatchSourceTimer?
 
     func startStream() throws {
         guard timer == nil else { return }
@@ -210,6 +227,14 @@ final class StreamSource: NSObject, CMIOExtensionStreamSource {
         poll.setEventHandler { [unowned self] in pollDext() }
         poll.resume()
         pollTimer = poll
+        let link = DispatchSource.makeTimerSource(queue: linkQueue)
+        link.schedule(deadline: .now(), repeating: .milliseconds(100))
+        link.setEventHandler { [unowned self] in
+            dext_feed_maintain()
+            resendSettingsOnChangeOrReconnect()
+        }
+        link.resume()
+        linkTimer = link
         restartTimer()
     }
 
@@ -219,7 +244,9 @@ final class StreamSource: NSObject, CMIOExtensionStreamSource {
         timer = nil
         pollTimer?.cancel()
         pollTimer = nil
-        outputQueue.sync { dext_feed_close() }
+        linkTimer?.cancel()
+        linkTimer = nil
+        linkQueue.sync { dext_feed_close() }
         statusOut.clear()
         if let scaler { VTPixelTransferSessionInvalidate(scaler) }
         scaler = nil
@@ -397,9 +424,7 @@ final class StreamSource: NSObject, CMIOExtensionStreamSource {
         }
         ticks += 1
         publishStatus()
-        #if DEXT
-        resendSettingsOnChangeOrReconnect()
-        #endif
+        if ticks % 60 == 0 { refreshVideoOffset() }
         if ticks % statsEveryTicks == 0 {
             // ponytail: unsynchronised reads of counters the capture thread writes; fine for logging.
             #if DEXT
@@ -499,10 +524,29 @@ final class StreamSource: NSObject, CMIOExtensionStreamSource {
         CVBufferSetAttachment(pb, kCVImageBufferTransferFunctionKey, kCVImageBufferTransferFunction_ITU_R_709_2, .shouldPropagate)
     }
 
+    var currentVideoOffsetMs: Double { videoOffset.withLock { $0.seconds * 1000 } }
+
+    private static var videoOffsetURL: URL? { AppGroup.container?.appendingPathComponent("video-offset-ms") }
+
+    // Empty text clears the override.
+    func overrideVideoOffset(_ text: String) {
+        if let url = Self.videoOffsetURL {
+            if text.isEmpty { try? FileManager.default.removeItem(at: url) } else { try? text.write(to: url, atomically: true, encoding: .utf8) }
+        }
+        outputQueue.async { self.refreshVideoOffset() }
+    }
+
+    private func refreshVideoOffset() {
+        let text = Self.videoOffsetURL.flatMap { try? String(contentsOf: $0, encoding: .utf8) }
+        let next = CMTime(seconds: videoOffsetMs(override: text, fallback: Self.calibratedVideoOffsetMs) / 1000, preferredTimescale: 1_000_000)
+        let previous = videoOffset.withLock { old in defer { old = next }; return old }
+        if previous != next { log.info("video timestamp offset \(next.seconds * 1000) ms") }
+    }
+
     private func hostNs() -> UInt64 { UInt64(CMClockGetTime(CMClockGetHostTimeClock()).seconds * 1e9) }
 
     private func emit(_ pb: CVPixelBuffer) {
-        let now = CMClockGetTime(CMClockGetHostTimeClock())
+        let now = CMClockGetTime(CMClockGetHostTimeClock()) + videoOffset.withLock { $0 }
         var timing = CMSampleTimingInfo(duration: rate.withLock { $0.duration }, presentationTimeStamp: now, decodeTimeStamp: .invalid)
         var desc: CMFormatDescription?
         var sample: CMSampleBuffer?

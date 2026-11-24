@@ -1,7 +1,7 @@
 import Foundation
 
 enum CameraProperty: String, CaseIterable {
-    case settings = "hset", status = "hsta", quit = "hqit"
+    case settings = "hset", status = "hsta", quit = "hqit", videoOffset = "hvof"
 
     var key: String { "4cc_\(rawValue)_glob_0000" }
 
