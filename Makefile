@@ -6,8 +6,8 @@ VERSION ?= $(patsubst v%,%,$(shell git describe --tags --abbrev=0 2>/dev/null ||
 # macOS only replaces a system extension when its build number rises.
 BUILD ?= $(shell git rev-list --count HEAD)
 # Installing a plug-in restarts coreaudiod (HAL plug-ins load only at its start), and new Core Audio clients then
-# block for up to minutes, so the installer only replaces a plug-in whose sources changed.
-AUDIO_HASH ?= $(shell cat mac/Audio/*.c | shasum -a 256 | cut -c1-16)
+# block for up to minutes, so the installer only replaces a plug-in whose inputs changed.
+AUDIO_HASH ?= $(shell tools/audio-hash.sh)
 export DEVELOPER_DIR ?= /Applications/Xcode.app/Contents/Developer
 XCODEBUILD = xcodebuild -project mac/HD60S.xcodeproj \
 	-configuration Release MARKETING_VERSION=$(VERSION) CURRENT_PROJECT_VERSION=$(BUILD) AUDIO_SOURCE_HASH=$(AUDIO_HASH) $(XCODEFLAGS)
@@ -155,6 +155,7 @@ test: build/test_parser build/test_device build/test_framering build/test_link b
 	build/test_camera_replace
 	build/test_status_view
 	build/test_settings_model
+	sh tests/test_audio_hash.sh
 
 clean:
 	rm -rf build

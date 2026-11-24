@@ -6,11 +6,10 @@ func check(_ ok: Bool, _ what: String, line: UInt = #line) {
 
 @main enum Tests {
     static func main() {
-        // status: installed vs bundled source hash
         check(AudioPlugin.status(installed: nil, bundled: "ab12") == .notInstalled, "missing")
         check(AudioPlugin.status(installed: "ab12", bundled: "ab12") == .installed, "same sources")
         check(AudioPlugin.status(installed: "cd34", bundled: "ab12") == .outdated, "other sources")
-        check(AudioPlugin.status(installed: "", bundled: "ab12") == .outdated, "plug-in from before the hash")
+        check(AudioPlugin.status(installed: AudioPlugin.preHashPlugIn, bundled: "ab12") == .outdated, "plug-in from before the hash")
         // driver extension status from system extension properties
         check(DextStatus.found(enabled: true, awaitingApproval: false) == .installed, "enabled")
         check(DextStatus.found(enabled: false, awaitingApproval: true) == .needsApproval, "approval")
@@ -68,7 +67,7 @@ func check(_ ok: Bool, _ what: String, line: UInt = #line) {
             (info as NSDictionary).write(toFile: hal + "/HD60SAudio.driver/Contents/Info.plist", atomically: true)
         }
         plist(["CFBundleVersion": "215"])
-        check(AudioPlugin.installedSourceHash(directory: hal) == "", "plug-in from before the hash reads as present")
+        check(AudioPlugin.installedSourceHash(directory: hal) == AudioPlugin.preHashPlugIn, "plug-in from before the hash reads as present")
         plist(["CFBundleVersion": "216", AudioPlugin.sourceHashKey: "ab12"])
         check(AudioPlugin.installedSourceHash(directory: hal) == "ab12", "reads installed hash")
         try! fm.removeItem(atPath: hal + "/HD60SAudio.driver")

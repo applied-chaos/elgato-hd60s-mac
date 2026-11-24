@@ -74,11 +74,11 @@ enum AudioPlugin {
     }
 
     static let sourceHashKey = "HD60SSourceHash"
+    static let preHashPlugIn = ""
 
     // Not Bundle(path:): it caches Info.plist per path, so a removed or replaced plug-in reads as before.
-    // "" is a plug-in built before the hash existed.
     static func installedSourceHash(directory: String = halDirectory) -> String? {
-        NSDictionary(contentsOfFile: directory + "/" + name + "/Contents/Info.plist").map { $0[sourceHashKey] as? String ?? "" }
+        NSDictionary(contentsOfFile: directory + "/" + name + "/Contents/Info.plist").map { $0[sourceHashKey] as? String ?? preHashPlugIn }
     }
 
     static func status(installed: String?, bundled: String) -> AudioStatus {
