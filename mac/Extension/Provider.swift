@@ -220,6 +220,7 @@ final class StreamSource: NSObject, CMIOExtensionStreamSource {
 
     func startStream() throws {
         guard timer == nil else { return }
+        refreshVideoOffset()
         lastFrameNs.withLock { $0 = 0 }
         // Polling only at the output rate beats against a 60 Hz source and drops about 2 frames a second.
         let poll = DispatchSource.makeTimerSource(queue: outputQueue)
@@ -254,6 +255,7 @@ final class StreamSource: NSObject, CMIOExtensionStreamSource {
     #else
     func startStream() throws {
         guard worker == nil else { return }
+        refreshVideoOffset()
         stop.pointee = 0
         audio_feed_start()
         let t = Thread { [unowned self] in run() }
@@ -424,7 +426,6 @@ final class StreamSource: NSObject, CMIOExtensionStreamSource {
         }
         ticks += 1
         publishStatus()
-        if ticks % 60 == 0 { refreshVideoOffset() }
         if ticks % statsEveryTicks == 0 {
             // ponytail: unsynchronised reads of counters the capture thread writes; fine for logging.
             #if DEXT
@@ -528,12 +529,12 @@ final class StreamSource: NSObject, CMIOExtensionStreamSource {
 
     private static var videoOffsetURL: URL? { AppGroup.container?.appendingPathComponent("video-offset-ms") }
 
-    // Empty text clears the override.
+    // Empty text clears the override. Applies from the next stream start, since a shift mid-stream would send
+    // timestamps backwards.
     func overrideVideoOffset(_ text: String) {
         if let url = Self.videoOffsetURL {
             if text.isEmpty { try? FileManager.default.removeItem(at: url) } else { try? text.write(to: url, atomically: true, encoding: .utf8) }
         }
-        outputQueue.async { self.refreshVideoOffset() }
     }
 
     private func refreshVideoOffset() {

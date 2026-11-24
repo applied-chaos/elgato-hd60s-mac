@@ -52,9 +52,12 @@ size_t ring_pull(struct ring *r, float *out, size_t frames, size_t target)
     size_t wr = atomic_load_explicit(&r->wr, memory_order_acquire);
     size_t rd = atomic_load_explicit(&r->rd, memory_order_relaxed);
     size_t fill = wr - rd;
-    if (!r->primed && fill >= target)
-        r->primed = 1;
     size_t keep = target + frames;
+    if (!r->primed && fill >= keep) {
+        r->primed = 1;
+        rd = wr - keep;
+        fill = keep;
+    }
     if (r->primed && fill > keep + target / 4) {
         rd = wr - keep;
         fill = keep;
@@ -67,4 +70,9 @@ size_t ring_pull(struct ring *r, float *out, size_t frames, size_t target)
         r->primed = 0;
     atomic_store_explicit(&r->rd, rd + n, memory_order_release);
     return n;
+}
+
+size_t ring_fill(struct ring *r)
+{
+    return atomic_load_explicit(&r->wr, memory_order_acquire) - atomic_load_explicit(&r->rd, memory_order_acquire);
 }

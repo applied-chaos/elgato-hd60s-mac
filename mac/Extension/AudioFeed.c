@@ -44,8 +44,14 @@ void audio_feed_start(void)
  * a glitch every few minutes at worst; resample if that is audible. */
 void audio_feed_push(const uint8_t *pcm, size_t len)
 {
-    if (ring)
-        ring_push(ring, (const int16_t *)pcm, len / 4);
+    static size_t pushed;
+    if (!ring)
+        return;
+    ring_push(ring, (const int16_t *)pcm, len / 4);
+    if ((pushed += len / 4) >= 5 * 48000) {
+        pushed = 0;
+        os_log(OS_LOG_DEFAULT, "hd60s: audio ring %zu frames", ring_fill(ring));
+    }
 }
 
 void audio_feed_stop(void)
