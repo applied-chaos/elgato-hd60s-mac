@@ -111,7 +111,7 @@ struct stream_ctx {
     struct hd60s_parser *parser;
     int iso_packet_bytes;
     volatile sig_atomic_t *stop;
-    int active;
+    int active, failed;
     frame_cb frame_cb;
     void *frame_ctx;
     struct hd60s_policy policy;
@@ -138,9 +138,9 @@ static void LIBUSB_CALL on_xfer(struct libusb_transfer *t)
         }
     } else if (t->status != LIBUSB_TRANSFER_CANCELLED) {
         fprintf(stderr, "hd60s: transfer status %d\n", t->status);
-        *s->stop = 1;
+        s->failed = 1;
     }
-    if (!*s->stop && libusb_submit_transfer(t) == 0)
+    if (!*s->stop && !s->failed && libusb_submit_transfer(t) == 0)
         return;
     s->active--;
 }
@@ -207,15 +207,16 @@ int hd60s_stream(struct hd60s *d, struct hd60s_parser *p, volatile sig_atomic_t 
     }
     long end = now_ms() + (long)(seconds * 1000);
     while (s.active) {
-        if (*stop || (seconds > 0 && now_ms() >= end)) {
-            *stop = 1;
+        if (*stop || s.failed || (seconds > 0 && now_ms() >= end)) {
+            if (!s.failed)
+                *stop = 1;
             for (int i = 0; i < plan.buffers; i++)
                 libusb_cancel_transfer(xfers[i]);
         }
         struct timeval tv = {0, 100000};
         libusb_handle_events_timeout_completed(d->lusb, &tv, NULL);
         /* Not from the transfer callback: the sync control transfers need the event loop. */
-        if (!*stop)
+        if (!*stop && !s.failed)
             hd60s_policy_tick(d, p, &s.policy, now_ms());
     }
     p->on_frame = s.frame_cb;
@@ -225,5 +226,5 @@ int hd60s_stream(struct hd60s *d, struct hd60s_parser *p, volatile sig_atomic_t 
         libusb_free_transfer(xfers[i]);
     }
     libusb_set_interface_alt_setting(d->h, 0, 0);
-    return 0;
+    return s.failed ? -1 : 0;
 }
