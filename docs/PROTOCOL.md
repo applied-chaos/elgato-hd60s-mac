@@ -548,6 +548,7 @@ Reference is the HDMI stream itself: audio and video arrive interleaved on the s
 - Stream reference on 2026-11-24 (Pi boot at 10:29): +70.2 ms, spread 0.02 ms, before and after app sessions. Video-only sessions put video 34 ms ahead of audio relative to the stream, so userspace `calibratedVideoOffsetMs` = 34.
 - Build 213, 8 A+V sessions (6 default preset, 2 at 59.94 fps): beep minus flash medians 70.8, 71.4, 70.8, 64.8, 71.4, 71.0, 70.7, 70.0 ms against the stream's 70.2; every flash within -5.8 to +1.6 ms, spread within a session under 1 ms, 60 fps.
 - DriverKit build 214 (frame clock and slate hold included), stream reference +61.96 ms on a new Pi source process (userspace 213 read +0.8 and -0.5 ms against it just before): 6 A+V sessions at 60 fps, beep minus flash medians 42.4 to 43.4 ms, so audio 19.4 ms early; video 14.5 ms and audio 57.1 ms after the Pi's write in every session. With the video offset at -19.4 ms (`hvof` override): 59.4, 61.9, 62.1, 61.9 ms, so within -2.6 to +0.1 ms. DriverKit `calibratedVideoOffsetMs` = -19.4.
+- Userspace build 215 (both calibrations), same Pi source: 4 A+V sessions +0.5, -0.2, +0.4, +0.3 ms against the stream (+61.92 to +61.96 ms before and after).
 - Video timestamps carry a per-flavour offset (`calibratedVideoOffsetMs`: userspace 34, DriverKit -19.4), overridable per camera with the `hvof` property; it takes effect at the next stream start.
 
 ## PC modes (Pi forced with `kmstest` modelines, `hd60s status` and `capture -n 20`)
