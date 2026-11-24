@@ -149,7 +149,7 @@ final class StreamSource: NSObject, CMIOExtensionStreamSource {
     private var ticks = 0
     private var frameClock = FrameClock()
     #if DEXT
-    private static let calibratedVideoOffsetMs = 0.0
+    private static let calibratedVideoOffsetMs = -19.4
     #else
     private static let calibratedVideoOffsetMs = 34.0
     #endif
