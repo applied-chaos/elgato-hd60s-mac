@@ -30,17 +30,28 @@ enum FrameRate: CaseIterable {
     }
 }
 
-// With audio in the session, AVCaptureSession moves each video timestamp to at least the previous one plus its
-// duration, so a duration longer than the real frame interval pushes video ahead of audio.
-struct FrameInterval {
-    static let margin = 0.98
-    private static let resetNs = 100_000_000.0
-    private var lastNs: UInt64 = 0, meanNs = 0.0
+// With audio in the session, AVCaptureSession replaces each video pts with the previous pts plus its duration while
+// they agree within about 15 ms, so durations must add up to real time or video drifts off audio.
+struct FrameClock {
+    private static let correctionGain = 1.0 / 4, periodGain = correctionGain * correctionGain / 4, resetNs: Int64 = 100_000_000
+    private var nextNs: Int64 = 0, lastArrivalNs: Int64 = 0, periodNs = 1e9 / 60, previousWasResync = false
 
-    mutating func duration(atNs now: UInt64) -> CMTime {
-        let gap = lastNs == 0 ? .infinity : Double(now &- lastNs)
-        lastNs = now
-        if gap > Self.resetNs { meanNs = 1e9 / 60 } else { meanNs += (gap - meanNs) / 32 }
-        return CMTime(value: CMTimeValue(min(meanNs, gap) * Self.margin), timescale: 1_000_000_000)
+    mutating func stamp(arrivalNs: UInt64) -> (pts: CMTime, duration: CMTime) {
+        let now = Int64(arrivalNs), gap = now - lastArrivalNs
+        var e = Double(now - nextNs)
+        let resync = lastArrivalNs == 0 || gap > Self.resetNs || abs(e) > periodNs * 0.4
+        if resync {
+            let rateChanged = previousWasResync && gap < Self.resetNs
+            if rateChanged { periodNs = Double(gap) }
+            nextNs = now
+            e = 0
+        }
+        previousWasResync = resync
+        lastArrivalNs = now
+        periodNs += Self.periodGain * e
+        let correctionNs = Self.correctionGain * e
+        let pts = nextNs, duration = Int64((periodNs + correctionNs).rounded())
+        nextNs = pts + duration
+        return (CMTime(value: pts, timescale: 1_000_000_000), CMTime(value: duration, timescale: 1_000_000_000))
     }
 }

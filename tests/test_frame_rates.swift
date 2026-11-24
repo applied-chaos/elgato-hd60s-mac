@@ -29,40 +29,51 @@ func check(_ ok: Bool, _ what: String, line: UInt = #line) {
         let f = FrameRate.streamFormat(desc!)
         check(f.minFrameDuration == FrameRate.ntsc.duration && f.maxFrameDuration == FrameRate.p24.duration, "range spans 59.94 to 24")
         check(f.validFrameDurations == d, "every rate is a valid duration")
-        frameIntervals()
+        frameClock()
         print("frame rate tests passed")
     }
 
-    // AVCaptureSession with audio moves each video pts to at least the previous pts plus its duration.
-    static func worstPush(_ arrivalsNs: [UInt64], after skip: Int = 0) -> (pushMs: Double, durations: [Double]) {
-        var clock = FrameInterval(), prev: Double?, worst = 0.0, durations = [Double]()
-        for ns in arrivalsNs {
-            let own = Double(ns) / 1e6, d = clock.duration(atNs: ns).seconds * 1000
-            let shown = max(own, prev ?? own)
-            if durations.count >= skip { worst = max(worst, shown - own) }
-            prev = shown + d
-            durations.append(d)
+    // AVCaptureSession with audio replaces each video pts with the previous pts plus its duration within avSnapMs.
+    static let avSnapMs = 15.0
+    static func strayMs(_ frames: [(trueNs: Double, arrivalNs: UInt64)], after skip: Int = 0) -> Double {
+        var clock = FrameClock(), prev: Double?, worst = 0.0
+        for (i, f) in frames.enumerated() {
+            let t = clock.stamp(arrivalNs: f.arrivalNs), own = t.pts.seconds * 1e3, dur = t.duration.seconds * 1e3
+            let shown = prev.map { abs(own - $0) < avSnapMs ? $0 : own } ?? own
+            if i >= skip { worst = max(worst, abs(shown - f.trueNs / 1e6)) }
+            prev = shown + dur
         }
-        return (worst, durations)
+        return worst
     }
 
-    static func frameIntervals() {
+    static func frameClock() {
         var rng = SystemRandomNumberGenerator()
-        func arrivals(fps: Double, seconds: Double, from startNs: UInt64 = 1_000_000_000, jitterMs: Double = 2) -> [UInt64] {
-            (0..<Int(fps * seconds)).map { UInt64(Double(startNs) + (Double($0) / fps + Double.random(in: 0...jitterMs, using: &rng) / 1000) * 1e9) }
+        func frames(fps: Double, seconds: Double, from startNs: Double = 1e9, jitterMs: Double = jitterMs) -> [(trueNs: Double, arrivalNs: UInt64)] {
+            (0..<Int(fps * seconds)).map {
+                let t = startNs + Double($0) / fps * 1e9
+                return (t, UInt64(t + Double.random(in: 0...jitterMs, using: &rng) * 1e6))
+            }
         }
-        let p60 = worstPush(arrivals(fps: 60, seconds: 600))
-        check(p60.pushMs < 2, "60 Hz with 2 ms jitter: video never pushed 2 ms ahead (\(p60.pushMs))")
-        let settled = p60.durations.dropFirst(120)
-        check(settled.allSatisfy { $0 > 14 && $0 < 1000 / 60.0 }, "60 Hz durations within jitter under the real interval")
-        let p30 = worstPush(arrivals(fps: 30, seconds: 60))
-        check(p30.pushMs < 2, "30 Hz source: no push (\(p30.pushMs))")
-        check(p30.durations.dropFirst(120).allSatisfy { $0 > 30 && $0 < 1000 / 30.0 }, "30 Hz durations settle near 33 ms")
-        let up = arrivals(fps: 30, seconds: 5) + arrivals(fps: 60, seconds: 5, from: 6_000_000_000)
-        check(worstPush(up).pushMs < 1000 / 30.0, "30 to 60 Hz switch: under one 30 Hz frame")
-        check(worstPush(up, after: 150 + 60).pushMs < 3, "30 to 60 Hz switch: back within jitter in a second")
-        let gap = worstPush(arrivals(fps: 60, seconds: 2) + arrivals(fps: 60, seconds: 2, from: 4_000_000_000))
-        check(gap.pushMs < 2, "resume after a gap: no push (\(gap.pushMs))")
-        check(abs(worstPush([1_000_000_000]).durations[0] - 1000 / 60.0 * FrameInterval.margin) < 0.001, "first frame: shortest carried rate")
+        let jitterMs = 2.0, loopNoiseMs = 2.0, tolerance = jitterMs / 2 + loopNoiseMs
+        do { let v = strayMs(frames(fps: 60, seconds: 600), after: 60); check(v < tolerance, "60 Hz, 10 min: within jitter (\(v))") }
+        do { let v = strayMs(frames(fps: 60 * 1000 / 1001, seconds: 600), after: 60); check(v < tolerance, "59.94 Hz: within jitter (\(v))") }
+        do { let v = strayMs(frames(fps: 60 * (1 + 300e-6), seconds: 600), after: 60); check(v < tolerance, "60 Hz +300 ppm: tracked (\(v))") }
+        do { let v = strayMs(frames(fps: 30, seconds: 60), after: 30); check(v < tolerance, "30 Hz: within jitter (\(v))") }
+        do { let v = strayMs(frames(fps: 24, seconds: 60), after: 24); check(v < tolerance, "24 Hz: within jitter (\(v))") }
+        let up = frames(fps: 30, seconds: 5) + frames(fps: 60, seconds: 5, from: 6e9)
+        do { let v = strayMs(up, after: 150 + 60); check(v < tolerance, "30 to 60 Hz: settled within a second (\(v))") }
+        let down = frames(fps: 60, seconds: 5) + frames(fps: 30, seconds: 5, from: 6e9)
+        do { let v = strayMs(down, after: 300 + 30); check(v < tolerance, "60 to 30 Hz: settled within a second (\(v))") }
+        let gap = frames(fps: 60, seconds: 2) + frames(fps: 60, seconds: 2, from: 4e9 + 5e6)
+        do { let v = strayMs(gap, after: 120 + 60); check(v < tolerance, "resume after a gap: settled within a second (\(v))") }
+        var dropped = frames(fps: 60, seconds: 20); dropped.remove(at: 600)
+        do { let v = strayMs(dropped, after: 60); check(v < tolerance, "one dropped source frame: no lasting error (\(v))") }
+        let steady = frames(fps: 60, seconds: 2, jitterMs: 0)
+        var c = FrameClock(), last = CMTime.zero
+        for (i, f) in steady.enumerated() {
+            let t = c.stamp(arrivalNs: f.arrivalNs)
+            if i > 0 { check(t.pts == last, "each pts is the previous pts plus its duration") }
+            last = t.pts + t.duration
+        }
     }
 }
