@@ -30,8 +30,11 @@ static int ctrl(struct hd60s *d, int in, uint8_t req, uint16_t val, uint16_t idx
                 uint16_t len)
 {
     int r = d->usb.ctrl(d->usb.ctx, in, req, val, idx, buf, len);
-    if (r < 0 && !d->err)
-        d->err = r;
+    if (r < 0) {
+        d->failures++;
+        if (!d->err)
+            d->err = r;
+    }
     return r;
 }
 
@@ -448,11 +451,14 @@ void hd60s_policy_tick(struct hd60s *d, struct hd60s_parser *p, struct hd60s_pol
         hd60s_set_audio(d, &audio);
     if (now_ms - s->aspect_at >= ASPECT_POLL_MS) {
         s->aspect_at = now_ms;
+        unsigned failures = d->failures;
         int present = mst_read(d, 2, 0x0b) & 0x08;
         uint8_t db1 = (uint8_t)mst_read(d, 2, 0x48), db2 = (uint8_t)mst_read(d, 2, 0x49);
         uint8_t db3 = (uint8_t)mst_read(d, 2, 0x4a);
-        s->src = hd60s_parse_avi(present, db1, db2, db3);
-        p->wide = present && (db2 >> 4 & 3) == 2;
+        if (d->failures == failures) {
+            s->src = hd60s_parse_avi(present, db1, db2, db3);
+            p->wide = present && (db2 >> 4 & 3) == 2;
+        }
         hd60s_read_link(d);
         if (d->link.hdmi != d->audio_routed_hdmi)
             apply_audio(d);

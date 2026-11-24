@@ -40,7 +40,10 @@ struct hd60s_link hd60s_link_from_regs(int digital, uint8_t r01, uint8_t r34)
 
 struct hd60s_link hd60s_read_link(struct hd60s *d)
 {
+    unsigned failures = d->failures;
     int digital = mst_read(d, 0, 0x51) & 0x80;
     uint8_t r01 = (uint8_t)mst_read(d, 1, 0x01), r34 = (uint8_t)mst_read(d, 1, 0x34);
-    return d->link = hd60s_link_from_regs(digital != 0, r01, r34);
+    if (d->failures == failures)
+        d->link = hd60s_link_from_regs(digital != 0, r01, r34);
+    return d->link;
 }

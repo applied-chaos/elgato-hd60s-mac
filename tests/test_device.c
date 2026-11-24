@@ -11,7 +11,7 @@ struct fake {
     uint8_t bank;
     uint8_t pend_addr, pend_sub[8];
     int pend_len, pend_rl;
-    int requests, fail_at, slept_ms;
+    int requests, fail_at, failing, slept_ms;
     uint8_t first_req[3];
 };
 
@@ -33,7 +33,7 @@ static int fake_ctrl(void *ctx, int in, uint8_t req, uint16_t val, uint16_t idx,
     struct fake *f = ctx;
     if (f->requests < 3)
         f->first_req[f->requests] = req;
-    if (++f->requests == f->fail_at)
+    if (++f->requests == f->fail_at || f->failing)
         return -7;
     if (req == 0xc1 && in) {
         buf[0] = 1;
@@ -582,6 +582,28 @@ static void policy_tracks_the_source_link(void)
     assert(!d.link.hdcp && d.link.dvi);
 }
 
+static void policy_keeps_the_last_source_when_reads_fail(void)
+{
+    struct hd60s d;
+    struct hd60s_parser p = {0};
+    struct hd60s_policy pol;
+    boot(&d, 0);
+    assert(hd60s_init(&d) == 0 && hd60s_start(&d) == 0);
+    p.last_w = 1920, p.last_h = 1080;
+    hd60s_policy_begin(&pol, 0);
+    fk.mst[0][0x51] = 0x80;
+    fk.mst[1][0x01] = 0x04;
+    fk.mst[2][0x0b] = 0x08;
+    hd60s_policy_tick(&d, &p, &pol, 1000);
+    assert(d.colour.input == INPUT_RGB && !d.link.hdcp && d.link.hdmi);
+    struct hd60s_colour_cfg colour = d.colour;
+    fk.failing = 1;
+    hd60s_policy_tick(&d, &p, &pol, 2000);
+    fk.failing = 0;
+    assert(!memcmp(&colour, &d.colour, sizeof colour) && p.input_format == INPUT_RGB);
+    assert(!d.link.hdcp && d.link.hdmi);
+}
+
 static void settings_wire_round_trips_and_validates(void)
 {
     assert(sizeof(struct hd60s_settings_wire) == 12);
@@ -667,6 +689,7 @@ int main(void)
     policy_reruns_routing_when_the_source_becomes_hdmi();
     link_flags_decode_hdcp_and_dvi();
     policy_tracks_the_source_link();
+    policy_keeps_the_last_source_when_reads_fail();
     settings_wire_round_trips_and_validates();
     settings_snapshot_is_never_torn();
     puts("test_device: ok");

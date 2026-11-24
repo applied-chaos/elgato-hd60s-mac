@@ -83,6 +83,7 @@ struct hd60s {
     struct libusb_device_handle *h;
     int open_err;          /* libusb result of the open/claim steps: 0, or why they failed */
     int err;               /* first transport error seen, 0 if none */
+    unsigned failures;     /* control transfers failed so far */
     uint32_t mcu_version;  /* b0<<16 | b1<<8 | b2 from MCU command 0x58 */
     uint8_t mst_saved[5];  /* MST3367 bank 1 reg 0x27 snapshot, restored on stop */
     int started;
