@@ -127,7 +127,7 @@ int main(void)
     s.signal = SIGNAL_HDCP;
     s.source = SOURCE_HDMI;
     t = render(hd60s_print_text, &s);
-    assert(strstr(t, "Signal:   HDCP protected\n") && strstr(t, "Source:   HDMI\n") && !strstr(t, "Input:"));
+    assert(strstr(t, "Signal:   HDCP Protected\n") && strstr(t, "Source:   HDMI\n") && !strstr(t, "Input:"));
     u = render(hd60s_print_json, &s);
     assert(strstr(u, "\"signal\":{\"state\":\"hdcp\",\"source\":\"hdmi\"}"));
     s.signal = SIGNAL_ACTIVE;

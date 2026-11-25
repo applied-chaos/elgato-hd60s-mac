@@ -147,12 +147,12 @@ App status messages: "No Signal", "Protected with HDCP", "USB 3 is required for 
 
 | # | Item | Status | Notes |
 |---|---|---|---|
-| F1 | Detect an HDCP-encrypted source and tell the user | done (console check pending) | #19. `status` state `hdcp`, "HDCP protected" camera slate and Status tab. The Pi can't send HDCP, so detection is unit-tested only; **Console** (PS5 with HDCP on) still to run |
+| F1 | Detect an HDCP-encrypted source and tell the user | done (console check pending) | #19. `status` state `hdcp`, "HDCP Protected" camera slate and Status tab. The Pi can't send HDCP, so detection is unit-tested only; **Console** (PS5 with HDCP on) still to run |
 
 **F1, HDCP detection.**
 - What Elgato does: shows "Protected with HDCP" instead of a picture, and plays LED animation 5 or 6 (`PlayAnimation(6 − hdcp)`, app:0x1003451d7).
 - How: `GetHDCPEnabled` → `dev+0x20`, set in `FUN_12a2f` from `FUN_125f7` bit1: MST b1:0x34 bit7 set, or b1:0x01 bit0 (when not overridden by the `FUN_17a0c`/`dev+0x28` checks). Bit 0 of `FUN_125f7` is b1:0x01 bit2, HDMI vs DVI.
-- Ours (#19): `status` reports state `hdcp` whenever the flag is set, the camera shows the "HDCP protected" slate instead of the picture (as Elgato does), and the Status tab says "HDCP protected". Flag read once a second in `hd60s_policy_tick` (`hd60s_read_link`), also through the dext frame ring (v3). The app lists the source row only for DVI.
+- Ours (#19): `status` reports state `hdcp` whenever the flag is set, the camera shows the "HDCP Protected" slate instead of the picture (as Elgato does), and the Status tab says "HDCP Protected". Flag read once a second in `hd60s_policy_tick` (`hd60s_read_link`), also through the dext frame ring (v3). The app lists the source row only for DVI.
 
 ## G. Device-side status
 

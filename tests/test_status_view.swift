@@ -71,7 +71,7 @@ func rows(_ r: [StatusView.Row]) -> [String] { r.map { "\($0.label)|\($0.value)|
         check(odd2.input.isEmpty && rows(odd2.connection).count == 2, "unsupported hides input")
 
         let hdcp = view(json(signal: "{\"state\":\"hdcp\",\"source\":\"hdmi\"}", frames: 40))
-        check(hdcp.dot == .warn && hdcp.title == "HDCP protected", "hdcp title")
+        check(hdcp.dot == .warn && hdcp.title == "HDCP Protected", "hdcp title")
         check(hdcp.detail == "The source is encrypting its output. Turn off HDCP on the source to capture it.", "hdcp detail \(hdcp.detail)")
         check(hdcp.input.isEmpty && rows(hdcp.connection).count == 3, "hdcp shows connection only \(rows(hdcp.connection))")
         check(view(json(access: "failed", fw: nil, signal: "{\"state\":\"hdcp\"}")).title == "Can't open the HD60 S", "open failure outranks hdcp")

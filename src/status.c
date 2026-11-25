@@ -242,7 +242,7 @@ void hd60s_print_text(const struct hd60s_status *s, FILE *out)
         fprintf(out, "Signal:   %dx%d%s, unsupported mode\n", s->width, s->height, s->interlaced ? "i" : "p");
         break;
     case SIGNAL_HDCP:
-        fprintf(out, "Signal:   HDCP protected\n");
+        fprintf(out, "Signal:   HDCP Protected\n");
         break;
     case SIGNAL_ACTIVE:
         mode_text(s, mode, sizeof mode);

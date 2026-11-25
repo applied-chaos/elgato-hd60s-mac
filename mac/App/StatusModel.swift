@@ -98,7 +98,7 @@ struct StatusView: Equatable {
             title = usedBy.map { "Live, in use by \($0)" } ?? "Live"
             detail = usedBy == nil ? "The HDMI source is coming through." : "Only one app can use the HD60 S at a time."
         } else if f.signal == .hdcp {
-            (dot, title) = (.warn, "HDCP protected")
+            (dot, title) = (.warn, "HDCP Protected")
             detail = "The source is encrypting its output. Turn off HDCP on the source to capture it."
         } else if case .unsupported(let w, let h) = f.signal {
             (dot, title) = (.warn, "Unsupported mode")
