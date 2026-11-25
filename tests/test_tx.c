@@ -828,7 +828,7 @@ static void test_hdcp_failed_then_source_clear_unmutes(void)
     assert(t.hdcp == HDCP_OFF && unmuted(&f));
 }
 
-static void test_hdcp_not_for_dvi_sink(void)
+static void test_hdcp_source_stays_muted_on_a_dvi_sink(void)
 {
     struct fake f;
     struct tx t;
@@ -837,7 +837,9 @@ static void test_hdcp_not_for_dvi_sink(void)
     hdcp_tv(&f, 0);
     tx_start(&t, &b);
     tx_poll(&t, &b, m1080p60(), 0, 1);
-    assert(t.state == TX_RUNNING && t.hdcp == HDCP_OFF && !touched_hdcp(&f) && unmuted(&f));
+    assert(t.state == TX_RUNNING && t.hdcp == HDCP_OFF && !touched_hdcp(&f) && muted(&f));
+    poll_source_clear(&t, &b);
+    assert(unmuted(&f));
     check_only_allowed(&f);
 }
 
@@ -904,7 +906,7 @@ int main(void)
     test_hdcp_reauth_after_hotplug();
     test_hdcp_source_drops_or_blanks();
     test_hdcp_failed_then_source_clear_unmutes();
-    test_hdcp_not_for_dvi_sink();
+    test_hdcp_source_stays_muted_on_a_dvi_sink();
     test_non_hdcp_path_unchanged();
     test_hdcp_audio_change_stays_muted();
     puts("test_tx ok");

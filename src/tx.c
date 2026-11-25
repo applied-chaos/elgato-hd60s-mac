@@ -200,7 +200,8 @@ static void unmute(const struct tx_bus *b)
     w(b, 0xc6, 3);
 }
 
-static int muted_pending_hdcp(const struct tx *t) { return t->src_hdcp && t->sink.hdmi && t->hdcp != HDCP_ON; }
+/* An encrypted source only reaches a TV that authenticated; hdcp_sync, like Elgato, tries only HDMI sinks. */
+static int muted_pending_hdcp(const struct tx *t) { return t->src_hdcp && t->hdcp != HDCP_ON; }
 
 static void audio_off(struct tx *t, const struct tx_bus *b)
 {
@@ -584,6 +585,7 @@ void tx_poll(struct tx *t, const struct tx_bus *b, const struct tx_mode *mode, i
     }
     t->want = mode;
     t->want_hz = audio_hz;
+    int was_hdcp = t->src_hdcp;
     t->src_hdcp = src_hdcp;
     if (!mode && t->sent_vic) {
         mute(b);
@@ -605,6 +607,8 @@ void tx_poll(struct tx *t, const struct tx_bus *b, const struct tx_mode *mode, i
             break;
     }
     hdcp_sync(t, b);
+    if (was_hdcp && !src_hdcp && t->state == TX_RUNNING && mode)
+        unmute(b);
     if (t->state == TX_RUNNING && mode && audio_wanted(t) != t->audio_hz) {
         mute(b);
         audio_sync(t, b);
