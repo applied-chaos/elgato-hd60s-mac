@@ -281,19 +281,6 @@ static void select_hdmi(struct hd60s *d)
     msleep(d, 100);
 }
 
-enum { AVI_WAIT_POLLS = 20 };
-
-/* b2:0x0B bit3 is a latch that clears when read, so poll for it as Elgato does. */
-const struct tx_mode *hd60s_avi_mode(struct hd60s *d)
-{
-    for (int i = 0; i < AVI_WAIT_POLLS; i++) {
-        if (mst_read(d, 2, 0x0b) & 0x08)
-            return tx_mode_from_vic((unsigned)mst_read(d, 2, 0x4b) & 0x7f);
-        msleep(d, 5);
-    }
-    return NULL;
-}
-
 /* FUN_1caf4 (routing) and FUN_1ce18 (gain) for d->audio, routed by the source link in d->link. */
 static void apply_audio(struct hd60s *d)
 {
@@ -454,11 +441,13 @@ void hd60s_policy_tick(struct hd60s *d, struct hd60s_parser *p, struct hd60s_pol
         unsigned failures = d->failures;
         int present = mst_read(d, 2, 0x0b) & 0x08;
         uint8_t db1 = (uint8_t)mst_read(d, 2, 0x48), db2 = (uint8_t)mst_read(d, 2, 0x49);
-        uint8_t db3 = (uint8_t)mst_read(d, 2, 0x4a);
+        uint8_t db3 = (uint8_t)mst_read(d, 2, 0x4a), db4 = (uint8_t)mst_read(d, 2, 0x4b);
         hd60s_read_link(d);
-        /* HDMI requires an AVI InfoFrame, so its absence is a dropout (a PS5 drops it for ~2 s in menus). */
+        /* b2:0x0B bit3 latches an AVI InfoFrame and clears when read. HDMI requires the InfoFrame, but a PS5 can
+         * go seconds between them, so on HDMI a clear bit keeps the last one. */
         if (d->failures == failures && (present || !d->link.hdmi)) {
             s->src = hd60s_parse_avi(present, db1, db2, db3);
+            s->vic = present ? db4 & 0x7f : 0;
             p->wide = present && (db2 >> 4 & 3) == 2;
         }
         if (d->link.hdmi != d->audio_routed_hdmi)
@@ -482,7 +471,7 @@ void hd60s_policy_tick(struct hd60s *d, struct hd60s_parser *p, struct hd60s_pol
         double fps = s->frames * (s->interlaced ? 2000.0 : 1000.0) / (double)(now_ms - s->win_start);
         s->mode = s->frames && s->run * 4 >= s->frames * 3 ? tx_mode_find(s->w, s->h, s->interlaced, fps) : NULL;
         if (d->link.hdcp) {
-            const struct tx_mode *m = hd60s_avi_mode(d);
+            const struct tx_mode *m = tx_mode_from_vic((unsigned)s->vic);
             s->mode = m ? m : s->mode;
         }
         s->frames = 0;

@@ -11,7 +11,7 @@ struct fake {
     uint8_t bank;
     uint8_t pend_addr, pend_sub[8];
     int pend_len, pend_rl;
-    int requests, fail_at, failing, slept_ms;
+    int requests, fail_at, failing, avi_latch, slept_ms;
     uint8_t first_req[3];
 };
 
@@ -61,8 +61,11 @@ static int fake_ctrl(void *ctx, int in, uint8_t req, uint16_t val, uint16_t idx,
             buf[0] = 1, buf[1] = 2, buf[2] = 3;
         else if (f->pend_addr == 0x94)
             buf[0] = f->codec[f->pend_sub[0]];
-        else if (f->pend_addr == 0x9c)
+        else if (f->pend_addr == 0x9c) {
             buf[0] = f->mst[f->bank][f->pend_sub[0]];
+            if (f->avi_latch && f->bank == 2 && f->pend_sub[0] == 0x0b)
+                f->mst[2][0x0b] &= (uint8_t)~0x08;
+        }
     }
     return len;
 }
@@ -263,6 +266,27 @@ static void policy_takes_mode_from_avi_vic_when_encrypted_and_no_frames(void)
     fk.mst[2][0x0b] = 0;
     hd60s_policy_tick(&d, &p, &pol, 6000);
     assert(!pol.mode);
+}
+
+static void encrypted_mode_survives_the_avi_latch_clearing_on_read(void)
+{
+    struct hd60s d;
+    struct hd60s_parser p = {0};
+    struct hd60s_policy pol;
+    boot(&d, 0);
+    assert(hd60s_init(&d) == 0 && hd60s_start(&d) == 0);
+    hd60s_policy_begin(&pol, 0);
+    fk.avi_latch = 1;
+    fk.mst[0][0x51] = 0x80;
+    fk.mst[1][0x01] = 0x04;
+    fk.mst[1][0x34] = 0x80;
+    fk.mst[2][0x0b] = 0x08;
+    fk.mst[2][0x4b] = 16;
+    hd60s_policy_tick(&d, &p, &pol, 1000);
+    hd60s_policy_tick(&d, &p, &pol, 2000);
+    assert(pol.mode && pol.mode->vic == 16);
+    hd60s_policy_tick(&d, &p, &pol, 4000);
+    assert(pol.mode && pol.mode->vic == 16);
 }
 
 static void clear_source_ignores_avi_vic_without_frames(void)
@@ -709,6 +733,7 @@ int main(void)
     policy_reads_aspect_once_a_second();
     policy_finds_mode_from_a_stable_window();
     policy_takes_mode_from_avi_vic_when_encrypted_and_no_frames();
+    encrypted_mode_survives_the_avi_latch_clearing_on_read();
     clear_source_ignores_avi_vic_without_frames();
     start_routes_hdmi_audio_by_default();
     audio_settings_apply_at_start_and_live();

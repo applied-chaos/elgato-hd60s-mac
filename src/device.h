@@ -100,6 +100,7 @@ struct hd60s {
 struct hd60s_policy {
     long win_start, last_poll, aspect_at;
     struct hd60s_source src;
+    int vic; /* of the last AVI InfoFrame, 0 if none */
     int w, h, interlaced, frames, run; /* frame size must hold for 3/4 of the window's frames */
     const struct tx_mode *mode;
     int hz, hz_seen; /* source audio rate, accepted once two polls agree */
@@ -123,8 +124,6 @@ void hd60s_policy_frame(struct hd60s_policy *s, int w, int h, int interlaced);
 void hd60s_policy_tick(struct hd60s *d, struct hd60s_parser *p, struct hd60s_policy *s, long now_ms);
 
 int mst_read(struct hd60s *d, uint8_t bank, uint8_t reg);
-/* Mode from the source's AVI InfoFrame VIC (b2:0x4B), independent of frames; NULL if none or unsupported. */
-const struct tx_mode *hd60s_avi_mode(struct hd60s *d);
 /* Source audio rate from the receiver's ACR packet for the given video mode; 0 if no audio or no mode. */
 int hd60s_source_audio_hz(struct hd60s *d, const struct tx_mode *m);
 /* Vsync period counter for hd60s_rate_from_vsync; 0 if unreadable. */
