@@ -107,11 +107,15 @@ void hd60s_close(struct hd60s *d)
 #define MAX_XFERS 16
 #define XFER_SIZE (512 * 1024)
 
+/* Decrypted video never reaches USB: the receiver leaves capture mode only once no transfer is in flight. */
+enum stream_phase { PHASE_STREAMING, PHASE_DRAINING, PHASE_HDCP };
+
 struct stream_ctx {
     struct hd60s_parser *parser;
     int iso_packet_bytes;
     volatile sig_atomic_t *stop;
-    int active, failed;
+    int active, failed, no_passthrough;
+    enum stream_phase phase;
     frame_cb frame_cb;
     void *frame_ctx;
     struct hd60s_policy policy;
@@ -140,9 +144,17 @@ static void LIBUSB_CALL on_xfer(struct libusb_transfer *t)
         fprintf(stderr, "hd60s: transfer status %d\n", t->status);
         s->failed = 1;
     }
-    if (!*s->stop && !s->failed && libusb_submit_transfer(t) == 0)
+    if (!*s->stop && !s->failed && s->phase == PHASE_STREAMING && libusb_submit_transfer(t) == 0)
         return;
     s->active--;
+}
+
+static void submit_all(struct stream_ctx *s, struct libusb_transfer **xfers, int n)
+{
+    s->phase = PHASE_STREAMING;
+    for (int i = 0; i < n; i++)
+        if (libusb_submit_transfer(xfers[i]) == 0)
+            s->active++;
 }
 
 static void iso_alt_bytes(struct hd60s *d, int out[HD60S_ISO_ALTS])
@@ -202,11 +214,10 @@ int hd60s_stream(struct hd60s *d, struct hd60s_parser *p, volatile sig_atomic_t 
             libusb_fill_bulk_transfer(xfers[i], d->h, HD60S_EP_VIDEO, malloc(XFER_SIZE), XFER_SIZE,
                                       on_xfer, &s, 1000);
         }
-        if (libusb_submit_transfer(xfers[i]) == 0)
-            s.active++;
     }
+    submit_all(&s, xfers, plan.buffers);
     long end = now_ms() + (long)(seconds * 1000);
-    while (s.active) {
+    while (s.active || (s.phase != PHASE_STREAMING && !*stop && !s.failed)) {
         if (*stop || s.failed || (seconds > 0 && now_ms() >= end)) {
             if (!s.failed)
                 *stop = 1;
@@ -216,8 +227,34 @@ int hd60s_stream(struct hd60s *d, struct hd60s_parser *p, volatile sig_atomic_t 
         struct timeval tv = {0, 100000};
         libusb_handle_events_timeout_completed(d->lusb, &tv, NULL);
         /* Not from the transfer callback: the sync control transfers need the event loop. */
-        if (!*stop && !s.failed)
-            hd60s_policy_tick(d, p, &s.policy, now_ms());
+        if (*stop || s.failed)
+            continue;
+        hd60s_policy_tick(d, p, &s.policy, now_ms());
+        switch (s.phase) {
+        case PHASE_STREAMING:
+            if (d->link.hdcp && !s.no_passthrough) {
+                s.phase = PHASE_DRAINING;
+                for (int i = 0; i < plan.buffers; i++)
+                    libusb_cancel_transfer(xfers[i]);
+            }
+            break;
+        case PHASE_DRAINING:
+            if (s.active)
+                break;
+            if (hd60s_enter_hdcp_passthrough(d) == 0) {
+                s.phase = PHASE_HDCP;
+                break;
+            }
+            s.no_passthrough = 1;
+            submit_all(&s, xfers, plan.buffers);
+            break;
+        case PHASE_HDCP:
+            if (!d->link.hdcp) {
+                hd60s_leave_hdcp_passthrough(d);
+                submit_all(&s, xfers, plan.buffers);
+            }
+            break;
+        }
     }
     p->on_frame = s.frame_cb;
     p->ctx = s.frame_ctx;

@@ -85,7 +85,8 @@ struct hd60s {
     int err;               /* first transport error seen, 0 if none */
     unsigned failures;     /* control transfers failed so far */
     uint32_t mcu_version;  /* b0<<16 | b1<<8 | b2 from MCU command 0x58 */
-    uint8_t mst_saved[5];  /* MST3367 bank 1 reg 0x27 snapshot, restored on stop */
+    uint8_t mst_saved[5];  /* MST3367 bank 1 reg 0x27 snapshot, restored when leaving capture mode */
+    int key_saved;         /* mst_saved holds the receiver's key */
     int started;
     struct hd60s_colour_cfg colour;
     struct hd60s_settings published_settings;
@@ -108,6 +109,11 @@ struct hd60s_policy {
 
 /* usb must be set. Wakes the MCU and finds its bridge. Resets audio to AUDIO_DEFAULT: call hd60s_set_audio after. */
 int hd60s_init(struct hd60s *d);
+/* Out of capture mode, so an HDCP source can authenticate and play through to an authenticated TV. Only with
+ * the video stream stopped; -1 if not started or no receiver key was saved. */
+int hd60s_enter_hdcp_passthrough(struct hd60s *d);
+/* Back into capture mode; call before restarting the video stream. */
+void hd60s_leave_hdcp_passthrough(struct hd60s *d);
 int hd60s_start(struct hd60s *d);
 void hd60s_stop(struct hd60s *d);
 /* Gain is clamped to +-12 dB. Sent now if started, otherwise at hd60s_start. 0, or -1 on a transport error. */

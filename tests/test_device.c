@@ -268,6 +268,29 @@ static void policy_takes_mode_from_avi_vic_when_encrypted_and_no_frames(void)
     assert(!pol.mode);
 }
 
+static void start_saves_the_receiver_key_only_outside_capture_mode(void)
+{
+    struct hd60s d;
+    boot(&d, 0);
+    fk.mst[1][0x27] = 0x5a;
+    assert(hd60s_init(&d) == 0 && hd60s_start(&d) == 0);
+    assert(d.key_saved && d.mst_saved[0] == 0x5a && d.mst_saved[4] == 0x5a);
+    assert(hd60s_enter_hdcp_passthrough(&d) == 0);
+    assert(fk.mst[1][0x24] == 0x40 && fk.mst[1][0x27] == 0x5a);
+    hd60s_leave_hdcp_passthrough(&d);
+    assert(fk.mst[1][0x24] == 0x41 && fk.mst[1][0x27] == 0);
+}
+
+static void start_after_a_session_that_never_stopped_saves_no_key(void)
+{
+    struct hd60s d;
+    boot(&d, 0);
+    fk.mst[1][0x24] = 0x41;
+    assert(hd60s_init(&d) == 0 && hd60s_start(&d) == 0);
+    assert(!d.key_saved && hd60s_enter_hdcp_passthrough(&d) < 0);
+    assert(fk.mst[1][0x24] == 0x41);
+}
+
 static void encrypted_mode_survives_the_avi_latch_clearing_on_read(void)
 {
     struct hd60s d;
@@ -733,6 +756,8 @@ int main(void)
     policy_reads_aspect_once_a_second();
     policy_finds_mode_from_a_stable_window();
     policy_takes_mode_from_avi_vic_when_encrypted_and_no_frames();
+    start_saves_the_receiver_key_only_outside_capture_mode();
+    start_after_a_session_that_never_stopped_saves_no_key();
     encrypted_mode_survives_the_avi_latch_clearing_on_read();
     clear_source_ignores_avi_vic_without_frames();
     start_routes_hdmi_audio_by_default();

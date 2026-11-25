@@ -204,12 +204,17 @@ static void select_hdmi(struct hd60s *d)
     mst_update(d, 1, 0x2a, 0xff, 0x07);
     mst_write(d, 2, 0x08, 0x03);
 
-    /* FUN_10df5: snapshot bank 1 reg 0x27 (read five times) for the stop sequence. */
-    mst_write(d, 1, 0x25, 0);
-    mst_write(d, 1, 0x26, 0);
-    for (int i = 0; i < 5; i++) {
-        msleep(d, 20);
-        d->mst_saved[i] = (uint8_t)mst_read(d, 1, 0x27);
+    /* FUN_10df5: snapshot the receiver key (b1:0x27, read five times). A receiver left in capture mode (b1:0x24
+     * bit0) reads back the zeros capture wrote instead. */
+    if (!(mst_read(d, 1, 0x24) & 1)) {
+        unsigned failures = d->failures;
+        mst_write(d, 1, 0x25, 0);
+        mst_write(d, 1, 0x26, 0);
+        for (int i = 0; i < 5; i++) {
+            msleep(d, 20);
+            d->mst_saved[i] = (uint8_t)mst_read(d, 1, 0x27);
+        }
+        d->key_saved = d->failures == failures;
     }
 
     mst_write(d, 1, 0x24, 0x40);
@@ -371,13 +376,9 @@ int hd60s_init(struct hd60s *d)
     return d->err ? -1 : 0;
 }
 
-int hd60s_start(struct hd60s *d)
+/* FUN_cc7e: zeroes the receiver's key, so an HDCP source cannot authenticate while video can reach USB. */
+static void capture_mode(struct hd60s *d)
 {
-    select_hdmi(d);
-    hd60s_read_link(d);
-    apply_audio(d);
-    i2c_write(d, I2C_BOARD, 0x20, 0x05);
-
     receiver_pulse(d, 0x41, NULL);
     for (int i = 0; i < 10 && !(mst_read(d, 2, 0x0e) & 7); i++)
         msleep(d, 5);
@@ -388,6 +389,29 @@ int hd60s_start(struct hd60s *d)
             break;
         msleep(d, 5);
     }
+}
+
+int hd60s_enter_hdcp_passthrough(struct hd60s *d)
+{
+    if (!d->started || !d->key_saved)
+        return -1;
+    receiver_pulse(d, 0x40, d->mst_saved);
+    return 0;
+}
+
+void hd60s_leave_hdcp_passthrough(struct hd60s *d)
+{
+    capture_mode(d);
+}
+
+int hd60s_start(struct hd60s *d)
+{
+    select_hdmi(d);
+    hd60s_read_link(d);
+    apply_audio(d);
+    i2c_write(d, I2C_BOARD, 0x20, 0x05);
+
+    capture_mode(d);
     struct hd60s_settings settings = hd60s_settings_snapshot(d);
     d->colour = (struct hd60s_colour_cfg){INPUT_RGB, 0, settings.range, 0, settings.picture};
     colour_convert(d, &d->colour);
@@ -404,7 +428,8 @@ void hd60s_stop(struct hd60s *d)
     if (d->started) {
         struct tx_bus tb = tx_bus(d);
         tx_blank(&d->tx, &tb);
-        receiver_pulse(d, 0x40, d->mst_saved);
+        if (d->key_saved)
+            receiver_pulse(d, 0x40, d->mst_saved);
         d->started = 0;
     }
     power_down(d);
