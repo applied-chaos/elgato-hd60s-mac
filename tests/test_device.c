@@ -604,6 +604,32 @@ static void policy_keeps_the_last_source_when_reads_fail(void)
     assert(!d.link.hdcp && d.link.hdmi);
 }
 
+static void policy_keeps_the_source_through_an_hdmi_infoframe_dropout(void)
+{
+    struct hd60s d;
+    struct hd60s_parser p = {0};
+    struct hd60s_policy pol;
+    boot(&d, 0);
+    assert(hd60s_init(&d) == 0 && hd60s_start(&d) == 0);
+    p.last_w = 1920, p.last_h = 1080;
+    hd60s_policy_begin(&pol, 0);
+    fk.mst[0][0x51] = 0x80;
+    fk.mst[1][0x01] = 0x04;
+    fk.mst[2][0x0b] = 0x08;
+    fk.mst[2][0x48] = 0x80;
+    fk.mst[2][0x49] = 0x28;
+    fk.mst[2][0x4a] = 0x08;
+    hd60s_policy_tick(&d, &p, &pol, 1000);
+    assert(d.colour.quant == 2 && p.wide);
+    fk.mst[2][0x0b] = 0;
+    hd60s_policy_tick(&d, &p, &pol, 2000);
+    hd60s_policy_tick(&d, &p, &pol, 2100);
+    assert(d.colour.quant == 2 && p.wide);
+    fk.mst[1][0x01] = 0x00;
+    hd60s_policy_tick(&d, &p, &pol, 3000);
+    assert(d.link.dvi && d.colour.quant == 0 && !p.wide);
+}
+
 static void settings_wire_round_trips_and_validates(void)
 {
     assert(sizeof(struct hd60s_settings_wire) == 12);
@@ -690,6 +716,7 @@ int main(void)
     link_flags_decode_hdcp_and_dvi();
     policy_tracks_the_source_link();
     policy_keeps_the_last_source_when_reads_fail();
+    policy_keeps_the_source_through_an_hdmi_infoframe_dropout();
     settings_wire_round_trips_and_validates();
     settings_snapshot_is_never_torn();
     puts("test_device: ok");

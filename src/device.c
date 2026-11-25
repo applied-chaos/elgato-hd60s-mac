@@ -455,11 +455,12 @@ void hd60s_policy_tick(struct hd60s *d, struct hd60s_parser *p, struct hd60s_pol
         int present = mst_read(d, 2, 0x0b) & 0x08;
         uint8_t db1 = (uint8_t)mst_read(d, 2, 0x48), db2 = (uint8_t)mst_read(d, 2, 0x49);
         uint8_t db3 = (uint8_t)mst_read(d, 2, 0x4a);
-        if (d->failures == failures) {
+        hd60s_read_link(d);
+        /* HDMI requires an AVI InfoFrame, so its absence is a dropout (a PS5 drops it for ~2 s in menus). */
+        if (d->failures == failures && (present || !d->link.hdmi)) {
             s->src = hd60s_parse_avi(present, db1, db2, db3);
             p->wide = present && (db2 >> 4 & 3) == 2;
         }
-        hd60s_read_link(d);
         if (d->link.hdmi != d->audio_routed_hdmi)
             apply_audio(d);
     }
