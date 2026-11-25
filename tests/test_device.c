@@ -275,9 +275,9 @@ static void start_saves_the_receiver_key_only_outside_capture_mode(void)
     fk.mst[1][0x27] = 0x5a;
     assert(hd60s_init(&d) == 0 && hd60s_start(&d) == 0);
     assert(d.key_saved && d.mst_saved[0] == 0x5a && d.mst_saved[4] == 0x5a);
-    assert(hd60s_enter_hdcp_passthrough(&d) == 0);
+    assert(hd60s_enter_passthrough(&d) == 0);
     assert(fk.mst[1][0x24] == 0x40 && fk.mst[1][0x27] == 0x5a);
-    hd60s_leave_hdcp_passthrough(&d);
+    hd60s_leave_passthrough(&d);
     assert(fk.mst[1][0x24] == 0x41 && fk.mst[1][0x27] == 0);
 }
 
@@ -287,7 +287,7 @@ static void start_after_a_session_that_never_stopped_saves_no_key(void)
     boot(&d, 0);
     fk.mst[1][0x24] = 0x41;
     assert(hd60s_init(&d) == 0 && hd60s_start(&d) == 0);
-    assert(!d.key_saved && hd60s_enter_hdcp_passthrough(&d) < 0);
+    assert(!d.key_saved && hd60s_enter_passthrough(&d) < 0);
     assert(fk.mst[1][0x24] == 0x41);
 }
 
@@ -326,6 +326,38 @@ static void clear_source_ignores_avi_vic_without_frames(void)
     hd60s_policy_tick(&d, &p, &pol, 1000);
     hd60s_policy_tick(&d, &p, &pol, 2000);
     assert(!pol.mode);
+}
+
+static void paused_video_takes_the_mode_from_avi_vic(void)
+{
+    struct hd60s d;
+    struct hd60s_parser p = {0};
+    struct hd60s_policy pol;
+    boot(&d, 0);
+    assert(hd60s_init(&d) == 0 && hd60s_start(&d) == 0);
+    hd60s_policy_begin(&pol, 0);
+    pol.paused = 1;
+    fk.mst[0][0x51] = 0x80;
+    fk.mst[1][0x01] = 0x04;
+    fk.mst[2][0x0b] = 0x08;
+    fk.mst[2][0x4b] = 16;
+    hd60s_policy_tick(&d, &p, &pol, 1000);
+    hd60s_policy_tick(&d, &p, &pol, 2000);
+    assert(pol.mode && pol.mode->vic == 16);
+}
+
+static void video_pauses_for_no_client_or_hdcp_and_drains_first(void)
+{
+    enum hd60s_video_phase ph = VIDEO_STREAMING;
+    assert(hd60s_video_next(&ph, 1, 0, 4) == VIDEO_STEP_NONE && ph == VIDEO_STREAMING);
+    assert(hd60s_video_next(&ph, 0, 0, 4) == VIDEO_STEP_CANCEL && ph == VIDEO_DRAINING);
+    assert(hd60s_video_next(&ph, 0, 0, 1) == VIDEO_STEP_NONE && ph == VIDEO_DRAINING);
+    assert(hd60s_video_next(&ph, 1, 0, 1) == VIDEO_STEP_NONE && ph == VIDEO_DRAINING);
+    assert(hd60s_video_next(&ph, 0, 0, 0) == VIDEO_STEP_PAUSE && ph == VIDEO_PAUSED);
+    assert(hd60s_video_next(&ph, 0, 0, 0) == VIDEO_STEP_NONE && ph == VIDEO_PAUSED);
+    assert(hd60s_video_next(&ph, 1, 1, 0) == VIDEO_STEP_NONE && ph == VIDEO_PAUSED);
+    assert(hd60s_video_next(&ph, 1, 0, 0) == VIDEO_STEP_RESUME && ph == VIDEO_STREAMING);
+    assert(hd60s_video_next(&ph, 1, 1, 4) == VIDEO_STEP_CANCEL && ph == VIDEO_DRAINING);
 }
 
 static void start_routes_hdmi_audio_by_default(void)
@@ -760,6 +792,8 @@ int main(void)
     start_after_a_session_that_never_stopped_saves_no_key();
     encrypted_mode_survives_the_avi_latch_clearing_on_read();
     clear_source_ignores_avi_vic_without_frames();
+    paused_video_takes_the_mode_from_avi_vic();
+    video_pauses_for_no_client_or_hdcp_and_drains_first();
     start_routes_hdmi_audio_by_default();
     audio_settings_apply_at_start_and_live();
     policy_reruns_routing_when_the_source_becomes_hdmi();

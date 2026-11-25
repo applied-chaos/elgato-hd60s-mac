@@ -101,7 +101,8 @@ struct hd60s {
 struct hd60s_policy {
     long win_start, last_poll, aspect_at;
     struct hd60s_source src;
-    int vic; /* of the last AVI InfoFrame, 0 if none */
+    int vic;    /* of the last AVI InfoFrame, 0 if none */
+    int paused; /* no video over USB, so no frames: the HDMI-out mode comes from vic */
     int w, h, interlaced, frames, run; /* frame size must hold for 3/4 of the window's frames */
     const struct tx_mode *mode;
     int hz, hz_seen; /* source audio rate, accepted once two polls agree */
@@ -111,9 +112,9 @@ struct hd60s_policy {
 int hd60s_init(struct hd60s *d);
 /* Out of capture mode, so an HDCP source can authenticate and play through to an authenticated TV. Only with
  * the video stream stopped; -1 if not started or no receiver key was saved. */
-int hd60s_enter_hdcp_passthrough(struct hd60s *d);
+int hd60s_enter_passthrough(struct hd60s *d);
 /* Back into capture mode; call before restarting the video stream. */
-void hd60s_leave_hdcp_passthrough(struct hd60s *d);
+void hd60s_leave_passthrough(struct hd60s *d);
 int hd60s_start(struct hd60s *d);
 void hd60s_stop(struct hd60s *d);
 /* Gain is clamped to +-12 dB. Sent now if started, otherwise at hd60s_start. 0, or -1 on a transport error. */
@@ -128,6 +129,12 @@ void hd60s_policy_begin(struct hd60s_policy *s, long now_ms);
 void hd60s_policy_frame(struct hd60s_policy *s, int w, int h, int interlaced);
 /* Issues control requests, so call it off the bulk completion path. */
 void hd60s_policy_tick(struct hd60s *d, struct hd60s_parser *p, struct hd60s_policy *s, long now_ms);
+
+enum hd60s_video_phase { VIDEO_STREAMING, VIDEO_DRAINING, VIDEO_PAUSED };
+enum hd60s_video_step { VIDEO_STEP_NONE, VIDEO_STEP_CANCEL, VIDEO_STEP_PAUSE, VIDEO_STEP_RESUME };
+/* Video over USB pauses without a client or with an HDCP source. CANCEL: cancel the transfers. PAUSE: none in
+ * flight, so the receiver may leave capture mode. RESUME: back into capture mode, then submit. */
+enum hd60s_video_step hd60s_video_next(enum hd60s_video_phase *phase, int want, int hdcp, int in_flight);
 
 int mst_read(struct hd60s *d, uint8_t bank, uint8_t reg);
 /* Source audio rate from the receiver's ACR packet for the given video mode; 0 if no audio or no mode. */

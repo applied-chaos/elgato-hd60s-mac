@@ -21,9 +21,10 @@ Installing again updates the audio plug-in to the version in the app. To remove 
 
 Pick "Elgato HD60 S" as the camera. In OBS, add it as a Video Capture Device, and add "Elgato HD60 S" as an Audio Input Capture.
 
-- Consoles with HDCP on send no picture. The camera shows an "HDCP Protected" slate and `hd60s status` and the app say so. On a PS5, turn off HDCP in Settings > System > HDMI.
+- Consoles with HDCP on are not captured: the camera shows an "HDCP Protected" slate and the app says so, while HDMI out keeps showing the game. On a PS5, turn off HDCP in Settings > System > HDMI to capture.
+- HDMI out shows the source whenever the device is plugged in, with or without an app using the camera.
 - Audio only flows while something is using the camera, and runs about 30 ms behind the picture (userspace DMG).
-- Only one thing can use the device at a time.
+- Only one thing can use the device at a time. The camera extension holds it from launch, so `hd60s capture` and `hd60s status` report it busy while the extension runs.
 - The camera offers 59.94, 50, 30, 25 and 24 fps. Frames are delivered at the source's own rate whichever you pick, so a 50 Hz source never drops or repeats frames; pick the rate that matches your source for correct nominal timing and "No signal" slate pacing.
 
 ## Check the input
@@ -109,7 +110,7 @@ The driver only sends the requests Elgato's own driver sends on every start. It 
 ## Not done yet
 
 - Modes other than 1080p60. SD modes also need the BT.601 matrix.
-- HDMI passthrough audio. Video passthrough is implemented but not yet checked on a TV. HDCP passthrough (encrypted sources play on the TV, capture stays blank) is implemented and checked against a TV with the Pi, not yet with a console.
+- HDMI passthrough audio. Video passthrough is implemented but not yet checked on a TV. HDCP passthrough (encrypted sources play on the TV, capture shows the slate) is checked with a PS5.
 - Userspace DMG: rare tiny audio glitches as the HDMI and Mac clocks drift.
 
 ## Licence

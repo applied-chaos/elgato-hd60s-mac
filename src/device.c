@@ -391,7 +391,7 @@ static void capture_mode(struct hd60s *d)
     }
 }
 
-int hd60s_enter_hdcp_passthrough(struct hd60s *d)
+int hd60s_enter_passthrough(struct hd60s *d)
 {
     if (!d->started || !d->key_saved)
         return -1;
@@ -399,7 +399,7 @@ int hd60s_enter_hdcp_passthrough(struct hd60s *d)
     return 0;
 }
 
-void hd60s_leave_hdcp_passthrough(struct hd60s *d)
+void hd60s_leave_passthrough(struct hd60s *d)
 {
     capture_mode(d);
 }
@@ -495,7 +495,7 @@ void hd60s_policy_tick(struct hd60s *d, struct hd60s_parser *p, struct hd60s_pol
     if (now_ms - s->win_start >= MODE_WINDOW_MS) {
         double fps = s->frames * (s->interlaced ? 2000.0 : 1000.0) / (double)(now_ms - s->win_start);
         s->mode = s->frames && s->run * 4 >= s->frames * 3 ? tx_mode_find(s->w, s->h, s->interlaced, fps) : NULL;
-        if (d->link.hdcp) {
+        if (d->link.hdcp || s->paused) {
             const struct tx_mode *m = tx_mode_from_vic((unsigned)s->vic);
             s->mode = m ? m : s->mode;
         }
@@ -511,6 +511,29 @@ void hd60s_policy_tick(struct hd60s *d, struct hd60s_parser *p, struct hd60s_pol
         tx_poll(&d->tx, &tb, s->mode, s->hz, d->link.hdcp);
         s->last_poll = now_ms;
     }
+}
+
+enum hd60s_video_step hd60s_video_next(enum hd60s_video_phase *phase, int want, int hdcp, int in_flight)
+{
+    int pause = !want || hdcp;
+    switch (*phase) {
+    case VIDEO_STREAMING:
+        if (!pause)
+            return VIDEO_STEP_NONE;
+        *phase = VIDEO_DRAINING;
+        return VIDEO_STEP_CANCEL;
+    case VIDEO_DRAINING:
+        if (in_flight)
+            return VIDEO_STEP_NONE;
+        *phase = VIDEO_PAUSED;
+        return VIDEO_STEP_PAUSE;
+    case VIDEO_PAUSED:
+        if (pause)
+            return VIDEO_STEP_NONE;
+        *phase = VIDEO_STREAMING;
+        return VIDEO_STEP_RESUME;
+    }
+    return VIDEO_STEP_NONE;
 }
 
 void hd60s_settings_publish(struct hd60s *d, const struct hd60s_settings *s)

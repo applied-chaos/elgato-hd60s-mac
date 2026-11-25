@@ -133,8 +133,7 @@ final class StreamSource: NSObject, CMIOExtensionStreamSource {
     private let rate = OSAllocatedUnfairLock(initialState: FrameRate.ntsc)
     private var pool: CVPixelBufferPool!
     private let stop = UnsafeMutablePointer<sig_atomic_t>.allocate(capacity: 1)
-    private var worker: Thread?
-    private let finished = DispatchSemaphore(value: 0)
+    private let wantVideo = UnsafeMutablePointer<sig_atomic_t>.allocate(capacity: 1)
     private let parser = UnsafeMutablePointer<hd60s_parser>.allocate(capacity: 1)
     private let deinterlacer = UnsafeMutablePointer<deint>.allocate(capacity: 1)
     private let lastFrameNs = OSAllocatedUnfairLock(initialState: UInt64(0))
@@ -186,6 +185,14 @@ final class StreamSource: NSObject, CMIOExtensionStreamSource {
         statusOut.onChange = { [unowned self] in notify?([CameraProperty.status.property: CameraProperty.status.state($0)]) }
         stream = CMIOExtensionStream(localizedName: "Elgato HD60 S", streamID: UUID(), direction: .source,
                                      clockType: .hostTime, source: self)
+        #if !DEXT
+        // Held from launch so HDMI passthrough runs with no camera client (ADR 0002).
+        stop.pointee = 0
+        wantVideo.pointee = 0
+        let t = Thread { [unowned self] in run() }
+        t.name = "hd60s capture"
+        t.start()
+        #endif
     }
 
     var formats: [CMIOExtensionStreamFormat] { [format] }
@@ -259,29 +266,21 @@ final class StreamSource: NSObject, CMIOExtensionStreamSource {
     }
     #else
     func startStream() throws {
-        guard worker == nil else { return }
+        guard timer == nil else { return }
         refreshVideoOffset()
-        stop.pointee = 0
         audio_feed_start()
-        let t = Thread { [unowned self] in run() }
-        t.name = "hd60s capture"
-        worker = t
-        t.start()
+        wantVideo.pointee = 1
         lastFrameNs.withLock { $0 = hostNs() + slateHoldAtStartNs - noFramesTimeoutNs }
         restartTimer()
     }
 
     func stopStream() throws {
-        guard worker != nil else { return }
+        guard timer != nil else { return }
         timer?.cancel()
         timer = nil
-        stop.pointee = 1
-        finished.wait()
+        wantVideo.pointee = 0
         audio_feed_stop()
         statusOut.clear()
-        if let scaler { VTPixelTransferSessionInvalidate(scaler) }
-        scaler = nil
-        worker = nil
     }
     #endif
 
@@ -300,10 +299,7 @@ final class StreamSource: NSObject, CMIOExtensionStreamSource {
     private func run() {
         let cap = Int(width) * 1440 * 2
         let buf = UnsafeMutablePointer<UInt8>.allocate(capacity: cap)
-        defer {
-            buf.deallocate()
-            finished.signal()
-        }
+        defer { buf.deallocate() }
         let ctx = Unmanaged.passUnretained(self).toOpaque()
         while stop.pointee == 0 {
             hd60s_open_wait_ms = 4000
@@ -325,7 +321,7 @@ final class StreamSource: NSObject, CMIOExtensionStreamSource {
                     me.send(UnsafeMutablePointer(mutating: frame!), Int(w), Int(h), interlaced != 0, wide: me.parser.pointee.wide != 0,
                             bt601: me.parser.pointee.colour == COLOUR_BT601)
                 }, { _, pcm, len in audio_feed_push(pcm, len) }, ctx)
-                hd60s_stream(dev, parser, stop, 0)
+                hd60s_stream(dev, parser, stop, wantVideo, 0)
             } else {
                 log.error("device open failed")
             }
@@ -342,6 +338,9 @@ final class StreamSource: NSObject, CMIOExtensionStreamSource {
     // Frames of any known mode are scaled into the 1080p output, aspect preserved; runts from a mode switch are dropped.
     private func send(_ frame: UnsafeMutablePointer<UInt8>, _ w: Int, _ h: Int, _ interlaced: Bool, wide: Bool, bt601: Bool) {
         if hdcp.withLock({ $0 }) { return }
+        #if !DEXT
+        if wantVideo.pointee == 0 { return }
+        #endif
         let fit = fitRect(width: w, height: h, wide: wide)
         if hd60s_unknown_run_note(&unknownRun, hd60s_size(width: Int32(w), height: Int32(h))) >= HD60S_UNSUPPORTED_FRAMES {
             unsupportedNs.withLock { $0 = hostNs() }

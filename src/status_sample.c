@@ -76,7 +76,7 @@ void hd60s_sample(struct hd60s_status *out, double seconds, struct hd60s_setting
             st->mcu_version = d.mcu_version;
             k.parser = &parser;
             parser_init(&parser, frame, FRAME_CAP, watch_frame, watch_audio, &k);
-            hd60s_stream(&d, &parser, stop, seconds);
+            hd60s_stream(&d, &parser, stop, NULL, seconds);
             st->signal = k.standard ? SIGNAL_ACTIVE : SIGNAL_NONE;
             if (k.unknown.count >= HD60S_UNSUPPORTED_FRAMES) {
                 st->signal = SIGNAL_UNSUPPORTED;

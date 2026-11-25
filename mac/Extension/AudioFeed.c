@@ -7,7 +7,8 @@
 
 #define TARGET 1440 /* 30 ms jitter buffer: the latency vs drift-glitch knob */
 
-static struct ring *ring;
+/* Never freed: the capture thread keeps pushing while the device is held between streams (ADR 0002). */
+static struct ring *_Atomic ring;
 static AudioDeviceID dev;
 static AudioDeviceIOProcID proc;
 
@@ -32,7 +33,7 @@ void audio_feed_start(void)
         os_log(OS_LOG_DEFAULT, "hd60s: audio plug-in not installed");
         return;
     }
-    if (!(ring = ring_create(48000)))
+    if (!ring && !(ring = ring_create(48000)))
         return;
     OSStatus err = AudioDeviceCreateIOProcID(dev, io, NULL, &proc);
     if (!err)
@@ -56,10 +57,9 @@ void audio_feed_push(const uint8_t *pcm, size_t len)
 
 void audio_feed_stop(void)
 {
-    if (!ring)
+    if (!proc)
         return;
     AudioDeviceStop(dev, proc);
     AudioDeviceDestroyIOProcID(dev, proc);
-    ring_free(ring);
-    ring = NULL;
+    proc = NULL;
 }

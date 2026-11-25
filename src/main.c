@@ -202,10 +202,10 @@ int main(int argc, char **argv)
             fprintf(stderr, "mcu firmware: %02x.%02x.%02x\n", d.mcu_version >> 16 & 0xff,
                     d.mcu_version >> 8 & 0xff, d.mcu_version & 0xff);
             parser_init(&c.parser, frame, sizeof frame, on_frame, on_audio, &c);
-            hd60s_stream(&d, &c.parser, &stop_requested, 2.0);
+            hd60s_stream(&d, &c.parser, &stop_requested, NULL, 2.0);
         } else {
             parser_init(&c.parser, frame, sizeof frame, on_frame, on_audio, &c);
-            hd60s_stream(&d, &c.parser, &stop_requested, 0);
+            hd60s_stream(&d, &c.parser, &stop_requested, NULL, 0);
         }
         report(&c);
         rc = info || c.frames ? 0 : 1;
