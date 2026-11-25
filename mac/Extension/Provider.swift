@@ -317,7 +317,9 @@ final class StreamSource: NSObject, CMIOExtensionStreamSource {
                     let me = Unmanaged<StreamSource>.fromOpaque(ctx!).takeUnretainedValue()
                     me.statusOut.frame(width: Int(w), height: Int(h), interlaced: interlaced != 0,
                                        topFirst: me.parser.pointee.top_first != 0,
-                                       bt601: me.parser.pointee.colour == COLOUR_BT601, nowNs: me.hostNs())
+                                       bt601: me.parser.pointee.colour == COLOUR_BT601, nowNs: me.hostNs(),
+                                       input: me.parser.pointee.input_format, quant: me.parser.pointee.quant,
+                                       range: me.currentSettings.range)
                     me.send(UnsafeMutablePointer(mutating: frame!), Int(w), Int(h), interlaced != 0, wide: me.parser.pointee.wide != 0,
                             bt601: me.parser.pointee.colour == COLOUR_BT601)
                 }, { _, pcm, len in audio_feed_push(pcm, len) }, ctx)

@@ -40,6 +40,7 @@ struct hd60s_status {
     enum hd60s_colour colour;
     enum hd60s_input_format input_format;
     enum hd60s_range range; /* the setting in force, not what the source sent */
+    enum hd60s_quant quant; /* what the source sent */
     int audio_rate, audio_channels; /* stream format, 0 = no audio */
     int audio_source_rate;          /* rate the source sends before the device resamples to 48 kHz, 0 = unknown */
 

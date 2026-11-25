@@ -7,6 +7,8 @@
 enum hd60s_colour { COLOUR_UNKNOWN, COLOUR_BT709, COLOUR_BT601, COLOUR_COUNT };
 /* Source pixel format from the AVI InfoFrame (Y1Y0). */
 enum hd60s_input_format { INPUT_RGB, INPUT_YCBCR444, INPUT_YCBCR422, INPUT_COUNT };
+/* Source RGB quantisation from the AVI InfoFrame (Q1Q0). */
+enum hd60s_quant { QUANT_DEFAULT, QUANT_LIMITED, QUANT_FULL, QUANT_RESERVED };
 /* HDMI colour range, SetHDMIColorRange. Expanded compresses full-range RGB to limited. */
 enum hd60s_range { RANGE_AUTO, RANGE_STANDARD, RANGE_EXPANDED, RANGE_COUNT };
 static const char *const hd60s_range_names[RANGE_COUNT] = {"auto", "standard", "expanded"};
@@ -39,6 +41,7 @@ struct hd60s_parser {
     int wide;           /* source AVI InfoFrame flags 16:9; set by hd60s_stream, about once a second */
     enum hd60s_colour colour;
     enum hd60s_input_format input_format;
+    enum hd60s_quant quant;
 };
 
 /* 1 for an SD frame size (640x480, 720x480/576, 1440x480), 0 for HD and PC/DMT sizes, -1 otherwise (runts

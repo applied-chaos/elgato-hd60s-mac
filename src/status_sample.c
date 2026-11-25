@@ -100,6 +100,7 @@ void hd60s_sample(struct hd60s_status *out, double seconds, struct hd60s_setting
             st->fps = hd60s_exact_fps(st->fps, hd60s_rate_from_vsync(hd60s_vsync_counter(&d)), st->interlaced);
             st->colour = parser.colour;
             st->input_format = parser.input_format;
+            st->quant = parser.quant;
         }
         if (k.audio_bytes) {
             st->audio_rate = 48000;

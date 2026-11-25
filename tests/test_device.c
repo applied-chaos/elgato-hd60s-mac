@@ -699,7 +699,7 @@ static void policy_keeps_the_source_through_an_hdmi_infoframe_dropout(void)
     fk.mst[2][0x49] = 0x28;
     fk.mst[2][0x4a] = 0x08;
     hd60s_policy_tick(&d, &p, &pol, 1000);
-    assert(d.colour.quant == 2 && p.wide);
+    assert(d.colour.quant == 2 && p.wide && p.quant == QUANT_FULL);
     fk.mst[2][0x0b] = 0;
     hd60s_policy_tick(&d, &p, &pol, 2000);
     hd60s_policy_tick(&d, &p, &pol, 2100);

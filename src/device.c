@@ -491,6 +491,7 @@ void hd60s_policy_tick(struct hd60s *d, struct hd60s_parser *p, struct hd60s_pol
         d->colour = want;
     }
     p->input_format = d->colour.input;
+    p->quant = (enum hd60s_quant)(s->src.quant & 3);
     p->colour = hd60s_frame_colour(&d->colour, s->src.colorimetry);
     if (now_ms - s->win_start >= MODE_WINDOW_MS) {
         double fps = s->frames * (s->interlaced ? 2000.0 : 1000.0) / (double)(now_ms - s->win_start);

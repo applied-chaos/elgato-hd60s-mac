@@ -54,6 +54,10 @@ static const struct named field_orders[] = {{FIELD_NONE, "none", ""}, {FIELD_TOP
 static const struct named colours[] = {
     {COLOUR_UNKNOWN, "unknown", "unknown"}, {COLOUR_BT709, "bt709", "BT.709"}, {COLOUR_BT601, "bt601", "BT.601"},
 };
+static const struct named quants[] = {
+    {QUANT_DEFAULT, "default", "default"}, {QUANT_LIMITED, "limited", "limited"}, {QUANT_FULL, "full", "full"},
+    {QUANT_RESERVED, "reserved", "reserved"},
+};
 static const struct named inputs[] = {
     {INPUT_RGB, "rgb", "RGB"}, {INPUT_YCBCR444, "ycbcr444", "YCbCr 4:4:4"}, {INPUT_YCBCR422, "ycbcr422", "YCbCr 4:2:2"},
 };
@@ -249,7 +253,7 @@ void hd60s_print_text(const struct hd60s_status *s, FILE *out)
         fprintf(out, "Signal:   %s%s\n", mode, s->field_order == FIELD_NONE ? "" : ", top field first");
         fprintf(out, "Input:    %s\n", NAME_OF(inputs, s->input_format)->text);
         fprintf(out, "Colour:   %s\n", NAME_OF(colours, s->colour)->text);
-        fprintf(out, "Range:    %s\n", hd60s_range_names[s->range]);
+        fprintf(out, "Range:    %s (source %s)\n", hd60s_range_names[s->range], NAME_OF(quants, s->quant)->text);
         break;
     }
     if (s->source != SOURCE_UNKNOWN)
@@ -317,11 +321,10 @@ void hd60s_print_json(const struct hd60s_status *s, FILE *out)
     fprintf(out, "}},\"signal\":{\"state\":\"%s\"", NAME_OF(signals, s->signal)->code);
     if (s->signal == SIGNAL_ACTIVE)
         fprintf(out,
-                ",\"width\":%d,\"height\":%d,\"interlaced\":%s,\"field_order\":\"%s\",\"fps\":%.2f,\"input\":\"%s\",\"colour\":\"%s\",\"range\":\"%s\"",
+                ",\"width\":%d,\"height\":%d,\"interlaced\":%s,\"field_order\":\"%s\",\"fps\":%.2f,\"input\":\"%s\",\"colour\":\"%s\",\"range\":\"%s\",\"source_range\":\"%s\"",
                 s->width, s->height, s->interlaced ? "true" : "false",
                 NAME_OF(field_orders, s->field_order)->code, s->fps, NAME_OF(inputs, s->input_format)->code,
-                NAME_OF(colours, s->colour)->code,
-                hd60s_range_names[s->range]);
+                NAME_OF(colours, s->colour)->code, hd60s_range_names[s->range], NAME_OF(quants, s->quant)->code);
     if (s->source != SOURCE_UNKNOWN)
         fprintf(out, ",\"source\":\"%s\"", NAME_OF(sources, s->source)->code);
     if (s->signal == SIGNAL_UNSUPPORTED)

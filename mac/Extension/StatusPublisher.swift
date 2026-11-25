@@ -5,6 +5,7 @@ import Darwin
 final class StatusPublisher {
     private struct State {
         var width = 0, height = 0, interlaced = false, topFirst = false, bt601 = false
+        var input = INPUT_RGB, quant = QUANT_DEFAULT, range = RANGE_AUTO
         var frames = 0
         var markNs: UInt64 = 0
         var lastFrameNs: UInt64 = 0
@@ -34,7 +35,8 @@ final class StatusPublisher {
 
     func setLink(hdcp: Bool, dvi: Bool) { state.withLock { ($0.hdcp, $0.dvi) = (hdcp, dvi) } }
 
-    func frame(width: Int, height: Int, interlaced: Bool, topFirst: Bool, bt601: Bool, nowNs: UInt64) {
+    func frame(width: Int, height: Int, interlaced: Bool, topFirst: Bool, bt601: Bool, nowNs: UInt64,
+               input: hd60s_input_format = INPUT_RGB, quant: hd60s_quant = QUANT_DEFAULT, range: hd60s_range = RANGE_AUTO) {
         state.withLock {
             let size = hd60s_size(width: Int32(width), height: Int32(height))
             let run = hd60s_unknown_run_note(&$0.unknown, size)
@@ -47,6 +49,7 @@ final class StatusPublisher {
             $0.interlaced = interlaced
             $0.topFirst = topFirst
             $0.bt601 = bt601
+            ($0.input, $0.quant, $0.range) = (input, quant, range)
             $0.frames += 1
             $0.lastFrameNs = nowNs
         }
@@ -90,6 +93,7 @@ final class StatusPublisher {
             st.field_order = s.topFirst ? FIELD_TOP_FIRST : FIELD_NONE
             st.fps = s.fps
             st.colour = s.bt601 ? COLOUR_BT601 : COLOUR_BT709
+            (st.input_format, st.quant, st.range) = (s.input, s.quant, s.range)
             st.audio_rate = 48000
             st.audio_channels = 2
         } else {
