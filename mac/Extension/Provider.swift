@@ -5,6 +5,7 @@ import Foundation
 import ImageIO
 import os
 import VideoToolbox
+import XPC
 
 private let width = Int32(outputWidth)
 private let height = Int32(outputHeight)
@@ -304,7 +305,9 @@ final class StreamSource: NSObject, CMIOExtensionStreamSource {
         while stop.pointee == 0 {
             hd60s_open_wait_ms = 4000
             let opened = hd60s_open(dev) == 0
+            // launchd won't reclaim the extension under memory pressure while it drives passthrough (ADR 0002).
             if opened {
+                xpc_transaction_begin()
                 var current = settings.withLock { $0 }
                 hd60s_settings_publish(dev, &current)
                 var audio = audio_from_pref(current.audio)
@@ -329,6 +332,7 @@ final class StreamSource: NSObject, CMIOExtensionStreamSource {
             }
             hd60s_stop(dev)
             hd60s_close(dev)
+            if opened { xpc_transaction_end() }
             dev.pointee.link = hd60s_link()
             for _ in 0..<10 where stop.pointee == 0 {
                 usleep(100_000)

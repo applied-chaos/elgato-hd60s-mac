@@ -115,6 +115,8 @@ final class Installer: NSObject, ObservableObject, OSSystemExtensionRequestDeleg
     private var steps: [CameraStep] = []
     private var running = InstallAction.install
     private var planOnQuery = false
+    private var repairing = false
+    private var repaired = false
     private var query: OSSystemExtensionRequest?
 
     func refresh() {
@@ -202,6 +204,7 @@ final class Installer: NSObject, ObservableObject, OSSystemExtensionRequestDeleg
 
     private func run(_ plan: [CameraStep]) {
         steps = plan
+        repaired = false
         runCurrentStep()
     }
 
@@ -210,18 +213,29 @@ final class Installer: NSObject, ObservableObject, OSSystemExtensionRequestDeleg
         switch step {
         case .deactivate: submit(.deactivationRequest(forExtensionWithIdentifier: extensionID, queue: .main))
         case .activate: submit(.activationRequest(forExtensionWithIdentifier: extensionID, queue: .main))
+        case .repair:
+            repairing = true
+            repaired = true
+            submit(.activationRequest(forExtensionWithIdentifier: extensionID, queue: .main))
         case .requestQuit:
             status = .working
             Task { @MainActor in advance(ok: await Task.detached { CameraLink.set(.quit, "") }.value) }
         case .awaitExit:
-            Task { @MainActor in advance(ok: await CameraProcess.pollUntil(timeout: 5) { !CameraProcess.isRunning() }) }
+            // registerassistantservice respawns it within milliseconds, so look often enough to see the gap.
+            Task { @MainActor in advance(ok: await CameraProcess.pollUntil(timeout: 5, every: 0.005) { !CameraProcess.isRunning() }) }
         case .verify:
             let want = bundledCameraBuild
             Task { @MainActor in
-                let running = await CameraProcess.pollUntil(timeout: 10) { CameraProcess.runningBuilds().contains { $0 == want } }
-                guard running else {
-                    steps = []
-                    return status = .needsRestart
+                let appeared = await CameraProcess.pollUntil(timeout: 10) { !CameraProcess.pids(ofBuild: want).isEmpty }
+                let first = CameraProcess.pids(ofBuild: want)
+                try? await Task.sleep(nanoseconds: 3_000_000_000)
+                guard appeared, CameraProcess.notRespawned(first: first, later: CameraProcess.pids(ofBuild: want)) else {
+                    guard let retry = CameraStep.afterVerifyFailed(Array(steps.dropFirst()), repaired: repaired) else {
+                        steps = []
+                        return status = .needsRestart
+                    }
+                    steps = retry
+                    return runCurrentStep()
                 }
                 advance()
             }
@@ -281,7 +295,7 @@ final class Installer: NSObject, ObservableObject, OSSystemExtensionRequestDeleg
 
     func request(_ request: OSSystemExtensionRequest, actionForReplacingExtension existing: OSSystemExtensionProperties,
                  withExtension ext: OSSystemExtensionProperties) -> OSSystemExtensionRequest.ReplacementAction {
-        existing.bundleVersion == ext.bundleVersion ? .cancel : .replace
+        CameraStep.replaces(existing: existing.bundleVersion, with: ext.bundleVersion, repairing: repairing) ? .replace : .cancel
     }
 
     func requestNeedsUserApproval(_ request: OSSystemExtensionRequest) {
@@ -290,6 +304,7 @@ final class Installer: NSObject, ObservableObject, OSSystemExtensionRequestDeleg
 
     func request(_ request: OSSystemExtensionRequest, didFinishWithResult result: OSSystemExtensionRequest.Result) {
         guard request !== query else { return }
+        repairing = false
         guard result == .completed else {
             steps = []
             status = .needsRestart
@@ -299,6 +314,7 @@ final class Installer: NSObject, ObservableObject, OSSystemExtensionRequestDeleg
     }
 
     func request(_ request: OSSystemExtensionRequest, didFailWithError error: Error) {
+        repairing = false
         if steps.first == .deactivate, (error as? OSSystemExtensionError)?.code == .extensionNotFound { return refresh() }
         steps = []
         planOnQuery = false

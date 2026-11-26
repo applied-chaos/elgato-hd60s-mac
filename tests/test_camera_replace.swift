@@ -17,6 +17,17 @@ func check(_ ok: Bool, _ what: String, line: UInt = #line) {
         check(CameraStep.remaining(Array(replace.dropFirst()), quitRefused: true) == [.activate, .verify, .relaunch], "older build without quit skips the wait")
         check(CameraStep.remaining([.activate, .verify], quitRefused: false) == [.activate, .verify], "exit timeout still activates")
 
+        check(CameraStep.afterVerifyFailed([.relaunch], repaired: false) == [.repair, .verify, .relaunch],
+              "a missing extension after activation is repaired once, then verified again")
+        check(CameraStep.afterVerifyFailed([], repaired: false) == [.repair, .verify], "fresh install repairs without a relaunch")
+        check(CameraStep.afterVerifyFailed([.relaunch], repaired: true) == nil, "a second failure gives up: restart needed")
+        check(!CameraStep.replaces(existing: "220", with: "220", repairing: false), "same build is never restaged on a normal install")
+        check(CameraStep.replaces(existing: "220", with: "220", repairing: true), "repair restages the same build")
+        check(CameraStep.replaces(existing: "219", with: "220", repairing: false), "a new build replaces")
+        check(CameraProcess.notRespawned(first: [42], later: [42, 7]), "the same process still running counts as up")
+        check(!CameraProcess.notRespawned(first: [42], later: [43]), "a respawned process is not stable")
+        check(!CameraProcess.notRespawned(first: [], later: []), "no process is not up")
+
         let exe = "/Library/SystemExtensions/ABC/net.mintopia.hd60s.camera.systemextension/Contents/MacOS/net.mintopia.hd60s.camera"
         check(CameraProcess.matches(path: exe), "extension binary matches")
         check(!CameraProcess.matches(path: "/Applications/HD60S.app/Contents/MacOS/HD60S"), "app does not match")
